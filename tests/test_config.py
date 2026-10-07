@@ -1,6 +1,6 @@
 import pytest
 
-from app.config import DEFAULT_SECRET_KEY, Settings
+from app.core.config import DEFAULT_SECRET_KEY, Settings
 
 
 def test_production_rejects_default_secrets() -> None:

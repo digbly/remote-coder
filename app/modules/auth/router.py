@@ -1,18 +1,14 @@
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import select
 
-from app.config import Settings
-from app.deps import CsrfDep, CurrentUser, DbDep, SettingsDep
-from app.errors import ErrorCode, api_error, error_responses
-from app.models import User
-from app.rate_limit import login_rate_limit
-from app.schemas import LoginRequest, UserRead
-from app.security import (
-    DUMMY_PASSWORD_HASH,
-    create_access_token,
-    generate_csrf_token,
-    verify_password,
-)
+from app.core.config import Settings
+from app.core.deps import DbDep, SettingsDep
+from app.core.errors import error_responses
+from app.modules.auth import service
+from app.modules.auth.deps import CsrfDep, CurrentUser
+from app.modules.auth.models import User
+from app.modules.auth.rate_limit import login_rate_limit
+from app.modules.auth.schemas import LoginRequest, UserRead
+from app.modules.auth.security import create_access_token, generate_csrf_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,23 +47,7 @@ def login(
     db: DbDep,
     settings: SettingsDep,
 ) -> User:
-    user = db.scalar(select(User).where(User.username == payload.username))
-    hashed_password = user.hashed_password if user else DUMMY_PASSWORD_HASH
-    password_matches = verify_password(payload.password, hashed_password)
-
-    if user is None or not password_matches:
-        raise api_error(
-            ErrorCode.INVALID_CREDENTIALS,
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if not user.is_active:
-        raise api_error(
-            ErrorCode.INACTIVE_USER,
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
-
+    user = service.authenticate_user(db, payload.username, payload.password)
     _set_auth_cookies(response, user.username, settings)
     return user
 

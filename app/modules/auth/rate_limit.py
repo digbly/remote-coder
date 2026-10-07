@@ -5,8 +5,8 @@ from typing import Annotated
 
 from fastapi import Depends, Request, status
 
-from app.config import Settings, get_settings
-from app.errors import ErrorCode, api_error
+from app.core.config import Settings, get_settings
+from app.core.errors import ErrorCode, api_error
 
 
 class SlidingWindowRateLimiter:

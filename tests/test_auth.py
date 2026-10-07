@@ -4,11 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db import Base, get_db
+from app.core.db import Base, get_db
 from app.main import app
-from app.models import User
-from app.rate_limit import limiter
-from app.security import hash_password
+from app.modules.auth.models import User
+from app.modules.auth.rate_limit import limiter
+from app.modules.auth.security import hash_password
 
 USERNAME = "alice"
 PASSWORD = "secret123"

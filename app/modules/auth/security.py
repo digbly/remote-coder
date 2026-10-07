@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import bcrypt
 import jwt
 
-from app.config import MAX_PASSWORD_BYTES, Settings
+from app.core.config import MAX_PASSWORD_BYTES, Settings
 
 DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"timing-attack-mitigation", bcrypt.gensalt()).decode("utf-8")
 

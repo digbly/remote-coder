@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.i18n import translate
+from app.core.i18n import translate
 
 
 class ErrorCode(StrEnum):

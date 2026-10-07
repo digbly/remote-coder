@@ -1,5 +1,5 @@
-from app.errors import ErrorCode
-from app.i18n import MESSAGES, SUPPORTED_LANGUAGES, resolve_language
+from app.core.errors import ErrorCode
+from app.core.i18n import MESSAGES, SUPPORTED_LANGUAGES, resolve_language
 
 
 def test_every_error_code_is_translated_in_every_language() -> None:

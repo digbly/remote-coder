@@ -3,16 +3,11 @@ from typing import Annotated
 import jwt
 from fastapi import Depends, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.config import Settings, get_settings
-from app.db import get_db
-from app.errors import ErrorCode, api_error
-from app.models import User
-from app.security import csrf_tokens_match, decode_access_token
-
-SettingsDep = Annotated[Settings, Depends(get_settings)]
-DbDep = Annotated[Session, Depends(get_db)]
+from app.core.deps import DbDep, SettingsDep
+from app.core.errors import ErrorCode, api_error
+from app.modules.auth.models import User
+from app.modules.auth.security import csrf_tokens_match, decode_access_token
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
