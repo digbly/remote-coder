@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,14 +29,27 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = DEFAULT_ADMIN_PASSWORD
 
+    access_token_cookie_name: str = "access_token"
+    csrf_cookie_name: str = "csrf_token"
+    csrf_header_name: str = "X-CSRF-Token"
+    cookie_secure: bool = False
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+    login_rate_limit_attempts: int = 5
+    login_rate_limit_window_seconds: int = 60
+
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":
-        if self.environment == "development":
-            return self
-        if self.secret_key == DEFAULT_SECRET_KEY:
-            raise ValueError("SECRET_KEY must be set to a unique value outside development")
-        if self.admin_password == DEFAULT_ADMIN_PASSWORD:
-            raise ValueError("ADMIN_PASSWORD must be changed outside development")
+        if self.environment != "development":
+            if self.secret_key == DEFAULT_SECRET_KEY:
+                raise ValueError("SECRET_KEY must be set to a unique value outside development")
+            if self.admin_password == DEFAULT_ADMIN_PASSWORD:
+                raise ValueError("ADMIN_PASSWORD must be changed outside development")
+            if not self.cookie_secure:
+                self.cookie_secure = True
+
+        if self.cookie_samesite == "none" and not self.cookie_secure:
+            raise ValueError("COOKIE_SAMESITE=none requires COOKIE_SECURE=true")
         return self
 
 

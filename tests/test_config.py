@@ -16,3 +16,9 @@ def test_production_accepts_overridden_secrets() -> None:
     )
     assert settings.environment == "production"
     assert settings.secret_key != DEFAULT_SECRET_KEY
+    assert settings.cookie_secure is True
+
+
+def test_samesite_none_requires_secure_cookie() -> None:
+    with pytest.raises(ValueError):
+        Settings(cookie_samesite="none")

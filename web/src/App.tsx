@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { clearToken, fetchMe, getToken, login, setToken, type User } from './lib/api'
+import { fetchMe, login, logout, type User } from './lib/api'
 
 function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
   const [username, setUsername] = useState('')
@@ -12,9 +12,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     setError(null)
     setSubmitting(true)
     try {
-      const token = await login(username, password)
-      setToken(token)
-      onSuccess(await fetchMe(token))
+      onSuccess(await login(username, password))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
     } finally {
@@ -114,18 +112,17 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(() => getToken() !== null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = getToken()
-    if (!token) return
-
     let active = true
-    fetchMe(token)
+    fetchMe()
       .then((current) => {
         if (active) setUser(current)
       })
-      .catch(() => clearToken())
+      .catch(() => {
+        /* not authenticated */
+      })
       .finally(() => {
         if (active) setLoading(false)
       })
@@ -135,9 +132,12 @@ function App() {
     }
   }, [])
 
-  function handleLogout() {
-    clearToken()
-    setUser(null)
+  async function handleLogout() {
+    try {
+      await logout()
+    } finally {
+      setUser(null)
+    }
   }
 
   if (loading) {

@@ -1,3 +1,4 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -33,3 +34,13 @@ def create_access_token(
 
 def decode_access_token(token: str, settings: Settings) -> dict:
     return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+
+
+def generate_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def csrf_tokens_match(submitted: str | None, expected: str | None) -> bool:
+    if not submitted or not expected:
+        return False
+    return secrets.compare_digest(submitted.encode("utf-8"), expected.encode("utf-8"))

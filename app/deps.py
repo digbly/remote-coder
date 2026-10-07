@@ -1,38 +1,34 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import User
-from app.security import decode_access_token
-
-bearer_scheme = HTTPBearer(auto_error=False)
+from app.security import csrf_tokens_match, decode_access_token
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbDep = Annotated[Session, Depends(get_db)]
 
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
-def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    db: DbDep,
-    settings: SettingsDep,
-) -> User:
+
+def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if credentials is None:
+    token = request.cookies.get(settings.access_token_cookie_name)
+    if not token:
         raise unauthorized
 
     try:
-        payload = decode_access_token(credentials.credentials, settings)
+        payload = decode_access_token(token, settings)
     except jwt.PyJWTError as exc:
         raise unauthorized from exc
 
@@ -54,3 +50,19 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def verify_csrf(request: Request, settings: SettingsDep) -> None:
+    if request.method in _SAFE_METHODS:
+        return
+
+    submitted = request.headers.get(settings.csrf_header_name)
+    expected = request.cookies.get(settings.csrf_cookie_name)
+    if not csrf_tokens_match(submitted, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token missing or invalid",
+        )
+
+
+CsrfDep = Annotated[None, Depends(verify_csrf)]
