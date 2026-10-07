@@ -1,3 +1,5 @@
+import i18n from '../i18n'
+
 const API_PREFIX = '/api/v1'
 const CSRF_COOKIE = 'csrf_token'
 const CSRF_HEADER = 'X-CSRF-Token'
@@ -40,7 +42,7 @@ export async function login(username: string, password: string): Promise<User> {
 
   if (!response.ok) {
     const data = await response.json().catch(() => null)
-    throw new Error(extractError(data, 'Đăng nhập thất bại'))
+    throw new Error(extractError(data, i18n.t('login.error')))
   }
 
   return (await response.json()) as User
@@ -49,7 +51,7 @@ export async function login(username: string, password: string): Promise<User> {
 export async function fetchMe(): Promise<User> {
   const response = await request('/auth/me')
   if (!response.ok) {
-    throw new Error('Chưa đăng nhập')
+    throw new Error(i18n.t('auth.notAuthenticated'))
   }
   return (await response.json()) as User
 }

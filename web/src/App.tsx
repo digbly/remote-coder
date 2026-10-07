@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
+import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { fetchMe, login, logout, type User } from './lib/api'
 
 function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
+  const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -14,7 +17,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     try {
       onSuccess(await login(username, password))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
+      setError(err instanceof Error ? err.message : t('login.error'))
     } finally {
       setSubmitting(false)
     }
@@ -24,8 +27,8 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white/95 p-8 shadow-2xl backdrop-blur">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold text-slate-900">Remote Coder</h1>
-          <p className="mt-1 text-sm text-slate-500">Đăng nhập để tiếp tục</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('common.appName')}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t('login.subtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -40,7 +43,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
 
           <div>
             <label htmlFor="username" className="mb-1 block text-sm font-medium text-slate-700">
-              Tên đăng nhập
+              {t('login.username')}
             </label>
             <input
               id="username"
@@ -56,7 +59,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              Mật khẩu
+              {t('login.password')}
             </label>
             <input
               id="password"
@@ -75,7 +78,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
             disabled={submitting}
             className="w-full rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white transition hover:bg-indigo-500 focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            {submitting ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
       </div>
@@ -84,25 +87,31 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
 }
 
 function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const { t } = useTranslation()
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-        <span className="font-semibold text-slate-900">Remote Coder</span>
-        <button
-          type="button"
-          onClick={onLogout}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-        >
-          Đăng xuất
-        </button>
+        <span className="font-semibold text-slate-900">{t('common.appName')}</span>
+        <div className="flex items-center gap-3">
+          <LanguageSwitcher />
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            {t('dashboard.logout')}
+          </button>
+        </div>
       </header>
       <main className="flex flex-1 items-center justify-center px-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">
-            Xin chào, {user.username}
+            {t('dashboard.greeting', { username: user.username })}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Trạng thái: {user.is_active ? 'Đang hoạt động' : 'Không hoạt động'}
+            {t('dashboard.status', {
+              status: user.is_active ? t('dashboard.statusActive') : t('dashboard.statusInactive'),
+            })}
           </p>
         </div>
       </main>
@@ -111,6 +120,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
 }
 
 function App() {
+  const { t } = useTranslation()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -143,7 +153,7 @@ function App() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-900 text-slate-200">
-        Đang tải...
+        {t('common.loading')}
       </div>
     )
   }
