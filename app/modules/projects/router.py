@@ -6,6 +6,7 @@ from app.modules.auth.deps import CsrfDep, CurrentUser
 from app.modules.projects import service
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
+    DirectoryListing,
     GithubProjectCreate,
     LocalProjectCreate,
     ProjectRead,
@@ -50,10 +51,21 @@ def create_local_project(
     payload: LocalProjectCreate,
     current_user: CurrentUser,
     db: DbDep,
-    settings: SettingsDep,
     _csrf: CsrfDep,
 ) -> Project:
-    return service.create_local_project(db, current_user, payload, settings)
+    return service.create_local_project(db, current_user, payload)
+
+
+@router.get(
+    "/browse",
+    response_model=DirectoryListing,
+    responses=error_responses(400, 401, 403),
+)
+def browse_directories(
+    current_user: CurrentUser,
+    path: str | None = Query(None, max_length=4096),
+) -> DirectoryListing:
+    return service.browse_directories(path)
 
 
 @router.get(

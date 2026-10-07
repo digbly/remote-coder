@@ -41,3 +41,15 @@ class ProjectRead(BaseModel):
     remote_url: str | None
     path: str
     created_at: datetime
+
+
+class DirectoryEntry(BaseModel):
+    name: str
+    path: str
+
+
+class DirectoryListing(BaseModel):
+    root: str
+    path: str
+    parent: str | None
+    directories: list[DirectoryEntry]

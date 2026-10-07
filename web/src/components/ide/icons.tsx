@@ -82,6 +82,30 @@ export function FolderPlusIcon(props: IconProps) {
   )
 }
 
+export function FolderIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />
+    </Svg>
+  )
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </Svg>
+  )
+}
+
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m5 12 7-7 7 7M12 19V5" />
+    </Svg>
+  )
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Svg {...props}>

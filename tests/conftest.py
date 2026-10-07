@@ -16,6 +16,7 @@ OTHER_USERNAME = "bob"
 PASSWORD = "secret123"
 LOGIN_URL = "/api/v1/auth/login"
 PROJECTS_URL = "/api/v1/projects"
+BROWSE_URL = "/api/v1/projects/browse"
 GITHUB_URL = "/api/v1/projects/github"
 LOCAL_URL = "/api/v1/projects/local"
 

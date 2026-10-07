@@ -11,6 +11,12 @@ const ERROR_CODE_KEYS = {
   CSRF_INVALID: 'apiErrors.csrfInvalid',
   RATE_LIMITED: 'apiErrors.rateLimited',
   VALIDATION_ERROR: 'apiErrors.validation',
+  PROJECT_NOT_FOUND: 'apiErrors.projectNotFound',
+  INVALID_GITHUB_URL: 'apiErrors.invalidGithubUrl',
+  PROJECT_PATH_INVALID: 'apiErrors.projectPathInvalid',
+  PROJECT_PATH_EXISTS: 'apiErrors.projectPathExists',
+  PROJECT_NAME_EXISTS: 'apiErrors.projectNameExists',
+  PROJECT_CLONE_FAILED: 'apiErrors.projectCloneFailed',
 } as const
 
 export interface User {
@@ -28,6 +34,30 @@ export interface Project {
   remote_url: string | null
   path: string
   created_at: string
+}
+
+export interface LocalProjectPayload {
+  path: string
+  name?: string
+}
+
+export interface GithubProjectPayload {
+  repo_url: string
+  name?: string
+  token?: string
+  branch?: string
+}
+
+export interface DirectoryEntry {
+  name: string
+  path: string
+}
+
+export interface DirectoryListing {
+  root: string
+  path: string
+  parent: string | null
+  directories: DirectoryEntry[]
 }
 
 function readCookie(name: string): string | null {
@@ -98,6 +128,40 @@ export async function fetchProjects(): Promise<Project[]> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as Project[]
+}
+
+async function createProject(path: string, payload: unknown): Promise<Project> {
+  const response = await request(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '',
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as Project
+}
+
+export function createLocalProject(payload: LocalProjectPayload): Promise<Project> {
+  return createProject('/projects/local', payload)
+}
+
+export function createGithubProject(payload: GithubProjectPayload): Promise<Project> {
+  return createProject('/projects/github', payload)
+}
+
+export async function browseDirectories(path?: string): Promise<DirectoryListing> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ''
+  const response = await request(`/projects/browse${query}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as DirectoryListing
 }
 
 export function projectTerminalUrl(projectId: number): string {

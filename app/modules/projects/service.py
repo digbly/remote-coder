@@ -14,7 +14,12 @@ from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.auth.models import User
 from app.modules.projects.models import Project, ProjectSource
-from app.modules.projects.schemas import GithubProjectCreate, LocalProjectCreate
+from app.modules.projects.schemas import (
+    DirectoryEntry,
+    DirectoryListing,
+    GithubProjectCreate,
+    LocalProjectCreate,
+)
 
 DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
@@ -43,6 +48,32 @@ def list_projects(db: Session, owner: User, *, limit: int, offset: int) -> list[
     return list(db.scalars(statement))
 
 
+def browse_directories(path: str | None) -> DirectoryListing:
+    root = Path.home().resolve()
+    target = Path(path).expanduser().resolve() if path else root
+    if not target.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        directories = [
+            DirectoryEntry(name=child.name, path=str(child))
+            for child in sorted(target.iterdir(), key=lambda item: item.name.lower())
+            if child.is_dir()
+        ]
+    except OSError as exc:
+        raise api_error(
+            ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST
+        ) from exc
+
+    parent = None if target.parent == target else str(target.parent)
+    return DirectoryListing(
+        root=str(root),
+        path=str(target),
+        parent=parent,
+        directories=directories,
+    )
+
+
 def get_project(db: Session, owner: User, project_id: int) -> Project:
     project = db.scalar(
         select(Project).where(Project.id == project_id, Project.owner_id == owner.id)
@@ -61,11 +92,10 @@ def delete_project(db: Session, owner: User, project_id: int, settings: Settings
 
 
 def create_local_project(
-    db: Session, owner: User, payload: LocalProjectCreate, settings: Settings
+    db: Session, owner: User, payload: LocalProjectCreate
 ) -> Project:
-    root = _projects_root(settings)
     path = Path(payload.path).expanduser().resolve()
-    if not path.is_dir() or not path.is_relative_to(root):
+    if not path.is_dir():
         raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
     _ensure_path_available(db, owner.id, str(path))

@@ -15,6 +15,7 @@ import {
   SettingsIcon,
   TasksIcon,
 } from './icons'
+import { NewProjectDialog } from './NewProjectDialog'
 
 const PROJECT_ACCENTS = ['text-violet-400', 'text-sky-400', 'text-emerald-400', 'text-amber-400']
 
@@ -34,12 +35,21 @@ function NavItem({ icon, label }: { icon: ReactNode; label: string }) {
   )
 }
 
-function IconButton({ label, children }: { label: string; children: ReactNode }) {
+function IconButton({
+  label,
+  children,
+  onClick,
+}: {
+  label: string
+  children: ReactNode
+  onClick?: () => void
+}) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
+      onClick={onClick}
       className="rounded-md p-1 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
     >
       {children}
@@ -58,6 +68,7 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
   const { t } = useTranslation()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [error, setError] = useState(false)
+  const [showNewProject, setShowNewProject] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -72,6 +83,13 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
       active = false
     }
   }, [])
+
+  function handleCreated(project: Project) {
+    setShowNewProject(false)
+    setError(false)
+    setProjects((prev) => (prev ? [project, ...prev] : [project]))
+    onOpenProject(project)
+  }
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-[#2c2e33] bg-[#1b1c1f] text-sm">
@@ -104,10 +122,10 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
           <IconButton label={t('ide.projects')}>
             <CollapseIcon width={14} height={14} />
           </IconButton>
-          <IconButton label={t('ide.newProject')}>
+          <IconButton label={t('ide.newProject')} onClick={() => setShowNewProject(true)}>
             <FolderPlusIcon width={14} height={14} />
           </IconButton>
-          <IconButton label={t('ide.newProject')}>
+          <IconButton label={t('ide.newProject')} onClick={() => setShowNewProject(true)}>
             <PlusIcon width={14} height={14} />
           </IconButton>
         </span>
@@ -166,6 +184,13 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
           </div>
         </div>
       </div>
+
+      {showNewProject && (
+        <NewProjectDialog
+          onClose={() => setShowNewProject(false)}
+          onCreated={handleCreated}
+        />
+      )}
     </aside>
   )
 }

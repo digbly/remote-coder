@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.modules.projects import service
 from tests.conftest import (
+    BROWSE_URL,
     GITHUB_URL,
     LOCAL_URL,
     OTHER_USERNAME,
@@ -63,8 +64,9 @@ def test_create_local_project_outside_root(client: TestClient, tmp_path) -> None
     outside.mkdir()
 
     response = client.post(LOCAL_URL, json={"path": str(outside)}, headers=_csrf(client))
-    assert response.status_code == 400
-    assert _error_code(response) == "PROJECT_PATH_INVALID"
+
+    assert response.status_code == 201
+    assert response.json()["path"] == str(outside.resolve())
 
 
 def test_create_local_project_missing_path(client: TestClient, projects_root) -> None:
@@ -290,6 +292,64 @@ def test_delete_github_project_removes_clone(client: TestClient, monkeypatch) ->
     response = client.delete(f"{PROJECTS_URL}/{body['id']}", headers=_csrf(client))
     assert response.status_code == 204
     assert not clone_dir.exists()
+
+
+def test_browse_requires_auth(client: TestClient) -> None:
+    assert client.get(BROWSE_URL).status_code == 401
+
+
+def test_browse_defaults_to_home(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
+    _login(client)
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "proj").mkdir()
+    (home / "afile.txt").write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+
+    body = client.get(BROWSE_URL).json()
+
+    assert body["root"] == str(home.resolve())
+    assert body["path"] == str(home.resolve())
+    assert [entry["name"] for entry in body["directories"]] == ["proj"]
+
+
+def test_browse_lists_any_directory(client: TestClient, projects_root) -> None:
+    _login(client)
+    for name in ("beta", "alpha"):
+        (projects_root / name).mkdir()
+    (projects_root / "afile.txt").write_text("x")
+
+    body = client.get(BROWSE_URL, params={"path": str(projects_root)}).json()
+
+    assert body["path"] == str(projects_root.resolve())
+    assert body["parent"] == str(projects_root.parent.resolve())
+    assert [entry["name"] for entry in body["directories"]] == ["alpha", "beta"]
+
+
+def test_browse_navigates_subdirectory_and_parent(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    nested = projects_root / "alpha" / "nested"
+    nested.mkdir(parents=True)
+    (nested / "leaf").mkdir()
+
+    body = client.get(BROWSE_URL, params={"path": str(nested)}).json()
+
+    assert body["path"] == str(nested.resolve())
+    assert body["parent"] == str((projects_root / "alpha").resolve())
+    assert [entry["name"] for entry in body["directories"]] == ["leaf"]
+
+
+def test_browse_rejects_missing_path(client: TestClient, tmp_path) -> None:
+    _login(client)
+
+    response = client.get(BROWSE_URL, params={"path": str(tmp_path / "nope")})
+
+    assert response.status_code == 400
+    assert _error_code(response) == "PROJECT_PATH_INVALID"
 
 
 def test_openapi_documents_projects_paths(client: TestClient) -> None:
