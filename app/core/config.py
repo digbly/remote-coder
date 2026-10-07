@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
 
-    database_url: str = "sqlite:///./remote_coder.db"
+    database_url: str = "sqlite:///./database/database.sqlite"
     secret_key: str = DEFAULT_SECRET_KEY
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
