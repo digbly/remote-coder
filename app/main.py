@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.db import Base, SessionLocal, engine
+from app.errors import validation_exception_handler
 from app.models import User
 from app.routers import auth, health
 from app.security import hash_password
@@ -38,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
     )
+
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
     app.include_router(health.router, prefix=settings.api_prefix)
     app.include_router(auth.router, prefix=settings.api_prefix)

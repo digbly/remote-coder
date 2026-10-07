@@ -61,6 +61,10 @@ def _login(client: TestClient, username: str = USERNAME, password: str = PASSWOR
     return client.post(LOGIN_URL, json={"username": username, "password": password})
 
 
+def _error_code(response) -> str:
+    return response.json()["detail"]["code"]
+
+
 def test_login_success_sets_httponly_cookie(client: TestClient) -> None:
     response = _login(client)
     assert response.status_code == 200
@@ -119,3 +123,31 @@ def test_logout_clears_session(client: TestClient) -> None:
     response = client.post(LOGOUT_URL, headers={"X-CSRF-Token": csrf})
     assert response.status_code == 204
     assert client.get(ME_URL).status_code == 401
+
+
+def test_login_wrong_password_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, password="wrong")) == "INVALID_CREDENTIALS"
+
+
+def test_login_inactive_user_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, username="inactive")) == "INACTIVE_USER"
+
+
+def test_login_password_over_bcrypt_limit_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, password="x" * 73)) == "VALIDATION_ERROR"
+
+
+def test_me_requires_auth_error_code(client: TestClient) -> None:
+    assert _error_code(client.get(ME_URL)) == "NOT_AUTHENTICATED"
+
+
+def test_logout_requires_csrf_error_code(client: TestClient) -> None:
+    _login(client)
+    assert _error_code(client.post(LOGOUT_URL)) == "CSRF_INVALID"
+
+
+def test_login_rate_limited_error_code(client: TestClient) -> None:
+    for _ in range(5):
+        _login(client, password="wrong")
+
+    assert _error_code(_login(client, password="wrong")) == "RATE_LIMITED"

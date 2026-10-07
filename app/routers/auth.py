@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 
 from app.config import Settings
 from app.deps import CsrfDep, CurrentUser, DbDep, SettingsDep
+from app.errors import ErrorCode, api_error
 from app.models import User
 from app.rate_limit import login_rate_limit
 from app.schemas import LoginRequest, UserRead
@@ -50,16 +51,18 @@ def login(
     password_matches = verify_password(payload.password, hashed_password)
 
     if user is None or not password_matches:
-        raise HTTPException(
+        raise api_error(
+            ErrorCode.INVALID_CREDENTIALS,
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            message="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
-        raise HTTPException(
+        raise api_error(
+            ErrorCode.INACTIVE_USER,
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
+            message="Inactive user",
         )
 
     _set_auth_cookies(response, user.username, settings)

@@ -4,6 +4,15 @@ const API_PREFIX = '/api/v1'
 const CSRF_COOKIE = 'csrf_token'
 const CSRF_HEADER = 'X-CSRF-Token'
 
+const ERROR_CODE_KEYS = {
+  INVALID_CREDENTIALS: 'apiErrors.invalidCredentials',
+  INACTIVE_USER: 'apiErrors.inactiveUser',
+  NOT_AUTHENTICATED: 'apiErrors.notAuthenticated',
+  CSRF_INVALID: 'apiErrors.csrfInvalid',
+  RATE_LIMITED: 'apiErrors.rateLimited',
+  VALIDATION_ERROR: 'apiErrors.validation',
+} as const
+
 export interface User {
   id: number
   username: string
@@ -15,22 +24,29 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-function extractError(data: unknown, fallback: string): string {
+function isKnownErrorCode(code: string): code is keyof typeof ERROR_CODE_KEYS {
+  return Object.hasOwn(ERROR_CODE_KEYS, code)
+}
+
+function extractError(data: unknown): string | null {
   if (data && typeof data === 'object' && 'detail' in data) {
     const detail = (data as { detail: unknown }).detail
     if (typeof detail === 'string') return detail
-    if (Array.isArray(detail)) {
-      const first = detail[0]
-      if (first && typeof first === 'object' && 'msg' in first && typeof first.msg === 'string') {
-        return first.msg
+    if (detail && typeof detail === 'object' && 'code' in detail) {
+      const code = (detail as { code: unknown }).code
+      if (typeof code === 'string' && isKnownErrorCode(code)) {
+        return i18n.t(ERROR_CODE_KEYS[code])
       }
+      return i18n.t('apiErrors.unknown')
     }
   }
-  return fallback
+  return null
 }
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${API_PREFIX}${path}`, { credentials: 'include', ...init })
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers)
+  headers.set('Accept-Language', i18n.resolvedLanguage ?? 'en')
+  return fetch(`${API_PREFIX}${path}`, { credentials: 'include', ...init, headers })
 }
 
 export async function login(username: string, password: string): Promise<User> {
@@ -42,7 +58,7 @@ export async function login(username: string, password: string): Promise<User> {
 
   if (!response.ok) {
     const data = await response.json().catch(() => null)
-    throw new Error(extractError(data, i18n.t('login.error')))
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
 
   return (await response.json()) as User
@@ -51,7 +67,8 @@ export async function login(username: string, password: string): Promise<User> {
 export async function fetchMe(): Promise<User> {
   const response = await request('/auth/me')
   if (!response.ok) {
-    throw new Error(i18n.t('auth.notAuthenticated'))
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.notAuthenticated'))
   }
   return (await response.json()) as User
 }

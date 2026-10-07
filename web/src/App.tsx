@@ -17,7 +17,7 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     try {
       onSuccess(await login(username, password))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('login.error'))
+      setError(err instanceof Error ? err.message : t('apiErrors.unknown'))
     } finally {
       setSubmitting(false)
     }

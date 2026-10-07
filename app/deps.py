@@ -1,12 +1,13 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.errors import ErrorCode, api_error
 from app.models import User
 from app.security import csrf_tokens_match, decode_access_token
 
@@ -17,9 +18,10 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User:
-    unauthorized = HTTPException(
+    unauthorized = api_error(
+        ErrorCode.NOT_AUTHENTICATED,
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        message="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -41,9 +43,10 @@ def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User
         raise unauthorized
 
     if not user.is_active:
-        raise HTTPException(
+        raise api_error(
+            ErrorCode.INACTIVE_USER,
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
+            message="Inactive user",
         )
 
     return user
@@ -59,9 +62,10 @@ def verify_csrf(request: Request, settings: SettingsDep) -> None:
     submitted = request.headers.get(settings.csrf_header_name)
     expected = request.cookies.get(settings.csrf_cookie_name)
     if not csrf_tokens_match(submitted, expected):
-        raise HTTPException(
+        raise api_error(
+            ErrorCode.CSRF_INVALID,
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="CSRF token missing or invalid",
+            message="CSRF token missing or invalid",
         )
 
 
