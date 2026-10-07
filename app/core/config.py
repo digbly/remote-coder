@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
 
-    projects_root: str = "./projects"
+    projects_root: str = "~/digbly/projects"
     github_clone_timeout_seconds: int = 120
 
     @model_validator(mode="after")
