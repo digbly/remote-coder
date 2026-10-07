@@ -69,6 +69,5 @@ def login_rate_limit(
         raise api_error(
             ErrorCode.RATE_LIMITED,
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            message="Too many login attempts. Please try again later.",
             headers={"Retry-After": str(settings.login_rate_limit_window_seconds)},
         )

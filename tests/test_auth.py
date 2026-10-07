@@ -151,3 +151,27 @@ def test_login_rate_limited_error_code(client: TestClient) -> None:
         _login(client, password="wrong")
 
     assert _error_code(_login(client, password="wrong")) == "RATE_LIMITED"
+
+
+def test_login_error_message_localized_by_accept_language(client: TestClient) -> None:
+    response = client.post(
+        LOGIN_URL,
+        json={"username": USERNAME, "password": "wrong"},
+        headers={"Accept-Language": "vi"},
+    )
+    assert response.json()["detail"]["message"] == "Tên đăng nhập hoặc mật khẩu không đúng"
+
+
+def test_login_validation_error_includes_field(client: TestClient) -> None:
+    detail = _login(client, password="x" * 73).json()["detail"]
+    assert detail["code"] == "VALIDATION_ERROR"
+    assert detail["errors"][0]["field"] == "password"
+
+
+def test_login_openapi_documents_error_schema(client: TestClient) -> None:
+    responses = client.get("/openapi.json").json()["paths"]["/api/v1/auth/login"]["post"][
+        "responses"
+    ]
+    for status_code in ("401", "403", "422", "429"):
+        schema = responses[status_code]["content"]["application/json"]["schema"]
+        assert schema["$ref"].endswith("/ErrorResponse")

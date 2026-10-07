@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.deps import CsrfDep, CurrentUser, DbDep, SettingsDep
-from app.errors import ErrorCode, api_error
+from app.errors import ErrorCode, api_error, error_responses
 from app.models import User
 from app.rate_limit import login_rate_limit
 from app.schemas import LoginRequest, UserRead
@@ -39,7 +39,12 @@ def _set_auth_cookies(response: Response, username: str, settings: Settings) -> 
     )
 
 
-@router.post("/login", response_model=UserRead, dependencies=[Depends(login_rate_limit)])
+@router.post(
+    "/login",
+    response_model=UserRead,
+    dependencies=[Depends(login_rate_limit)],
+    responses=error_responses(401, 403, 422, 429),
+)
 def login(
     payload: LoginRequest,
     response: Response,
@@ -54,7 +59,6 @@ def login(
         raise api_error(
             ErrorCode.INVALID_CREDENTIALS,
             status_code=status.HTTP_401_UNAUTHORIZED,
-            message="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -62,19 +66,22 @@ def login(
         raise api_error(
             ErrorCode.INACTIVE_USER,
             status_code=status.HTTP_403_FORBIDDEN,
-            message="Inactive user",
         )
 
     _set_auth_cookies(response, user.username, settings)
     return user
 
 
-@router.get("/me", response_model=UserRead)
+@router.get("/me", response_model=UserRead, responses=error_responses(401, 403))
 def read_current_user(current_user: CurrentUser) -> User:
     return current_user
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(403),
+)
 def logout(response: Response, settings: SettingsDep, _csrf: CsrfDep) -> None:
     response.delete_cookie(settings.access_token_cookie_name, path="/")
     response.delete_cookie(settings.csrf_cookie_name, path="/")

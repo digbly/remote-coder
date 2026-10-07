@@ -21,7 +21,6 @@ def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User
     unauthorized = api_error(
         ErrorCode.NOT_AUTHENTICATED,
         status_code=status.HTTP_401_UNAUTHORIZED,
-        message="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -46,7 +45,6 @@ def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User
         raise api_error(
             ErrorCode.INACTIVE_USER,
             status_code=status.HTTP_403_FORBIDDEN,
-            message="Inactive user",
         )
 
     return user
@@ -65,7 +63,6 @@ def verify_csrf(request: Request, settings: SettingsDep) -> None:
         raise api_error(
             ErrorCode.CSRF_INVALID,
             status_code=status.HTTP_403_FORBIDDEN,
-            message="CSRF token missing or invalid",
         )
 
 
