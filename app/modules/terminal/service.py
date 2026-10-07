@@ -3,6 +3,7 @@ import fcntl
 import os
 import signal
 import struct
+import subprocess
 import termios
 import threading
 from collections.abc import AsyncIterator
@@ -41,10 +42,15 @@ def get_project(db: Session, user: User, project_id: int) -> Project | None:
     return db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
 
 
-def _reap_child(pid: int) -> None:
+def _acquire_controlling_tty() -> None:
+    """Runs in the child before exec; makes the PTY slave its controlling terminal.
+
+    ``subprocess`` has already wired the slave to fd 0/1/2 by this point, so fd 0
+    refers to the tty we want job control on.
+    """
     try:
-        os.waitpid(pid, 0)
-    except ChildProcessError:
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    except OSError:
         pass
 
 
@@ -59,43 +65,40 @@ class TerminalSession:
         self._cwd = cwd
         self._shell = shell
         self._chunk = read_chunk_bytes
-        self._pid = -1
+        self._process: subprocess.Popen[bytes] | None = None
         self._master_fd = -1
         self._queue: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def start(self) -> None:
         master_fd, slave_fd = os.openpty()
-        pid = os.fork()
-        if pid == 0:
-            self._exec_child(master_fd, slave_fd)
-            os._exit(1)
+        env = os.environ.copy()
+        env["TERM"] = env.get("TERM", "xterm-256color")
 
-        os.close(slave_fd)
-        self._pid = pid
+        try:
+            process = subprocess.Popen(
+                [self._shell],
+                cwd=self._cwd,
+                env=env,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                start_new_session=True,
+                preexec_fn=_acquire_controlling_tty,
+                close_fds=True,
+            )
+        except OSError:
+            os.close(master_fd)
+            raise
+        finally:
+            os.close(slave_fd)
+
+        self._process = process
         self._master_fd = master_fd
 
         self._loop = asyncio.get_running_loop()
         os.set_blocking(master_fd, False)
         self._loop.add_reader(master_fd, self._on_readable)
-
-    def _exec_child(self, master_fd: int, slave_fd: int) -> None:
-        os.close(master_fd)
-        os.setsid()
-        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-        os.dup2(slave_fd, 0)
-        os.dup2(slave_fd, 1)
-        os.dup2(slave_fd, 2)
-        if slave_fd > 2:
-            os.close(slave_fd)
-
-        env = os.environ.copy()
-        env["TERM"] = env.get("TERM", "xterm-256color")
-        try:
-            os.chdir(self._cwd)
-            os.execvpe(self._shell, [self._shell], env)
-        except OSError:
-            os._exit(1)
 
     def _on_readable(self) -> None:
         try:
@@ -155,11 +158,12 @@ class TerminalSession:
                 pass
             self._master_fd = -1
 
-        if self._pid > 0:
+        if self._process is not None:
+            process = self._process
             for sig in (signal.SIGHUP, signal.SIGKILL):
                 try:
-                    os.killpg(self._pid, sig)
+                    os.killpg(process.pid, sig)
                 except (ProcessLookupError, PermissionError):
                     break
-            threading.Thread(target=_reap_child, args=(self._pid,), daemon=True).start()
-            self._pid = -1
+            threading.Thread(target=process.wait, daemon=True).start()
+            self._process = None

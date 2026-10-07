@@ -11,6 +11,12 @@ import { TopTabs, type WorkspaceTab } from './ide/TopTabs'
 export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [tabs, setTabs] = useState<WorkspaceTab[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [mountedIds, setMountedIds] = useState<string[]>([])
+
+  function activate(id: string) {
+    setActiveId(id)
+    setMountedIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+  }
 
   function openProject(project: Project) {
     const id = `project-${project.id}`
@@ -19,12 +25,13 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
         ? prev
         : [...prev, { id, title: project.name, kind: 'terminal', projectId: project.id }],
     )
-    setActiveId(id)
+    activate(id)
   }
 
   function closeTab(id: string) {
     const remaining = tabs.filter((tab) => tab.id !== id)
     setTabs(remaining)
+    setMountedIds((prev) => prev.filter((mountedId) => mountedId !== id))
     if (activeId === id) {
       setActiveId(remaining.at(-1)?.id ?? null)
     }
@@ -41,13 +48,13 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
         activeProjectId={activeTab?.projectId ?? null}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopTabs tabs={tabs} activeId={activeId} onSelect={setActiveId} onClose={closeTab} />
+        <TopTabs tabs={tabs} activeId={activeId} onSelect={activate} onClose={closeTab} />
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="relative min-h-0 flex-1">
               {tabs.length === 0 && <EditorPane />}
               {tabs.map((tab) =>
-                tab.projectId == null ? null : (
+                tab.projectId == null || !mountedIds.includes(tab.id) ? null : (
                   <div
                     key={tab.id}
                     className={`absolute inset-0 ${

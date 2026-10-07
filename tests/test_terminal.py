@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -80,3 +81,18 @@ def test_terminal_runs_shell_in_project_directory(client: TestClient, projects_r
         output = _read_until(websocket, "terminal-repo")
 
     assert "terminal-repo" in output
+
+
+def test_terminal_interrupts_foreground_process(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+
+    with client.websocket_connect(f"/api/v1/projects/{project_id}/terminal") as websocket:
+        websocket.send_text(json.dumps({"type": "input", "data": "sleep 30\n"}))
+        time.sleep(0.4)
+        websocket.send_text(json.dumps({"type": "input", "data": "\x03"}))
+        time.sleep(0.4)
+        websocket.send_text(json.dumps({"type": "input", "data": "echo AFTER=$?\n"}))
+        output = _read_until(websocket, "AFTER=130")
+
+    assert "AFTER=130" in output
