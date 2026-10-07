@@ -4,11 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db import Base, get_db
+from app.core.db import Base, get_db
 from app.main import app
-from app.models import User
-from app.rate_limit import limiter
-from app.security import hash_password
+from app.modules.auth.models import User
+from app.modules.auth.rate_limit import limiter
+from app.modules.auth.security import hash_password
 
 USERNAME = "alice"
 PASSWORD = "secret123"
@@ -59,6 +59,10 @@ def client() -> TestClient:
 
 def _login(client: TestClient, username: str = USERNAME, password: str = PASSWORD):
     return client.post(LOGIN_URL, json={"username": username, "password": password})
+
+
+def _error_code(response) -> str:
+    return response.json()["detail"]["code"]
 
 
 def test_login_success_sets_httponly_cookie(client: TestClient) -> None:
@@ -119,3 +123,55 @@ def test_logout_clears_session(client: TestClient) -> None:
     response = client.post(LOGOUT_URL, headers={"X-CSRF-Token": csrf})
     assert response.status_code == 204
     assert client.get(ME_URL).status_code == 401
+
+
+def test_login_wrong_password_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, password="wrong")) == "INVALID_CREDENTIALS"
+
+
+def test_login_inactive_user_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, username="inactive")) == "INACTIVE_USER"
+
+
+def test_login_password_over_bcrypt_limit_error_code(client: TestClient) -> None:
+    assert _error_code(_login(client, password="x" * 73)) == "VALIDATION_ERROR"
+
+
+def test_me_requires_auth_error_code(client: TestClient) -> None:
+    assert _error_code(client.get(ME_URL)) == "NOT_AUTHENTICATED"
+
+
+def test_logout_requires_csrf_error_code(client: TestClient) -> None:
+    _login(client)
+    assert _error_code(client.post(LOGOUT_URL)) == "CSRF_INVALID"
+
+
+def test_login_rate_limited_error_code(client: TestClient) -> None:
+    for _ in range(5):
+        _login(client, password="wrong")
+
+    assert _error_code(_login(client, password="wrong")) == "RATE_LIMITED"
+
+
+def test_login_error_message_localized_by_accept_language(client: TestClient) -> None:
+    response = client.post(
+        LOGIN_URL,
+        json={"username": USERNAME, "password": "wrong"},
+        headers={"Accept-Language": "vi"},
+    )
+    assert response.json()["detail"]["message"] == "Tên đăng nhập hoặc mật khẩu không đúng"
+
+
+def test_login_validation_error_includes_field(client: TestClient) -> None:
+    detail = _login(client, password="x" * 73).json()["detail"]
+    assert detail["code"] == "VALIDATION_ERROR"
+    assert detail["errors"][0]["field"] == "password"
+
+
+def test_login_openapi_documents_error_schema(client: TestClient) -> None:
+    responses = client.get("/openapi.json").json()["paths"]["/api/v1/auth/login"]["post"][
+        "responses"
+    ]
+    for status_code in ("401", "403", "422", "429"):
+        schema = responses[status_code]["content"]["application/json"]["schema"]
+        assert schema["$ref"].endswith("/ErrorResponse")

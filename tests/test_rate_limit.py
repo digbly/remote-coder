@@ -1,4 +1,4 @@
-from app.rate_limit import SlidingWindowRateLimiter
+from app.modules.auth.rate_limit import SlidingWindowRateLimiter
 
 
 def test_allows_up_to_limit_then_blocks() -> None:

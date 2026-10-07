@@ -14,10 +14,15 @@ const en = {
     password: 'Password',
     submit: 'Sign in',
     submitting: 'Signing in...',
-    error: 'Sign in failed',
   },
-  auth: {
-    notAuthenticated: 'Not signed in',
+  apiErrors: {
+    invalidCredentials: 'Incorrect username or password',
+    inactiveUser: 'Your account is inactive. Please contact an administrator.',
+    notAuthenticated: 'Your session has expired. Please sign in again.',
+    csrfInvalid: 'Security check failed. Please refresh and try again.',
+    rateLimited: 'Too many attempts. Please try again later.',
+    validation: 'Invalid input. Please check the form and try again.',
+    unknown: 'Something went wrong. Please try again.',
   },
   ide: {
     search: 'Search',

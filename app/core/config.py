@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
 
-    database_url: str = "sqlite:///./remote_coder.db"
+    database_url: str = "sqlite:///./database/database.sqlite"
     secret_key: str = DEFAULT_SECRET_KEY
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
+
+    projects_root: str = "~/digbly/projects"
+    github_clone_timeout_seconds: int = 120
 
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":

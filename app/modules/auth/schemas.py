@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.config import MAX_PASSWORD_BYTES
+from app.core.config import MAX_PASSWORD_BYTES
 
 
 class LoginRequest(BaseModel):

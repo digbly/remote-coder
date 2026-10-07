@@ -14,10 +14,15 @@ const vi = {
     password: 'Mật khẩu',
     submit: 'Đăng nhập',
     submitting: 'Đang đăng nhập...',
-    error: 'Đăng nhập thất bại',
   },
-  auth: {
-    notAuthenticated: 'Chưa đăng nhập',
+  apiErrors: {
+    invalidCredentials: 'Tên đăng nhập hoặc mật khẩu không đúng',
+    inactiveUser: 'Tài khoản của bạn không hoạt động. Vui lòng liên hệ quản trị viên.',
+    notAuthenticated: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+    csrfInvalid: 'Xác thực bảo mật thất bại. Vui lòng tải lại trang và thử lại.',
+    rateLimited: 'Quá nhiều lần thử. Vui lòng thử lại sau.',
+    validation: 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.',
+    unknown: 'Đã có lỗi xảy ra. Vui lòng thử lại.',
   },
   ide: {
     search: 'Tìm kiếm',

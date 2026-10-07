@@ -3,9 +3,10 @@ import time
 from collections import deque
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request, status
 
-from app.config import Settings, get_settings
+from app.core.config import Settings, get_settings
+from app.core.errors import ErrorCode, api_error
 
 
 class SlidingWindowRateLimiter:
@@ -65,8 +66,8 @@ def login_rate_limit(
         window_seconds=settings.login_rate_limit_window_seconds,
     )
     if not allowed:
-        raise HTTPException(
+        raise api_error(
+            ErrorCode.RATE_LIMITED,
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many login attempts. Please try again later.",
             headers={"Retry-After": str(settings.login_rate_limit_window_seconds)},
         )
