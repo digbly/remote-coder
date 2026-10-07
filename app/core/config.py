@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     projects_root: str = "~/digbly/projects"
     github_clone_timeout_seconds: int = 120
 
+    terminal_shell: str = "/bin/bash"
+    terminal_read_chunk_bytes: int = 65536
+
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":
         if self.environment != "development":

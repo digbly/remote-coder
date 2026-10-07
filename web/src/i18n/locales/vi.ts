@@ -32,6 +32,8 @@ const vi = {
     notifications: 'Thông báo',
     projects: 'Dự án',
     newProject: 'Dự án mới',
+    projectsError: 'Không tải được danh sách dự án',
+    noProjects: 'Chưa có dự án nào',
     primary: 'chính',
     createPr: 'Tạo PR',
     message: 'Nội dung',

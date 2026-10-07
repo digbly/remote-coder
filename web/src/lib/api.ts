@@ -19,6 +19,17 @@ export interface User {
   is_active: boolean
 }
 
+export type ProjectSource = 'local' | 'github'
+
+export interface Project {
+  id: number
+  name: string
+  source: ProjectSource
+  remote_url: string | null
+  path: string
+  created_at: string
+}
+
 function readCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
   return match ? decodeURIComponent(match[1]) : null
@@ -78,4 +89,18 @@ export async function logout(): Promise<void> {
     method: 'POST',
     headers: { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' },
   })
+}
+
+export async function fetchProjects(): Promise<Project[]> {
+  const response = await request('/projects')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as Project[]
+}
+
+export function projectTerminalUrl(projectId: number): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal`
 }

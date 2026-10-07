@@ -32,6 +32,8 @@ const en = {
     notifications: 'Notifications',
     projects: 'Projects',
     newProject: 'New project',
+    projectsError: 'Failed to load projects',
+    noProjects: 'No projects yet',
     primary: 'primary',
     createPr: 'Create PR',
     message: 'Message',

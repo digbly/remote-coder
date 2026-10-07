@@ -11,6 +11,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.auth.service import ensure_admin_user
 from app.modules.health.router import router as health_router
 from app.modules.projects.router import router as projects_router
+from app.modules.terminal.router import router as terminal_router
 
 
 def init_db(settings: Settings) -> None:
@@ -43,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router, prefix=settings.api_prefix)
     app.include_router(auth_router, prefix=settings.api_prefix)
     app.include_router(projects_router, prefix=settings.api_prefix)
+    app.include_router(terminal_router, prefix=settings.api_prefix)
     return app
 
 
