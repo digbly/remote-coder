@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LanguageSwitcher } from './components/LanguageSwitcher'
+import { IdeShell } from './components/IdeShell'
 import { fetchMe, login, logout, type User } from './lib/api'
 
 function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
@@ -86,39 +86,6 @@ function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
   )
 }
 
-function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const { t } = useTranslation()
-  return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-        <span className="font-semibold text-slate-900">{t('common.appName')}</span>
-        <div className="flex items-center gap-3">
-          <LanguageSwitcher />
-          <button
-            type="button"
-            onClick={onLogout}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            {t('dashboard.logout')}
-          </button>
-        </div>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {t('dashboard.greeting', { username: user.username })}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {t('dashboard.status', {
-              status: user.is_active ? t('dashboard.statusActive') : t('dashboard.statusInactive'),
-            })}
-          </p>
-        </div>
-      </main>
-    </div>
-  )
-}
-
 function App() {
   const { t } = useTranslation()
   const [user, setUser] = useState<User | null>(null)
@@ -162,7 +129,7 @@ function App() {
     return <LoginPage onSuccess={setUser} />
   }
 
-  return <Dashboard user={user} onLogout={handleLogout} />
+  return <IdeShell user={user} onLogout={handleLogout} />
 }
 
 export default App
