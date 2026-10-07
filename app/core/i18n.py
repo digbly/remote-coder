@@ -11,6 +11,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "CSRF_INVALID": "CSRF token missing or invalid",
         "RATE_LIMITED": "Too many login attempts. Please try again later.",
         "VALIDATION_ERROR": "Invalid request",
+        "PROJECT_NOT_FOUND": "Project not found",
+        "INVALID_GITHUB_URL": "Not a valid GitHub repository URL",
+        "PROJECT_PATH_INVALID": "Path must be an existing directory inside the projects root",
+        "PROJECT_PATH_EXISTS": "A project already uses this path",
+        "PROJECT_NAME_EXISTS": "A project with this name already exists",
+        "PROJECT_CLONE_FAILED": "Could not clone the repository",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -19,6 +25,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "CSRF_INVALID": "Thiếu hoặc sai mã CSRF",
         "RATE_LIMITED": "Quá nhiều lần đăng nhập. Vui lòng thử lại sau.",
         "VALIDATION_ERROR": "Yêu cầu không hợp lệ",
+        "PROJECT_NOT_FOUND": "Không tìm thấy dự án",
+        "INVALID_GITHUB_URL": "URL repository GitHub không hợp lệ",
+        "PROJECT_PATH_INVALID": "Đường dẫn phải là thư mục tồn tại bên trong thư mục projects root",
+        "PROJECT_PATH_EXISTS": "Đã có dự án sử dụng đường dẫn này",
+        "PROJECT_NAME_EXISTS": "Đã tồn tại dự án với tên này",
+        "PROJECT_CLONE_FAILED": "Không thể clone repository",
     },
 }
 

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
 
+    projects_root: str = "./projects"
+    github_clone_timeout_seconds: int = 120
+
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":
         if self.environment != "development":

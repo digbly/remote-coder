@@ -22,6 +22,12 @@ class ErrorCode(StrEnum):
     CSRF_INVALID = "CSRF_INVALID"
     RATE_LIMITED = "RATE_LIMITED"
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
+    INVALID_GITHUB_URL = "INVALID_GITHUB_URL"
+    PROJECT_PATH_INVALID = "PROJECT_PATH_INVALID"
+    PROJECT_PATH_EXISTS = "PROJECT_PATH_EXISTS"
+    PROJECT_NAME_EXISTS = "PROJECT_NAME_EXISTS"
+    PROJECT_CLONE_FAILED = "PROJECT_CLONE_FAILED"
 
 
 class FieldError(BaseModel):
@@ -40,8 +46,11 @@ class ErrorResponse(BaseModel):
 
 
 _RESPONSE_DESCRIPTIONS = {
+    400: "Bad request",
     401: "Unauthorized",
     403: "Forbidden",
+    404: "Not found",
+    409: "Conflict",
     422: "Validation error",
     429: "Too many requests",
 }
