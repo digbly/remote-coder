@@ -3,7 +3,7 @@ import re
 import subprocess
 from pathlib import Path, PurePosixPath
 
-from fastapi import status
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -16,10 +16,9 @@ from app.modules.git.schemas import (
     GitPullRequestRead,
     GitStatusRead,
 )
-from app.modules.projects.service import get_project
+from app.modules.projects.service import get_project, parse_github_repository
 
-_STATUS_COMMAND = [
-    "git",
+_STATUS_ARGS = [
     "status",
     "--porcelain=v2",
     "--branch",
@@ -32,14 +31,16 @@ _UPSTREAM_PREFIX = "# branch.upstream "
 _AHEAD_BEHIND_PREFIX = "# branch.ab "
 
 _BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,255}$")
-_GITHUB_REMOTE_RE = re.compile(r"github\.com[/:]")
 _DEFAULT_BRANCHES = ("main", "master")
 
 
 def get_git_status(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
     path = _project_repository(db, owner, project_id, settings)
+    return _read_status(path, settings)
 
-    result = _run_git(path, _STATUS_COMMAND[1:], timeout=settings.git_status_timeout_seconds)
+
+def _read_status(path: Path, settings: Settings) -> GitStatusRead:
+    result = _run_git(path, _STATUS_ARGS, timeout=settings.git_status_timeout_seconds)
     if result.returncode != 0:
         _raise_status_error(result)
     return parse_status(result.stdout)
@@ -53,11 +54,8 @@ def stage_paths(
     _validate_paths(paths)
 
     result = _run_git(path, ["add", "--", *paths], timeout=settings.git_commit_timeout_seconds)
-    if result.returncode != 0:
-        raise api_error(
-            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    return get_git_status(db, owner, project_id, settings)
+    _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    return _read_status(path, settings)
 
 
 def unstage_paths(
@@ -67,14 +65,14 @@ def unstage_paths(
     path = _project_repository(db, owner, project_id, settings)
     _validate_paths(paths)
 
-    result = _run_git(
-        path, ["restore", "--staged", "--", *paths], timeout=settings.git_commit_timeout_seconds
-    )
-    if result.returncode != 0:
-        raise api_error(
-            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    return get_git_status(db, owner, project_id, settings)
+    if _has_head(path, settings):
+        args = ["restore", "--staged", "--", *paths]
+    else:
+        args = ["rm", "--cached", "-r", "--", *paths]
+
+    result = _run_git(path, args, timeout=settings.git_commit_timeout_seconds)
+    _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    return _read_status(path, settings)
 
 
 def commit_staged(
@@ -89,15 +87,12 @@ def commit_staged(
             ErrorCode.VALIDATION_ERROR, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
         )
 
-    current = get_git_status(db, owner, project_id, settings)
+    current = _read_status(path, settings)
     if not current.staged:
         raise api_error(ErrorCode.GIT_NOTHING_TO_COMMIT, status_code=status.HTTP_400_BAD_REQUEST)
 
     result = _run_git(path, ["commit", "-m", cleaned], timeout=settings.git_commit_timeout_seconds)
-    if result.returncode != 0:
-        raise api_error(
-            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
 
     revision = _run_git(
         path, ["rev-parse", "--short", "HEAD"], timeout=settings.git_commit_timeout_seconds
@@ -131,7 +126,10 @@ def create_pull_request(
         branch = current
 
     push = _run_git(
-        path, ["push", "-u", "origin", branch], timeout=settings.git_push_timeout_seconds
+        path,
+        ["push", "-u", "origin", branch],
+        timeout=settings.git_push_timeout_seconds,
+        error_code=ErrorCode.GIT_PUSH_FAILED,
     )
     if push.returncode != 0:
         raise api_error(ErrorCode.GIT_PUSH_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
@@ -249,7 +247,18 @@ def _github_remote(path: Path, settings: Settings) -> str | None:
     if result.returncode != 0:
         return None
     url = result.stdout.strip()
-    return url if _GITHUB_REMOTE_RE.search(url) else None
+    try:
+        parse_github_repository(url)
+    except HTTPException:
+        return None
+    return url
+
+
+def _has_head(path: Path, settings: Settings) -> bool:
+    result = _run_git(
+        path, ["rev-parse", "--verify", "-q", "HEAD"], timeout=settings.git_status_timeout_seconds
+    )
+    return result.returncode == 0
 
 
 def _default_branch(path: Path, settings: Settings) -> str:
@@ -292,7 +301,13 @@ def _git_env() -> dict[str, str]:
     return env
 
 
-def _run_git(path: Path, args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+def _run_git(
+    path: Path,
+    args: list[str],
+    *,
+    timeout: int,
+    error_code: ErrorCode = ErrorCode.GIT_COMMAND_FAILED,
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             ["git", *args],
@@ -305,9 +320,12 @@ def _run_git(path: Path, args: list[str], *, timeout: int) -> subprocess.Complet
             env=_git_env(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise api_error(
-            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ) from exc
+        raise api_error(error_code, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR) from exc
+
+
+def _ensure_success(result: subprocess.CompletedProcess[str], error_code: ErrorCode) -> None:
+    if result.returncode != 0:
+        raise api_error(error_code, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def _run_gh(path: Path, args: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:

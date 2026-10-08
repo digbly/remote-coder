@@ -158,13 +158,17 @@ export function SourceControlPanel({ projectId }: { projectId: number }) {
   const canCommit = status !== null && status.staged.length > 0 && message.trim().length > 0
   const canOpenPullRequest = status !== null && branch.trim().length > 0
 
-  function runAction(kind: 'stage' | 'commit' | 'pullRequest', action: () => Promise<void>) {
+  function runAction(
+    kind: 'stage' | 'commit' | 'pullRequest',
+    action: () => Promise<void>,
+    fallbackMessage: string,
+  ) {
     setBusy(kind)
     setActionError(null)
     if (kind !== 'pullRequest') setPullRequestUrl(null)
     action()
       .catch((err) => {
-        setActionError(err instanceof Error ? err.message : t('ide.stageFailed'))
+        setActionError(err instanceof Error ? err.message : fallbackMessage)
       })
       .finally(() => {
         setBusy(null)
@@ -173,34 +177,50 @@ export function SourceControlPanel({ projectId }: { projectId: number }) {
   }
 
   function handleStage(paths: string[]) {
-    runAction('stage', async () => {
-      setStatus(await stagePaths(projectId, paths))
-    })
+    runAction(
+      'stage',
+      async () => {
+        setStatus(await stagePaths(projectId, paths))
+      },
+      t('ide.stageFailed'),
+    )
   }
 
   function handleUnstage(paths: string[]) {
-    runAction('stage', async () => {
-      setStatus(await unstagePaths(projectId, paths))
-    })
+    runAction(
+      'stage',
+      async () => {
+        setStatus(await unstagePaths(projectId, paths))
+      },
+      t('ide.stageFailed'),
+    )
   }
 
   function handleCommit(event: FormEvent) {
     event.preventDefault()
     if (!canCommit) return
-    runAction('commit', async () => {
-      await commitChanges(projectId, message.trim())
-      setMessage('')
-    })
+    runAction(
+      'commit',
+      async () => {
+        await commitChanges(projectId, message.trim())
+        setMessage('')
+      },
+      t('ide.commitFailed'),
+    )
   }
 
   function handleCreatePullRequest(event: FormEvent) {
     event.preventDefault()
     if (!canOpenPullRequest) return
-    runAction('pullRequest', async () => {
-      const result = await createPullRequest(projectId, branch.trim())
-      setPullRequestUrl(result.url)
-      setBranch('')
-    })
+    runAction(
+      'pullRequest',
+      async () => {
+        const result = await createPullRequest(projectId, branch.trim())
+        setPullRequestUrl(result.url)
+        setBranch('')
+      },
+      t('ide.prFailed'),
+    )
   }
 
   const disabled = busy !== null
@@ -322,6 +342,7 @@ export function SourceControlPanel({ projectId }: { projectId: number }) {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               placeholder={t('ide.commitMessagePlaceholder')}
+              aria-label={t('ide.commitMessagePlaceholder')}
               rows={2}
               className="w-full resize-none rounded-md border border-[#33363c] bg-[#141517] px-2.5 py-2 text-[12.5px] text-[#e6e8ec] placeholder:text-[#6b7078] focus:border-[#4c8bf5] focus:outline-none"
             />
@@ -336,13 +357,17 @@ export function SourceControlPanel({ projectId }: { projectId: number }) {
           </form>
 
           <form onSubmit={handleCreatePullRequest} className="space-y-2 border-t border-[#2c2e33] p-2.5">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#8b9099]">
+            <label
+              htmlFor="git-pr-branch"
+              className="block text-[11px] font-semibold uppercase tracking-wider text-[#8b9099]"
+            >
               {t('ide.branchName')}
             </label>
             <input
+              id="git-pr-branch"
               value={branch}
               onChange={(event) => setBranch(event.target.value)}
-              placeholder={status.branch ?? t('ide.branchNamePlaceholder')}
+              placeholder={t('ide.branchNamePlaceholder')}
               className="w-full rounded-md border border-[#33363c] bg-[#141517] px-2.5 py-1.5 text-[12.5px] text-[#e6e8ec] placeholder:text-[#6b7078] focus:border-[#4c8bf5] focus:outline-none"
             />
             <p className="text-[11px] leading-snug text-[#6b7078]">{t('ide.prHint')}</p>

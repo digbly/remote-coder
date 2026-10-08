@@ -261,6 +261,48 @@ def test_pull_request_requires_github_remote(client: TestClient, projects_root) 
     assert _error_code(response) == "GIT_REMOTE_MISSING"
 
 
+def test_pull_request_rejects_lookalike_remote(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://evil.example/github.com/repo.git")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request",
+        json={"branch": "feature/x"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_REMOTE_MISSING"
+
+
+def test_unstage_works_without_initial_commit(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "fresh"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    project_id = _register_local(client, repo)["id"]
+
+    (repo / "new.txt").write_text("new\n")
+    staged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["new.txt"]},
+        headers=_csrf(client),
+    )
+    assert staged.status_code == 200
+    assert [change["path"] for change in staged.json()["staged"]] == ["new.txt"]
+
+    unstaged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/unstage",
+        json={"paths": ["new.txt"]},
+        headers=_csrf(client),
+    )
+    assert unstaged.status_code == 200
+    assert unstaged.json()["staged"] == []
+    assert unstaged.json()["untracked"] == ["new.txt"]
+
+
 def test_pull_request_creates_branch_and_pr(client: TestClient, projects_root, monkeypatch) -> None:
     _login(client)
     repo = projects_root / "myrepo"
