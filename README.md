@@ -1,6 +1,6 @@
-# remote-coder
+# Remote Coder
 
-Web API built with FastAPI.
+The idea stemmed from a personal need to manage and develop my projects from anywhere. This project enables you to do that directly on the web platform—no software, no SSH, and so on.
 
 ## Setup
 
