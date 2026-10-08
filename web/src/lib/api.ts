@@ -19,6 +19,12 @@ const ERROR_CODE_KEYS = {
   PROJECT_CLONE_FAILED: 'apiErrors.projectCloneFailed',
   GIT_NOT_A_REPOSITORY: 'apiErrors.gitNotARepository',
   GIT_COMMAND_FAILED: 'apiErrors.gitCommandFailed',
+  GIT_INVALID_PATH: 'apiErrors.gitInvalidPath',
+  GIT_NOTHING_TO_COMMIT: 'apiErrors.gitNothingToCommit',
+  GIT_REMOTE_MISSING: 'apiErrors.gitRemoteMissing',
+  GIT_BRANCH_INVALID: 'apiErrors.gitBranchInvalid',
+  GIT_PUSH_FAILED: 'apiErrors.gitPushFailed',
+  GIT_PULL_REQUEST_FAILED: 'apiErrors.gitPullRequestFailed',
 } as const
 
 export interface User {
@@ -77,6 +83,17 @@ export interface GitStatus {
   unstaged: GitChange[]
   untracked: string[]
   conflicted: string[]
+}
+
+export interface GitCommitResult {
+  commit: string
+  branch: string | null
+}
+
+export interface GitPullRequestResult {
+  url: string
+  branch: string
+  base: string
 }
 
 function readCookie(name: string): string | null {
@@ -190,6 +207,41 @@ export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as GitStatus
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await request(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as T
+}
+
+export function stagePaths(projectId: number, paths: string[]): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/stage`, { paths })
+}
+
+export function unstagePaths(projectId: number, paths: string[]): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/unstage`, { paths })
+}
+
+export function commitChanges(projectId: number, message: string): Promise<GitCommitResult> {
+  return postJson(`/projects/${projectId}/git/commit`, { message })
+}
+
+export function createPullRequest(
+  projectId: number,
+  branch: string,
+): Promise<GitPullRequestResult> {
+  return postJson(`/projects/${projectId}/git/pull-request`, { branch })
 }
 
 export function projectTerminalUrl(projectId: number, terminalId: string): string {
