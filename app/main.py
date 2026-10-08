@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +13,10 @@ from app.modules.auth.service import ensure_admin_user
 from app.modules.git.router import router as git_router
 from app.modules.health.router import router as health_router
 from app.modules.projects.router import router as projects_router
+from app.modules.terminal import service as terminal_service
 from app.modules.terminal.router import router as terminal_router
+
+TERMINAL_REAP_INTERVAL_SECONDS = 300
 
 
 def init_db(settings: Settings) -> None:
@@ -21,13 +25,27 @@ def init_db(settings: Settings) -> None:
         ensure_admin_user(db, settings)
 
 
+async def _reap_terminal_sessions(settings: Settings) -> None:
+    while True:
+        await asyncio.sleep(TERMINAL_REAP_INTERVAL_SECONDS)
+        await asyncio.to_thread(
+            terminal_service.manager.reap_idle, settings.terminal_session_ttl_seconds
+        )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(settings)
-        yield
+        reaper = asyncio.create_task(_reap_terminal_sessions(settings))
+        try:
+            yield
+        finally:
+            reaper.cancel()
+            with suppress(asyncio.CancelledError):
+                await reaper
 
     app = FastAPI(
         title=settings.app_name,

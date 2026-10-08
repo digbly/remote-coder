@@ -1,12 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import type { WorkspaceTab } from '../../lib/workspaceStore'
 import { CloseIcon, CommandIcon, PlusIcon } from './icons'
-
-export interface WorkspaceTab {
-  id: string
-  title: string
-  kind: 'terminal' | 'editor'
-  projectId?: number
-}
 
 interface TopTabsProps {
   tabs: WorkspaceTab[]

@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 import asyncio
 import fcntl
 import os
+import re
 import signal
 import struct
 import subprocess
 import termios
 import threading
-from collections.abc import AsyncIterator
+import time
+from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 
 import jwt
@@ -17,6 +22,27 @@ from app.core.config import Settings
 from app.modules.auth.models import User
 from app.modules.auth.security import decode_access_token
 from app.modules.projects.models import Project
+
+_TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+DEFAULT_COLS = 80
+DEFAULT_ROWS = 24
+
+TerminalKey = tuple[int, int, str]
+
+
+def _set_winsize(fd: int, cols: int, rows: int) -> None:
+    if cols <= 0 or rows <= 0:
+        return
+    try:
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    except OSError:
+        pass
+
+
+def valid_terminal_id(terminal_id: str) -> bool:
+    """Terminal ids come from the client and are used as session keys."""
+    return _TERMINAL_ID_RE.fullmatch(terminal_id) is not None
 
 
 def resolve_user(db: Session, token: str | None, settings: Settings) -> User | None:
@@ -55,23 +81,31 @@ def _acquire_controlling_tty() -> None:
 
 
 class TerminalSession:
-    """Bridge a host PTY to an asyncio consumer.
+    """A host PTY that outlives any single WebSocket connection.
 
-    The child shell runs with the project directory as its working directory and
-    in its own session (so the whole process group can be signalled on teardown).
+    Output is buffered so a client that reconnects (for example after a browser
+    reload) can replay the screen and continue where it left off. The shell is
+    only terminated by an explicit :meth:`kill`.
     """
 
-    def __init__(self, cwd: Path, shell: str, read_chunk_bytes: int) -> None:
+    def __init__(self, cwd: Path, shell: str, read_chunk_bytes: int, replay_bytes: int) -> None:
         self._cwd = cwd
         self._shell = shell
         self._chunk = read_chunk_bytes
+        self._replay_bytes = replay_bytes
         self._process: subprocess.Popen[bytes] | None = None
         self._master_fd = -1
-        self._queue: asyncio.Queue[bytes | None] = asyncio.Queue()
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._buffer: deque[bytes] = deque()
+        self._buffer_bytes = 0
+        self._subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue[bytes | None]]] = []
+        self._lock = threading.Lock()
+        self.exited = False
+        self.detached_at: float | None = time.monotonic()
+        self.on_exit: Callable[[TerminalSession], None] | None = None
 
     def start(self) -> None:
         master_fd, slave_fd = os.openpty()
+        _set_winsize(slave_fd, DEFAULT_COLS, DEFAULT_ROWS)
         env = os.environ.copy()
         env["TERM"] = env.get("TERM", "xterm-256color")
 
@@ -89,81 +123,172 @@ class TerminalSession:
             )
         except OSError:
             os.close(master_fd)
-            raise
-        finally:
             os.close(slave_fd)
+            raise
 
+        os.close(slave_fd)
         self._process = process
         self._master_fd = master_fd
 
-        self._loop = asyncio.get_running_loop()
-        os.set_blocking(master_fd, False)
-        self._loop.add_reader(master_fd, self._on_readable)
+        threading.Thread(target=self._read_loop, daemon=True).start()
 
-    def _on_readable(self) -> None:
-        try:
-            data = os.read(self._master_fd, self._chunk)
-        except (BlockingIOError, InterruptedError):
-            return
-        except OSError:
-            data = b""
-
-        if not data:
-            self._remove_reader()
-            self._queue.put_nowait(None)
-            return
-        self._queue.put_nowait(data)
-
-    def _remove_reader(self) -> None:
-        if self._loop is not None and self._master_fd >= 0:
-            self._loop.remove_reader(self._master_fd)
-
-    async def output(self) -> AsyncIterator[bytes]:
+    def _read_loop(self) -> None:
         while True:
-            data = await self._queue.get()
-            if data is None:
-                return
-            yield data
+            fd = self._master_fd
+            if fd < 0:
+                break
+            try:
+                data = os.read(fd, self._chunk)
+            except (OSError, ValueError):
+                break
+            if not data:
+                break
+
+            with self._lock:
+                self._append(data)
+                subscribers = list(self._subscribers)
+
+            for loop, queue in subscribers:
+                self._post(loop, queue, data)
+
+        self._finish()
+
+    def _finish(self) -> None:
+        self.exited = True
+        with self._lock:
+            subscribers = list(self._subscribers)
+        for loop, queue in subscribers:
+            self._post(loop, queue, None)
+        if self.on_exit is not None:
+            self.on_exit(self)
+
+    def _append(self, data: bytes) -> None:
+        self._buffer.append(data)
+        self._buffer_bytes += len(data)
+        while self._buffer_bytes > self._replay_bytes and self._buffer:
+            self._buffer_bytes -= len(self._buffer.popleft())
+
+    @staticmethod
+    def _post(
+        loop: asyncio.AbstractEventLoop, queue: asyncio.Queue[bytes | None], item: bytes | None
+    ) -> None:
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, item)
+        except RuntimeError:
+            # The subscriber's event loop is already closed.
+            pass
+
+    def subscribe(
+        self, loop: asyncio.AbstractEventLoop
+    ) -> tuple[asyncio.Queue[bytes | None], bytes]:
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+        with self._lock:
+            replay = b"".join(self._buffer)
+            if self.exited:
+                queue.put_nowait(None)
+            else:
+                self._subscribers.append((loop, queue))
+                self.detached_at = None
+        return queue, replay
+
+    def unsubscribe(self, queue: asyncio.Queue[bytes | None]) -> None:
+        with self._lock:
+            self._subscribers = [item for item in self._subscribers if item[1] is not queue]
+            if not self._subscribers:
+                self.detached_at = time.monotonic()
 
     def write(self, data: bytes) -> None:
-        if self._master_fd < 0:
+        fd = self._master_fd
+        if fd < 0:
             return
         try:
-            os.write(self._master_fd, data)
+            os.write(fd, data)
         except OSError:
             pass
 
     def resize(self, cols: int, rows: int) -> None:
-        if self._master_fd < 0:
+        fd = self._master_fd
+        if fd < 0:
             return
-        if cols <= 0 or rows <= 0:
-            return
-        try:
-            fcntl.ioctl(
-                self._master_fd,
-                termios.TIOCSWINSZ,
-                struct.pack("HHHH", rows, cols, 0, 0),
-            )
-        except OSError:
-            pass
+        _set_winsize(fd, cols, rows)
 
-    def close(self) -> None:
-        self._remove_reader()
-        self._queue.put_nowait(None)
-
-        if self._master_fd >= 0:
-            try:
-                os.close(self._master_fd)
-            except OSError:
-                pass
-            self._master_fd = -1
-
-        if self._process is not None:
-            process = self._process
+    def kill(self) -> None:
+        process = self._process
+        self._process = None
+        if process is not None:
             for sig in (signal.SIGHUP, signal.SIGKILL):
                 try:
                     os.killpg(process.pid, sig)
                 except (ProcessLookupError, PermissionError):
                     break
             threading.Thread(target=process.wait, daemon=True).start()
-            self._process = None
+
+        fd = self._master_fd
+        self._master_fd = -1
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+class TerminalManager:
+    """Keeps live terminal sessions keyed by user, project and terminal id."""
+
+    def __init__(self) -> None:
+        self._sessions: dict[TerminalKey, TerminalSession] = {}
+        self._lock = threading.Lock()
+
+    def attach(
+        self,
+        key: TerminalKey,
+        *,
+        cwd: Path,
+        shell: str,
+        read_chunk_bytes: int,
+        replay_bytes: int,
+    ) -> TerminalSession:
+        with self._lock:
+            session = self._sessions.get(key)
+            if session is not None and not session.exited:
+                return session
+
+            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes)
+            session.on_exit = lambda ended, key=key: self._discard(key, ended)
+            session.start()
+            self._sessions[key] = session
+            return session
+
+    def _discard(self, key: TerminalKey, session: TerminalSession) -> None:
+        with self._lock:
+            if self._sessions.get(key) is session:
+                del self._sessions[key]
+
+    def kill(self, key: TerminalKey) -> None:
+        with self._lock:
+            session = self._sessions.pop(key, None)
+        if session is not None:
+            session.kill()
+
+    def reap_idle(self, ttl_seconds: int) -> None:
+        if ttl_seconds <= 0:
+            return
+        now = time.monotonic()
+        with self._lock:
+            victims = [
+                key
+                for key, session in self._sessions.items()
+                if session.detached_at is not None and now - session.detached_at >= ttl_seconds
+            ]
+        for key in victims:
+            self.kill(key)
+
+    def kill_all(self) -> None:
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
+            session.kill()
+
+
+manager = TerminalManager()

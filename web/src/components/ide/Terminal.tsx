@@ -11,7 +11,15 @@ interface TerminalMessage {
   rows?: number
 }
 
-export function ProjectTerminal({ projectId, active }: { projectId: number; active: boolean }) {
+export function ProjectTerminal({
+  projectId,
+  terminalId,
+  active,
+}: {
+  projectId: number
+  terminalId: string
+  active: boolean
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<FitAddon | null>(null)
 
@@ -35,7 +43,7 @@ export function ProjectTerminal({ projectId, active }: { projectId: number; acti
     terminal.open(container)
     fitNow()
 
-    const socket = new WebSocket(projectTerminalUrl(projectId))
+    const socket = new WebSocket(projectTerminalUrl(projectId, terminalId))
     socket.binaryType = 'arraybuffer'
 
     let disposed = false
@@ -98,7 +106,7 @@ export function ProjectTerminal({ projectId, active }: { projectId: number; acti
       terminal.dispose()
       fitRef.current = null
     }
-  }, [projectId])
+  }, [projectId, terminalId])
 
   useEffect(() => {
     if (!active) return

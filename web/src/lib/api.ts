@@ -192,7 +192,14 @@ export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
   return (await response.json()) as GitStatus
 }
 
-export function projectTerminalUrl(projectId: number): string {
+export function projectTerminalUrl(projectId: number, terminalId: string): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal`
+  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`
+}
+
+export async function killTerminal(projectId: number, terminalId: string): Promise<void> {
+  await request(`/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`, {
+    method: 'DELETE',
+    headers: { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' },
+  })
 }

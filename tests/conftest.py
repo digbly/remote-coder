@@ -10,6 +10,7 @@ from app.main import app
 from app.modules.auth.models import User
 from app.modules.auth.rate_limit import limiter
 from app.modules.auth.security import hash_password
+from app.modules.terminal import service as terminal_service
 
 USERNAME = "alice"
 OTHER_USERNAME = "bob"
@@ -60,8 +61,11 @@ def client(projects_root) -> TestClient:
     settings = Settings(projects_root=str(projects_root))
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = lambda: settings
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    try:
+        yield TestClient(app)
+    finally:
+        terminal_service.manager.kill_all()
+        app.dependency_overrides.clear()
 
 
 def _login(client: TestClient, username: str = USERNAME) -> None:

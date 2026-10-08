@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     terminal_shell: str = "/bin/bash"
     terminal_read_chunk_bytes: int = 65536
+    terminal_replay_bytes: int = 262144
+    terminal_session_ttl_seconds: int = 21600
 
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":
