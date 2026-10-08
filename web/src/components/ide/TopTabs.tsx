@@ -13,9 +13,10 @@ interface TopTabsProps {
   activeId: string | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onNew: () => void
 }
 
-export function TopTabs({ tabs, activeId, onSelect, onClose }: TopTabsProps) {
+export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsProps) {
   const { t } = useTranslation()
 
   return (
@@ -57,7 +58,9 @@ export function TopTabs({ tabs, activeId, onSelect, onClose }: TopTabsProps) {
         })}
         <button
           type="button"
-          aria-label={t('ide.command')}
+          aria-label={t('ide.newTerminal')}
+          title={t('ide.newTerminal')}
+          onClick={onNew}
           className="flex w-9 shrink-0 items-center justify-center text-[#8b9099] transition hover:bg-[#222428] hover:text-white"
         >
           <PlusIcon />

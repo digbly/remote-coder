@@ -9,7 +9,6 @@ import {
   CollapseIcon,
   FolderPlusIcon,
   HelpIcon,
-  MobileIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,

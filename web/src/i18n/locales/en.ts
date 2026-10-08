@@ -50,6 +50,7 @@ const en = {
     commits: 'Commits',
     viewAll: 'View all',
     closeTab: 'Close {{title}}',
+    newTerminal: 'New terminal',
     command: 'Command',
     interrupt: 'esc interrupt',
     commands: 'ctrl+p commands',

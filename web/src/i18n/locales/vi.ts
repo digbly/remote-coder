@@ -50,6 +50,7 @@ const vi = {
     commits: 'Commit',
     viewAll: 'Xem tất cả',
     closeTab: 'Đóng {{title}}',
+    newTerminal: 'Terminal mới',
     command: 'Lệnh',
     interrupt: 'esc để dừng',
     commands: 'ctrl+p lệnh',
