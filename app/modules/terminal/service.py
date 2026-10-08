@@ -1,11 +1,12 @@
 import asyncio
 import fcntl
 import os
-import signal
+import re
 import struct
 import subprocess
 import termios
 import threading
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -17,6 +18,97 @@ from app.core.config import Settings
 from app.modules.auth.models import User
 from app.modules.auth.security import decode_access_token
 from app.modules.projects.models import Project
+
+_TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+_TMUX_CONFIG = Path(__file__).with_name("tmux.conf")
+
+
+def valid_terminal_id(terminal_id: str) -> bool:
+    """Terminal ids come from the client and are embedded in the tmux session
+    name, so they must be restricted to a safe character set."""
+    return _TERMINAL_ID_RE.fullmatch(terminal_id) is not None
+
+
+def session_name(user_id: int, project_id: int, terminal_id: str) -> str:
+    return f"rc-{user_id}-{project_id}-{terminal_id}"
+
+
+def create_session(settings: Settings, name: str, cwd: Path) -> None:
+    """Create the tmux session detached if it does not exist yet.
+
+    Starting the server from this short-lived call (rather than from the PTY
+    client) keeps the session independent of the WebSocket connection.
+    """
+    _tmux(
+        settings,
+        "-f",
+        str(_TMUX_CONFIG),
+        "new-session",
+        "-d",
+        "-s",
+        name,
+        "-c",
+        str(cwd),
+        settings.terminal_shell,
+    )
+
+
+def attach_command(settings: Settings, name: str) -> list[str]:
+    """Command that attaches a PTY to the persistent tmux session."""
+    return [
+        settings.terminal_tmux_binary,
+        "-L",
+        settings.terminal_tmux_socket,
+        "attach-session",
+        "-t",
+        name,
+    ]
+
+
+def kill_session(settings: Settings, name: str) -> None:
+    _tmux(settings, "kill-session", "-t", name)
+
+
+def reap_idle_sessions(settings: Settings) -> None:
+    """Kill detached sessions that have been idle past the configured TTL."""
+    if settings.terminal_session_ttl_seconds <= 0:
+        return
+
+    result = _tmux(
+        settings,
+        "list-sessions",
+        "-F",
+        "#{session_name}\t#{session_attached}\t#{session_activity}",
+    )
+    if result is None:
+        return
+
+    now = int(time.time())
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        name, attached, activity = parts
+        if attached != "0" or not name.startswith("rc-"):
+            continue
+        try:
+            idle_seconds = now - int(activity)
+        except ValueError:
+            continue
+        if idle_seconds >= settings.terminal_session_ttl_seconds:
+            kill_session(settings, name)
+
+
+def _tmux(settings: Settings, *args: str) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            [settings.terminal_tmux_binary, "-L", settings.terminal_tmux_socket, *args],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def resolve_user(db: Session, token: str | None, settings: Settings) -> User | None:
@@ -57,13 +149,14 @@ def _acquire_controlling_tty() -> None:
 class TerminalSession:
     """Bridge a host PTY to an asyncio consumer.
 
-    The child shell runs with the project directory as its working directory and
-    in its own session (so the whole process group can be signalled on teardown).
+    The child command runs with the project directory as its working directory
+    and in its own session. The command is normally ``tmux ... new-session -A``,
+    so the actual shell outlives this object and can be re-attached later.
     """
 
-    def __init__(self, cwd: Path, shell: str, read_chunk_bytes: int) -> None:
+    def __init__(self, command: list[str], cwd: Path, read_chunk_bytes: int) -> None:
+        self._command = command
         self._cwd = cwd
-        self._shell = shell
         self._chunk = read_chunk_bytes
         self._process: subprocess.Popen[bytes] | None = None
         self._master_fd = -1
@@ -77,7 +170,7 @@ class TerminalSession:
 
         try:
             process = subprocess.Popen(
-                [self._shell],
+                self._command,
                 cwd=self._cwd,
                 env=env,
                 stdin=slave_fd,
@@ -160,10 +253,7 @@ class TerminalSession:
 
         if self._process is not None:
             process = self._process
-            for sig in (signal.SIGHUP, signal.SIGKILL):
-                try:
-                    os.killpg(process.pid, sig)
-                except (ProcessLookupError, PermissionError):
-                    break
+            # Closing the PTY master makes the tmux client detach; the tmux
+            # session (and its shell) keeps running for a later re-attach.
             threading.Thread(target=process.wait, daemon=True).start()
             self._process = None

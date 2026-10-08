@@ -44,6 +44,9 @@ class Settings(BaseSettings):
 
     terminal_shell: str = "/bin/bash"
     terminal_read_chunk_bytes: int = 65536
+    terminal_tmux_binary: str = "tmux"
+    terminal_tmux_socket: str = "remote-coder"
+    terminal_session_ttl_seconds: int = 21600
 
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":

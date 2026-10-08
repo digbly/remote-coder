@@ -1,3 +1,6 @@
+import subprocess
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -57,11 +60,21 @@ def client(projects_root) -> TestClient:
         finally:
             db.close()
 
-    settings = Settings(projects_root=str(projects_root))
+    settings = Settings(
+        projects_root=str(projects_root),
+        terminal_tmux_socket=f"rc-test-{uuid4().hex}",
+    )
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = lambda: settings
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    try:
+        yield TestClient(app)
+    finally:
+        subprocess.run(
+            [settings.terminal_tmux_binary, "-L", settings.terminal_tmux_socket, "kill-server"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        app.dependency_overrides.clear()
 
 
 def _login(client: TestClient, username: str = USERNAME) -> None:

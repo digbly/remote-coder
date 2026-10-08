@@ -1,12 +1,17 @@
 import asyncio
 import json
+from contextlib import suppress
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from anyio import ClosedResourceError
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.config import Settings
 from app.core.deps import DbDep, SettingsDep
+from app.core.errors import error_responses
+from app.modules.auth.deps import CsrfDep, CurrentUser
+from app.modules.projects import service as projects_service
 from app.modules.terminal import service
 
 router = APIRouter(prefix="/projects", tags=["terminal"])
@@ -35,15 +40,20 @@ def _token(websocket: WebSocket, settings: Settings) -> str | None:
     return websocket.cookies.get(settings.access_token_cookie_name)
 
 
-@router.websocket("/{project_id}/terminal")
+@router.websocket("/{project_id}/terminal/{terminal_id}")
 async def project_terminal(
     websocket: WebSocket,
     project_id: int,
+    terminal_id: str,
     db: DbDep,
     settings: SettingsDep,
 ) -> None:
     if not _same_origin(websocket):
         await websocket.close(code=WS_FORBIDDEN)
+        return
+
+    if not service.valid_terminal_id(terminal_id):
+        await websocket.close(code=WS_NOT_FOUND)
         return
 
     user = service.resolve_user(db, _token(websocket, settings), settings)
@@ -67,8 +77,12 @@ async def project_terminal(
 
     await websocket.accept()
 
+    name = service.session_name(user.id, project_id, terminal_id)
+    await asyncio.to_thread(service.create_session, settings, name, cwd)
     session = service.TerminalSession(
-        cwd, settings.terminal_shell, settings.terminal_read_chunk_bytes
+        service.attach_command(settings, name),
+        cwd,
+        settings.terminal_read_chunk_bytes,
     )
     try:
         session.start()
@@ -83,7 +97,29 @@ async def project_terminal(
     finally:
         for task in (sender, receiver):
             task.cancel()
+        # Only the PTY bridge is torn down; the tmux session keeps running so
+        # the client can re-attach (and replay its screen) after a reload.
         session.close()
+
+
+@router.delete(
+    "/{project_id}/terminal/{terminal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(401, 403, 404),
+)
+def kill_project_terminal(
+    project_id: int,
+    terminal_id: str,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> None:
+    projects_service.get_project(db, current_user, project_id)
+    if service.valid_terminal_id(terminal_id):
+        service.kill_session(
+            settings, service.session_name(current_user.id, project_id, terminal_id)
+        )
 
 
 async def _pump_output(session: service.TerminalSession, websocket: WebSocket) -> None:
@@ -93,10 +129,8 @@ async def _pump_output(session: service.TerminalSession, websocket: WebSocket) -
     except (WebSocketDisconnect, RuntimeError):
         return
     finally:
-        try:
+        with suppress(RuntimeError, ClosedResourceError):
             await websocket.close()
-        except RuntimeError:
-            pass
 
 
 async def _pump_input(session: service.TerminalSession, websocket: WebSocket) -> None:
