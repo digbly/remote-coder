@@ -28,6 +28,8 @@ class ErrorCode(StrEnum):
     PROJECT_PATH_EXISTS = "PROJECT_PATH_EXISTS"
     PROJECT_NAME_EXISTS = "PROJECT_NAME_EXISTS"
     PROJECT_CLONE_FAILED = "PROJECT_CLONE_FAILED"
+    GIT_NOT_A_REPOSITORY = "GIT_NOT_A_REPOSITORY"
+    GIT_COMMAND_FAILED = "GIT_COMMAND_FAILED"
 
 
 class FieldError(BaseModel):
@@ -53,6 +55,7 @@ _RESPONSE_DESCRIPTIONS = {
     409: "Conflict",
     422: "Validation error",
     429: "Too many requests",
+    500: "Internal server error",
 }
 
 

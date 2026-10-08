@@ -17,6 +17,8 @@ const ERROR_CODE_KEYS = {
   PROJECT_PATH_EXISTS: 'apiErrors.projectPathExists',
   PROJECT_NAME_EXISTS: 'apiErrors.projectNameExists',
   PROJECT_CLONE_FAILED: 'apiErrors.projectCloneFailed',
+  GIT_NOT_A_REPOSITORY: 'apiErrors.gitNotARepository',
+  GIT_COMMAND_FAILED: 'apiErrors.gitCommandFailed',
 } as const
 
 export interface User {
@@ -58,6 +60,23 @@ export interface DirectoryListing {
   path: string
   parent: string | null
   directories: DirectoryEntry[]
+}
+
+export interface GitChange {
+  path: string
+  status: string
+  orig_path: string | null
+}
+
+export interface GitStatus {
+  branch: string | null
+  upstream: string | null
+  ahead: number
+  behind: number
+  staged: GitChange[]
+  unstaged: GitChange[]
+  untracked: string[]
+  conflicted: string[]
 }
 
 function readCookie(name: string): string | null {
@@ -162,6 +181,15 @@ export async function browseDirectories(path?: string): Promise<DirectoryListing
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as DirectoryListing
+}
+
+export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
+  const response = await request(`/projects/${projectId}/git/status`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as GitStatus
 }
 
 export function projectTerminalUrl(projectId: number): string {

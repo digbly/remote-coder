@@ -29,6 +29,8 @@ const vi = {
     projectPathExists: 'Đã có dự án sử dụng đường dẫn này',
     projectNameExists: 'Đã tồn tại dự án với tên này',
     projectCloneFailed: 'Không thể clone repository',
+    gitNotARepository: 'Dự án không phải là repository git',
+    gitCommandFailed: 'Không thể đọc trạng thái git',
   },
   ide: {
     search: 'Tìm kiếm',
@@ -60,6 +62,12 @@ const vi = {
     signOut: 'Đăng xuất',
     settings: 'Cài đặt',
     help: 'Trợ giúp',
+    sourceControl: 'Quản lý mã nguồn',
+    refresh: 'Làm mới',
+    untracked: 'Chưa theo dõi',
+    conflicts: 'Xung đột',
+    noChanges: 'Không có thay đổi',
+    gitStatusError: 'Không tải được trạng thái git',
     newProjectDialog: {
       title: 'Dự án mới',
       tabLocal: 'Local',

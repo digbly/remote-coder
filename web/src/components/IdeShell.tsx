@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Project, User } from '../lib/api'
 import { Sidebar } from './ide/Sidebar'
+import { SourceControlPanel } from './ide/SourceControlPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { TopTabs, type WorkspaceTab } from './ide/TopTabs'
 
@@ -45,18 +46,23 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopTabs tabs={tabs} activeId={activeId} onSelect={activate} onClose={closeTab} />
-        <div className="relative min-h-0 min-w-0 flex-1">
-          {tabs.map((tab) =>
-            tab.projectId == null || !mountedIds.includes(tab.id) ? null : (
-              <div
-                key={tab.id}
-                className={`absolute inset-0 ${
-                  tab.id === activeId ? '' : 'pointer-events-none invisible'
-                }`}
-              >
-                <ProjectTerminal projectId={tab.projectId} active={tab.id === activeId} />
-              </div>
-            ),
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
+            {tabs.map((tab) =>
+              tab.projectId == null || !mountedIds.includes(tab.id) ? null : (
+                <div
+                  key={tab.id}
+                  className={`absolute inset-0 ${
+                    tab.id === activeId ? '' : 'pointer-events-none invisible'
+                  }`}
+                >
+                  <ProjectTerminal projectId={tab.projectId} active={tab.id === activeId} />
+                </div>
+              ),
+            )}
+          </div>
+          {activeTab?.projectId != null && (
+            <SourceControlPanel key={activeTab.projectId} projectId={activeTab.projectId} />
           )}
         </div>
       </div>

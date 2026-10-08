@@ -29,6 +29,8 @@ const en = {
     projectPathExists: 'A project already uses this path',
     projectNameExists: 'A project with this name already exists',
     projectCloneFailed: 'Could not clone the repository',
+    gitNotARepository: 'Project is not a git repository',
+    gitCommandFailed: 'Could not read git status',
   },
   ide: {
     search: 'Search',
@@ -60,6 +62,12 @@ const en = {
     signOut: 'Sign out',
     settings: 'Settings',
     help: 'Help',
+    sourceControl: 'Source Control',
+    refresh: 'Refresh',
+    untracked: 'Untracked',
+    conflicts: 'Conflicts',
+    noChanges: 'No changes',
+    gitStatusError: 'Failed to load git status',
     newProjectDialog: {
       title: 'New project',
       tabLocal: 'Local',

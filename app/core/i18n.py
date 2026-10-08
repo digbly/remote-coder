@@ -17,6 +17,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_PATH_EXISTS": "A project already uses this path",
         "PROJECT_NAME_EXISTS": "A project with this name already exists",
         "PROJECT_CLONE_FAILED": "Could not clone the repository",
+        "GIT_NOT_A_REPOSITORY": "Project is not a git repository",
+        "GIT_COMMAND_FAILED": "Could not read git status",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -31,6 +33,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_PATH_EXISTS": "Đã có dự án sử dụng đường dẫn này",
         "PROJECT_NAME_EXISTS": "Đã tồn tại dự án với tên này",
         "PROJECT_CLONE_FAILED": "Không thể clone repository",
+        "GIT_NOT_A_REPOSITORY": "Dự án không phải là repository git",
+        "GIT_COMMAND_FAILED": "Không thể đọc trạng thái git",
     },
 }
 
