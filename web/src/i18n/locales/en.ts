@@ -36,7 +36,6 @@ const en = {
     search: 'Search',
     tasks: 'Tasks',
     automations: 'Automations',
-    mobile: 'Orca Mobile',
     notifications: 'Notifications',
     projects: 'Projects',
     newProject: 'New project',

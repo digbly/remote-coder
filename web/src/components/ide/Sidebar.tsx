@@ -108,7 +108,6 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
         <NavItem icon={<SearchIcon />} label={t('ide.search')} />
         <NavItem icon={<TasksIcon />} label={t('ide.tasks')} />
         <NavItem icon={<AutomationsIcon />} label={t('ide.automations')} />
-        <NavItem icon={<MobileIcon />} label={t('ide.mobile')} />
       </nav>
 
       <div className="mt-5 flex items-center justify-between px-3.5 pb-1">

@@ -36,7 +36,6 @@ const vi = {
     search: 'Tìm kiếm',
     tasks: 'Tác vụ',
     automations: 'Tự động hóa',
-    mobile: 'Orca Mobile',
     notifications: 'Thông báo',
     projects: 'Dự án',
     newProject: 'Dự án mới',
