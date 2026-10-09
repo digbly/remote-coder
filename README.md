@@ -12,6 +12,18 @@ uv pip install -e ".[dev]"
 npm install --prefix web
 ```
 
+## GitHub Codespaces
+
+Create a Codespace for this repository. The dev container installs the project
+dependencies and `code-server` automatically. Once setup is complete, start the
+API and web dev servers with:
+
+```bash
+./scripts/dev.sh
+```
+
+Open the forwarded Web port to use the app.
+
 ## Run
 
 Run API and web dev servers together:
