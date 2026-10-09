@@ -111,6 +111,12 @@ export interface Worktree {
   is_primary: boolean
 }
 
+export interface AgentStatus {
+  command: string
+  installed: boolean
+  path: string | null
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const NO_REFRESH_PATHS = new Set(['/auth/login', '/auth/refresh'])
 
@@ -353,13 +359,33 @@ export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {
   return (await response.json()) as Worktree[]
 }
 
+export async function detectAgents(commands: string[]): Promise<AgentStatus[]> {
+  const query = encodeURIComponent(commands.join(','))
+  const response = await request(`/agents?commands=${query}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const data = (await response.json()) as { agents: AgentStatus[] }
+  return data.agents
+}
+
+export interface TerminalUrlOptions {
+  worktree?: string
+  agent?: string
+}
+
 export function projectTerminalUrl(
   projectId: number,
   terminalId: string,
-  worktree?: string,
+  options: TerminalUrlOptions = {},
 ): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  const params = new URLSearchParams()
+  if (options.worktree) params.set('worktree', options.worktree)
+  if (options.agent) params.set('agent', options.agent)
+  const search = params.toString()
+  const query = search ? `?${search}` : ''
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`
 }
 

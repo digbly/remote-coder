@@ -8,6 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
+from app.modules.agents import service as agents_service
 from app.modules.auth.deps import CsrfDep, CurrentUser
 from app.modules.auth.websocket import same_origin, websocket_user
 from app.modules.git import service as git_service
@@ -30,6 +31,7 @@ async def project_terminal(
     db: DbDep,
     settings: SettingsDep,
     worktree: str | None = None,
+    agent: str | None = None,
 ) -> None:
     if not same_origin(websocket):
         await websocket.close(code=WS_FORBIDDEN)
@@ -70,7 +72,7 @@ async def project_terminal(
     await websocket.accept()
 
     try:
-        session = await asyncio.to_thread(
+        session, created = await asyncio.to_thread(
             service.manager.attach,
             (user.id, project_id, terminal_id),
             cwd=cwd,
@@ -85,6 +87,12 @@ async def project_terminal(
 
     # Replay buffered output so a reconnecting client sees the previous screen.
     queue, replay = session.subscribe(asyncio.get_running_loop())
+
+    # A new session that requested an agent starts by typing its launch command
+    # into the shell. Re-attaching clients reuse the already-running agent.
+    if created and agent is not None and agents_service.valid_command(agent):
+        session.write(f"{agent}\n".encode())
+
     sender = asyncio.create_task(_pump_output(queue, websocket))
     receiver = asyncio.create_task(_pump_input(session, websocket))
     try:

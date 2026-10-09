@@ -262,17 +262,18 @@ class TerminalManager:
         read_chunk_bytes: int,
         replay_bytes: int,
         queue_chunks: int,
-    ) -> TerminalSession:
+    ) -> tuple[TerminalSession, bool]:
+        """Return the live session for ``key`` and whether it was just created."""
         with self._lock:
             session = self._sessions.get(key)
             if session is not None and not session.exited:
-                return session
+                return session, False
 
             session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks)
             session.on_exit = lambda ended, key=key: self._discard(key, ended)
             session.start()
             self._sessions[key] = session
-            return session
+            return session, True
 
     def _discard(self, key: TerminalKey, session: TerminalSession) -> None:
         with self._lock:
