@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     api_prefix: str = "/api/v1"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     database_url: str = "sqlite:///./database/database.sqlite"
     secret_key: str = DEFAULT_SECRET_KEY

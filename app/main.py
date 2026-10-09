@@ -8,6 +8,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import Base, SessionLocal, engine
 from app.core.errors import validation_exception_handler
 from app.core.i18n import resolve_language, set_language
+from app.core.logging import configure_logging
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.service import ensure_admin_user
 from app.modules.git.router import router as git_router
@@ -36,6 +37,7 @@ async def _reap_terminal_sessions(settings: Settings) -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
