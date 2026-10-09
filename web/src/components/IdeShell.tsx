@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { killTerminal, type Project, type User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
@@ -5,6 +6,7 @@ import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../l
 import {
   withNewTerminal,
   withOpenFile,
+  withTabTitle,
   type ActiveProjectRef,
   type SyncedState,
 } from '../lib/workspaceStore'
@@ -92,6 +94,16 @@ export function IdeShell({
     update((prev) => ({ ...prev, workspaces: withOpenFile(prev.workspaces, activeProject, path) }))
   }
 
+  const setTabTitle = useCallback(
+    (projectId: number, tabId: string, title: string) => {
+      update((prev) => ({
+        ...prev,
+        workspaces: withTabTitle(prev.workspaces, projectId, tabId, title),
+      }))
+    },
+    [update],
+  )
+
   function selectTab(id: string) {
     if (activeProjectId == null) return
     update((prev) => {
@@ -171,6 +183,7 @@ export function IdeShell({
             )}
             {allTabs.map((tab) => {
               if (tab.projectId == null) return null
+              const projectId = tab.projectId
               const active = tab.id === activeTabId
               return (
                 <div
@@ -180,20 +193,17 @@ export function IdeShell({
                   }`}
                 >
                   {tab.kind === 'editor' && tab.filePath ? (
-                    <FileEditor projectId={tab.projectId} path={tab.filePath} active={active} />
+                    <FileEditor projectId={projectId} path={tab.filePath} active={active} />
                   ) : tab.kind === 'vscode' && tab.worktree ? (
-                    <VSCodePanel
-                      projectId={tab.projectId}
-                      worktree={tab.worktree}
-                      title={tab.title}
-                    />
+                    <VSCodePanel projectId={projectId} worktree={tab.worktree} title={tab.title} />
                   ) : (
                     <ProjectTerminal
-                      projectId={tab.projectId}
+                      projectId={projectId}
                       terminalId={tab.id}
                       worktree={tab.worktree}
                       agentId={tab.agentId}
                       active={active}
+                      onTitle={setTabTitle}
                     />
                   )}
                 </div>

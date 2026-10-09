@@ -25,16 +25,23 @@ export const ProjectTerminal = memo(function ProjectTerminal({
   worktree,
   agentId,
   active,
+  onTitle,
 }: {
   projectId: number
   terminalId: string
   worktree?: string
   agentId?: string
   active: boolean
+  onTitle?: (projectId: number, terminalId: string, title: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+  const onTitleRef = useRef(onTitle)
+
+  useEffect(() => {
+    onTitleRef.current = onTitle
+  }, [onTitle])
 
   useEffect(() => {
     const container = containerRef.current
@@ -176,6 +183,12 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     const dataDisposable = terminal.onData((data) => send({ type: 'input', data }))
 
+    // Programs (agents, shells) announce their own title via an OSC sequence;
+    // surface it so the owning tab can rename itself.
+    const titleDisposable = terminal.onTitleChange((title) => {
+      onTitleRef.current?.(projectId, terminalId, title)
+    })
+
     const resizeObserver = new ResizeObserver(() => syncSize())
     resizeObserver.observe(container)
 
@@ -184,6 +197,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       resizeObserver.disconnect()
       dataDisposable.dispose()
+      titleDisposable.dispose()
       if (socket) {
         socket.onopen = null
         socket.onmessage = null

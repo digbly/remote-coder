@@ -10,6 +10,7 @@ export interface WorkspaceTab {
   projectId?: number
   worktree?: string
   agentId?: string
+  agentLabel?: string
   filePath?: string
 }
 
@@ -33,6 +34,10 @@ export interface NewTerminalOptions {
   agent?: AgentDefinition
 }
 
+// Titles arrive from the PTY (OSC sequences) and are relayed to the sync
+// server, so bound them to keep a runaway program from bloating tab state.
+const MAX_TAB_TITLE_LENGTH = 120
+
 export function newTerminalId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -53,6 +58,7 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentId === undefined || typeof value.agentId === 'string') &&
+    (value.agentLabel === undefined || typeof value.agentLabel === 'string') &&
     (value.filePath === undefined || typeof value.filePath === 'string')
   )
 }
@@ -71,7 +77,12 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
 }
 
 function countByLabel(tabs: WorkspaceTab[], label: string): number {
-  return tabs.filter((tab) => tab.title === label || tab.title.startsWith(`${label} (`)).length
+  return tabs.filter(
+    (tab) =>
+      tab.agentLabel === label ||
+      tab.title === label ||
+      tab.title.startsWith(`${label} (`),
+  ).length
 }
 
 export function withNewTerminal(
@@ -90,11 +101,37 @@ export function withNewTerminal(
     kind: 'terminal',
     projectId: project.id,
     ...(worktree ? { worktree } : {}),
-    ...(agent ? { agentId: agent.id } : {}),
+    ...(agent ? { agentId: agent.id, agentLabel: agent.label } : {}),
   }
   return {
     ...workspaces,
     [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
+}
+
+export function withTabTitle(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  tabId: string,
+  title: string,
+): Record<number, ProjectWorkspace> {
+  const trimmed = title.trim()
+  if (trimmed.length === 0) return workspaces
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  const tab = workspace.tabs.find((item) => item.id === tabId)
+  if (!tab) return workspaces
+  const bounded = trimmed.slice(0, MAX_TAB_TITLE_LENGTH)
+  const nextTitle = tab.agentLabel ? `${tab.agentLabel} | ${bounded}` : bounded
+  if (nextTitle === tab.title) return workspaces
+  return {
+    ...workspaces,
+    [projectId]: {
+      ...workspace,
+      tabs: workspace.tabs.map((item) =>
+        item.id === tabId ? { ...item, title: nextTitle } : item,
+      ),
+    },
   }
 }
 
