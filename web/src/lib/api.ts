@@ -17,6 +17,11 @@ const ERROR_CODE_KEYS = {
   PROJECT_PATH_EXISTS: 'apiErrors.projectPathExists',
   PROJECT_NAME_EXISTS: 'apiErrors.projectNameExists',
   PROJECT_CLONE_FAILED: 'apiErrors.projectCloneFailed',
+  FILE_PATH_INVALID: 'apiErrors.filePathInvalid',
+  FILE_NOT_FOUND: 'apiErrors.fileNotFound',
+  FILE_TOO_LARGE: 'apiErrors.fileTooLarge',
+  FILE_BINARY: 'apiErrors.fileBinary',
+  FILE_WRITE_FAILED: 'apiErrors.fileWriteFailed',
   GIT_NOT_A_REPOSITORY: 'apiErrors.gitNotARepository',
   GIT_COMMAND_FAILED: 'apiErrors.gitCommandFailed',
   GIT_INVALID_PATH: 'apiErrors.gitInvalidPath',
@@ -123,6 +128,12 @@ export interface FileNode {
 export interface FileTree {
   entries: FileNode[]
   truncated: boolean
+}
+
+export interface FileContent {
+  path: string
+  content: string
+  size: number
 }
 
 export interface GitBranches {
@@ -398,6 +409,33 @@ export async function fetchFileTree(projectId: number): Promise<FileTree> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as FileTree
+}
+
+export async function fetchFileContent(projectId: number, path: string): Promise<FileContent> {
+  const query = `?path=${encodeURIComponent(path)}`
+  const response = await request(`/projects/${projectId}/file${query}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as FileContent
+}
+
+export async function saveFileContent(
+  projectId: number,
+  path: string,
+  content: string,
+): Promise<FileContent> {
+  const response = await request(`/projects/${projectId}/file`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as FileContent
 }
 
 export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {

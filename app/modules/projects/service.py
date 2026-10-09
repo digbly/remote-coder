@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -17,6 +17,7 @@ from app.modules.projects.models import Project, ProjectSource
 from app.modules.projects.schemas import (
     DirectoryEntry,
     DirectoryListing,
+    FileContentRead,
     FileNode,
     FileTreeRead,
     GithubProjectCreate,
@@ -27,6 +28,7 @@ DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
 MAX_TREE_DEPTH = 12
 MAX_TREE_ENTRIES = 5000
+MAX_FILE_BYTES = 1_000_000
 _EXCLUDED_DIRECTORIES = {".git"}
 
 _GITHUB_URL_RE = re.compile(
@@ -93,6 +95,89 @@ def list_files(db: Session, owner: User, project_id: int) -> FileTreeRead:
     state = _TreeLimits()
     entries = _build_tree(root, root, depth=0, state=state)
     return FileTreeRead(entries=entries, truncated=state.truncated)
+
+
+def read_file(db: Session, owner: User, project_id: int, path: str) -> FileContentRead:
+    """Return a single text file's content for the editor.
+
+    The path is resolved inside the project root (symlinks that escape the
+    project are rejected), and binary or oversized files are refused so the
+    browser never has to render something it cannot handle.
+    """
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    if not target.is_file():
+        raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        if target.stat().st_size > MAX_FILE_BYTES:
+            raise api_error(ErrorCode.FILE_TOO_LARGE, status_code=status.HTTP_400_BAD_REQUEST)
+        data = target.read_bytes()
+    except OSError as exc:
+        raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND) from exc
+
+    if len(data) > MAX_FILE_BYTES:
+        raise api_error(ErrorCode.FILE_TOO_LARGE, status_code=status.HTTP_400_BAD_REQUEST)
+    if b"\x00" in data:
+        raise api_error(ErrorCode.FILE_BINARY, status_code=status.HTTP_400_BAD_REQUEST)
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise api_error(ErrorCode.FILE_BINARY, status_code=status.HTTP_400_BAD_REQUEST) from exc
+
+    return FileContentRead(
+        path=target.relative_to(root).as_posix(), content=content, size=len(data)
+    )
+
+
+def write_file(
+    db: Session, owner: User, project_id: int, path: str, content: str
+) -> FileContentRead:
+    """Persist the editor's content to ``path`` using an atomic replace."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    if not target.parent.is_dir():
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    data = content.encode("utf-8")
+    if len(data) > MAX_FILE_BYTES:
+        raise api_error(ErrorCode.FILE_TOO_LARGE, status_code=status.HTTP_400_BAD_REQUEST)
+
+    staging = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+    try:
+        staging.write_bytes(data)
+        os.replace(staging, target)
+    except OSError as exc:
+        try:
+            staging.unlink()
+        except OSError:
+            pass
+        raise api_error(
+            ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+        ) from exc
+
+    return FileContentRead(
+        path=target.relative_to(root).as_posix(), content=content, size=len(data)
+    )
+
+
+def _resolve_project_file(
+    db: Session, owner: User, project_id: int, path: str
+) -> tuple[Path, Path]:
+    project = get_project(db, owner, project_id)
+    root = Path(project.path).resolve()
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    candidate = path.strip()
+    parts = PurePosixPath(candidate).parts
+    if not candidate or candidate.startswith(("/", "~", "-")) or ".." in parts:
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    if _EXCLUDED_DIRECTORIES.intersection(parts):
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    target = (root / candidate).resolve()
+    if not target.is_relative_to(root):
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    return root, target
 
 
 def get_project(db: Session, owner: User, project_id: int) -> Project:

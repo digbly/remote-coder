@@ -65,3 +65,14 @@ class FileNode(BaseModel):
 class FileTreeRead(BaseModel):
     entries: list[FileNode] = Field(default_factory=list)
     truncated: bool = False
+
+
+class FileContentRead(BaseModel):
+    path: str
+    content: str
+    size: int
+
+
+class FileWriteRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    content: str

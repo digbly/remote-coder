@@ -21,9 +21,10 @@ interface RightPanelProps {
   projectId: number
   width: number
   onClose: () => void
+  onOpenFile: (path: string) => void
 }
 
-export function RightPanel({ projectId, width, onClose }: RightPanelProps) {
+export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanelProps) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<PanelTab>('sourceControl')
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -94,7 +95,7 @@ export function RightPanel({ projectId, width, onClose }: RightPanelProps) {
         aria-labelledby={`panel-tab-${tab}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {tab === 'explorer' && <ExplorerPanel projectId={projectId} />}
+        {tab === 'explorer' && <ExplorerPanel projectId={projectId} onOpenFile={onOpenFile} />}
         {tab === 'sourceControl' && <SourceControlPanel projectId={projectId} />}
         {tab === 'check' && <CheckPanel projectId={projectId} />}
       </div>

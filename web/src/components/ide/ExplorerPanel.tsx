@@ -4,7 +4,15 @@ import { fetchFileTree, type FileNode } from '../../lib/api'
 import { useAsyncData } from '../../lib/useAsyncData'
 import { ChevronRightIcon, FileIcon, FolderIcon, RefreshIcon } from './icons'
 
-function TreeItem({ node, depth }: { node: FileNode; depth: number }) {
+function TreeItem({
+  node,
+  depth,
+  onOpenFile,
+}: {
+  node: FileNode
+  depth: number
+  onOpenFile: (path: string) => void
+}) {
   const [open, setOpen] = useState(false)
   const indentation = { paddingLeft: `${depth * 12 + 8}px` }
 
@@ -30,30 +38,38 @@ function TreeItem({ node, depth }: { node: FileNode; depth: number }) {
         </button>
         {open &&
           node.children.map((child) => (
-            <TreeItem key={child.path} node={child} depth={depth + 1} />
+            <TreeItem
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              onOpenFile={onOpenFile}
+            />
           ))}
       </div>
     )
   }
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={() => onOpenFile(node.path)}
       style={indentation}
       title={node.path}
-      className="flex items-center gap-1.5 rounded px-1.5 py-1 text-[12.5px] text-[#c8ccd4]"
+      className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12.5px] text-[#c8ccd4] transition hover:bg-[#24262a] hover:text-white"
     >
       <span className="w-3 shrink-0" aria-hidden="true" />
       <FileIcon width={14} height={14} className="shrink-0 text-[#7d828b]" />
       <span className="truncate">{node.name}</span>
-    </div>
+    </button>
   )
 }
 
 interface ExplorerPanelProps {
   projectId: number
+  onOpenFile: (path: string) => void
 }
 
-export function ExplorerPanel({ projectId }: ExplorerPanelProps) {
+export function ExplorerPanel({ projectId, onOpenFile }: ExplorerPanelProps) {
   const { t } = useTranslation()
   const { data: tree, error, loading, reload } = useAsyncData(
     () => fetchFileTree(projectId),
@@ -88,7 +104,9 @@ export function ExplorerPanel({ projectId }: ExplorerPanelProps) {
         )}
         {!loading &&
           !error &&
-          tree?.entries.map((node) => <TreeItem key={node.path} node={node} depth={0} />)}
+          tree?.entries.map((node) => (
+            <TreeItem key={node.path} node={node} depth={0} onOpenFile={onOpenFile} />
+          ))}
         {!loading && !error && tree?.truncated && (
           <p className="px-2.5 py-2 text-[11px] text-[#6b7078]">{t('ide.filesTruncated')}</p>
         )}

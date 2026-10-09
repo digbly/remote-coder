@@ -7,7 +7,9 @@ from app.modules.projects import service
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     DirectoryListing,
+    FileContentRead,
     FileTreeRead,
+    FileWriteRequest,
     GithubProjectCreate,
     LocalProjectCreate,
     ProjectRead,
@@ -85,6 +87,35 @@ def read_project(project_id: int, current_user: CurrentUser, db: DbDep) -> Proje
 )
 def list_project_files(project_id: int, current_user: CurrentUser, db: DbDep) -> FileTreeRead:
     return service.list_files(db, current_user, project_id)
+
+
+@router.get(
+    "/{project_id}/file",
+    response_model=FileContentRead,
+    responses=error_responses(400, 401, 403, 404),
+)
+def read_project_file(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    path: str = Query(min_length=1, max_length=4096),
+) -> FileContentRead:
+    return service.read_file(db, current_user, project_id, path)
+
+
+@router.put(
+    "/{project_id}/file",
+    response_model=FileContentRead,
+    responses=error_responses(400, 401, 403, 404, 422),
+)
+def write_project_file(
+    project_id: int,
+    payload: FileWriteRequest,
+    current_user: CurrentUser,
+    db: DbDep,
+    _csrf: CsrfDep,
+) -> FileContentRead:
+    return service.write_file(db, current_user, project_id, payload.path, payload.content)
 
 
 @router.delete(

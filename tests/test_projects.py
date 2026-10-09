@@ -401,3 +401,173 @@ def test_project_files_scoped_to_owner(client: TestClient, projects_root) -> Non
     response = client.get(f"{PROJECTS_URL}/{project_id}/files")
     assert response.status_code == 404
     assert _error_code(response) == "PROJECT_NOT_FOUND"
+
+
+def _register_repo_with_file(client: TestClient, root: Path, name: str, content: str) -> int:
+    repo = root / name
+    repo.mkdir()
+    (repo / "main.py").write_text(content)
+    return _register_local(client, repo)["id"]
+
+
+def test_project_file_reads_content(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "print('hi')\n")
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "main.py"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == "main.py"
+    assert body["content"] == "print('hi')\n"
+    assert body["size"] == len(b"print('hi')\n")
+
+
+def test_project_file_reads_nested_content(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("x = 1\n")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "src/app.py"})
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "x = 1\n"
+
+
+def test_project_file_read_requires_auth(client: TestClient) -> None:
+    assert client.get(f"{PROJECTS_URL}/1/file", params={"path": "a.txt"}).status_code == 401
+
+
+def test_project_file_read_missing_returns_404(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "x")
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "nope.py"})
+
+    assert response.status_code == 404
+    assert _error_code(response) == "FILE_NOT_FOUND"
+
+
+def test_project_file_read_scoped_to_owner(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "secret")
+
+    client.cookies.clear()
+    _login(client, username=OTHER_USERNAME)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "main.py"})
+    assert response.status_code == 404
+    assert _error_code(response) == "PROJECT_NOT_FOUND"
+
+
+def test_project_file_read_rejects_git_directory(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "config").write_text("[remote]\n")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": ".git/config"})
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_PATH_INVALID"
+
+
+def test_project_file_read_rejects_traversal(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "x")
+    (projects_root / "outside.txt").write_text("nope")
+
+    for path in ("../outside.txt", "/etc/passwd", "~/outside.txt"):
+        response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": path})
+        assert response.status_code == 400, path
+        assert _error_code(response) == "FILE_PATH_INVALID"
+
+
+def test_project_file_read_rejects_binary(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "blob.bin").write_bytes(b"\x00\x01\x02")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "blob.bin"})
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_BINARY"
+
+
+def test_project_file_read_rejects_oversized(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "big.txt").write_text("a" * (service.MAX_FILE_BYTES + 1))
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/file", params={"path": "big.txt"})
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_TOO_LARGE"
+
+
+def test_project_file_writes_content(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("old\n")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.put(
+        f"{PROJECTS_URL}/{project_id}/file",
+        json={"path": "main.py", "content": "new\n"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content"] == "new\n"
+    assert (repo / "main.py").read_text() == "new\n"
+
+
+def test_project_file_write_requires_csrf(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "old")
+
+    response = client.put(
+        f"{PROJECTS_URL}/{project_id}/file",
+        json={"path": "main.py", "content": "new"},
+    )
+
+    assert response.status_code == 403
+    assert _error_code(response) == "CSRF_INVALID"
+
+
+def test_project_file_write_rejects_traversal(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "x")
+
+    response = client.put(
+        f"{PROJECTS_URL}/{project_id}/file",
+        json={"path": "../evil.txt", "content": "boom"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_PATH_INVALID"
+    assert not (projects_root / "evil.txt").exists()
+
+
+def test_project_file_write_rejects_oversized(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_repo_with_file(client, projects_root, "repo", "x")
+
+    response = client.put(
+        f"{PROJECTS_URL}/{project_id}/file",
+        json={"path": "main.py", "content": "a" * (service.MAX_FILE_BYTES + 1)},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_TOO_LARGE"

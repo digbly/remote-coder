@@ -4,12 +4,14 @@ import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
   withNewTerminal,
+  withOpenFile,
   type ActiveProjectRef,
   type SyncedState,
 } from '../lib/workspaceStore'
 import { Sidebar } from './ide/Sidebar'
 import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
+import { FileEditor } from './ide/FileEditor'
 import { TopTabs } from './ide/TopTabs'
 import { ResizeHandle } from './ide/ResizeHandle'
 import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
@@ -82,6 +84,11 @@ export function IdeShell({
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
   }
 
+  function openFile(path: string) {
+    if (!activeProject) return
+    update((prev) => ({ ...prev, workspaces: withOpenFile(prev.workspaces, activeProject, path) }))
+  }
+
   function selectTab(id: string) {
     if (activeProjectId == null) return
     update((prev) => {
@@ -97,9 +104,12 @@ export function IdeShell({
   function closeTab(id: string) {
     if (activeProjectId == null) return
     const projectId = activeProjectId
-    void killTerminal(projectId, id).catch(() => {
-      /* the terminal may already be gone */
-    })
+    const closing = allTabs.find((tab) => tab.id === id)
+    if (closing?.kind === 'terminal') {
+      void killTerminal(projectId, id).catch(() => {
+        /* the terminal may already be gone */
+      })
+    }
     update((prev) => {
       const workspace = prev.workspaces[projectId]
       if (!workspace) return prev
@@ -155,24 +165,30 @@ export function IdeShell({
                 <p className="text-xs text-[#5f646c]">{t('ide.openProjectHint')}</p>
               </div>
             )}
-            {allTabs.map((tab) =>
-              tab.projectId == null ? null : (
+            {allTabs.map((tab) => {
+              if (tab.projectId == null) return null
+              const active = tab.id === activeTabId
+              return (
                 <div
                   key={tab.id}
                   className={`absolute inset-0 ${
-                    tab.id === activeTabId ? '' : 'pointer-events-none invisible'
+                    active ? '' : 'pointer-events-none invisible'
                   }`}
                 >
-                  <ProjectTerminal
-                    projectId={tab.projectId}
-                    terminalId={tab.id}
-                    worktree={tab.worktree}
-                    agentCommand={tab.agentCommand}
-                    active={tab.id === activeTabId}
-                  />
+                  {tab.kind === 'editor' && tab.filePath ? (
+                    <FileEditor projectId={tab.projectId} path={tab.filePath} active={active} />
+                  ) : (
+                    <ProjectTerminal
+                      projectId={tab.projectId}
+                      terminalId={tab.id}
+                      worktree={tab.worktree}
+                      agentCommand={tab.agentCommand}
+                      active={active}
+                    />
+                  )}
                 </div>
-              ),
-            )}
+              )
+            })}
           </div>
           {activeProjectId != null &&
             (layout.rightOpen ? (
@@ -190,6 +206,7 @@ export function IdeShell({
                   projectId={activeProjectId}
                   width={layout.rightWidth}
                   onClose={() => updateLayout({ rightOpen: false })}
+                  onOpenFile={openFile}
                 />
               </>
             ) : (

@@ -10,6 +10,7 @@ export interface WorkspaceTab {
   projectId?: number
   worktree?: string
   agentCommand?: string
+  filePath?: string
 }
 
 export interface ProjectWorkspace {
@@ -51,7 +52,8 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.kind === 'terminal' || value.kind === 'editor') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
-    (value.agentCommand === undefined || typeof value.agentCommand === 'string')
+    (value.agentCommand === undefined || typeof value.agentCommand === 'string') &&
+    (value.filePath === undefined || typeof value.filePath === 'string')
   )
 }
 
@@ -89,6 +91,34 @@ export function withNewTerminal(
     projectId: project.id,
     ...(worktree ? { worktree } : {}),
     ...(agent ? { agentCommand: launchCommand(agent) } : {}),
+  }
+  return {
+    ...workspaces,
+    [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
+}
+
+export function withOpenFile(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  path: string,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const existing = tabs.find((tab) => tab.kind === 'editor' && tab.filePath === path)
+  if (existing) {
+    return {
+      ...workspaces,
+      [project.id]: { tabs, activeId: existing.id },
+    }
+  }
+  const id = newTerminalId()
+  const title = path.split('/').pop() || path
+  const tab: WorkspaceTab = {
+    id,
+    title,
+    kind: 'editor',
+    projectId: project.id,
+    filePath: path,
   }
   return {
     ...workspaces,
