@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     projects_root: str = "~/projects"
     github_clone_timeout_seconds: int = 120
     git_status_timeout_seconds: int = 30
+    git_commit_timeout_seconds: int = 30
+    git_push_timeout_seconds: int = 120
+    github_pr_timeout_seconds: int = 60
 
     terminal_shell: str = "/bin/bash"
     terminal_read_chunk_bytes: int = 65536

@@ -138,3 +138,208 @@ def test_git_status_command_failure(client: TestClient, projects_root, monkeypat
     response = client.get(f"{PROJECTS_URL}/{project_id}/git/status")
     assert response.status_code == 500
     assert _error_code(response) == "GIT_COMMAND_FAILED"
+
+
+def _staged_paths(client: TestClient, project_id: int) -> list[str]:
+    body = client.get(f"{PROJECTS_URL}/{project_id}/git/status").json()
+    return [change["path"] for change in body["staged"]]
+
+
+def test_stage_and_unstage_paths(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+
+    staged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    assert staged.status_code == 200
+    assert [change["path"] for change in staged.json()["staged"]] == ["tracked.txt"]
+
+    unstaged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/unstage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    assert unstaged.status_code == 200
+    assert unstaged.json()["staged"] == []
+    assert [change["path"] for change in unstaged.json()["unstaged"]] == ["tracked.txt"]
+
+
+def test_stage_rejects_invalid_path(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["../outside.txt"]},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_INVALID_PATH"
+
+
+def test_stage_requires_csrf(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage", json={"paths": ["tracked.txt"]}
+    )
+    assert response.status_code == 403
+    assert _error_code(response) == "CSRF_INVALID"
+
+
+def test_commit_requires_staged_changes(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/commit",
+        json={"message": "nothing here"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_NOTHING_TO_COMMIT"
+
+
+def test_commit_creates_commit(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/commit",
+        json={"message": "update tracked"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["branch"] == "main"
+    assert body["commit"]
+    assert _staged_paths(client, project_id) == []
+    subject = subprocess.run(
+        ["git", "log", "-1", "--pretty=%s"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert subject == "update tracked"
+
+
+def test_pull_request_requires_github_remote(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request",
+        json={"branch": "feature/x"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_REMOTE_MISSING"
+
+
+def test_pull_request_rejects_lookalike_remote(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://evil.example/github.com/repo.git")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request",
+        json={"branch": "feature/x"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_REMOTE_MISSING"
+
+
+def test_unstage_works_without_initial_commit(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "fresh"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    project_id = _register_local(client, repo)["id"]
+
+    (repo / "new.txt").write_text("new\n")
+    staged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["new.txt"]},
+        headers=_csrf(client),
+    )
+    assert staged.status_code == 200
+    assert [change["path"] for change in staged.json()["staged"]] == ["new.txt"]
+
+    unstaged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/unstage",
+        json={"paths": ["new.txt"]},
+        headers=_csrf(client),
+    )
+    assert unstaged.status_code == 200
+    assert unstaged.json()["staged"] == []
+    assert unstaged.json()["untracked"] == ["new.txt"]
+
+
+def test_pull_request_creates_branch_and_pr(client: TestClient, projects_root, monkeypatch) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    project_id = _register_local(client, repo)["id"]
+
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if list(command[:2]) == ["git", "push"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[0] == "gh":
+            return subprocess.CompletedProcess(
+                command, 0, "https://github.com/example/myrepo/pull/1\n", ""
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request",
+        json={"branch": "feature/x"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "url": "https://github.com/example/myrepo/pull/1",
+        "branch": "feature/x",
+        "base": "main",
+    }
+    current = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert current == "feature/x"

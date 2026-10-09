@@ -19,6 +19,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Could not clone the repository",
         "GIT_NOT_A_REPOSITORY": "Project is not a git repository",
         "GIT_COMMAND_FAILED": "Could not read git status",
+        "GIT_INVALID_PATH": "One or more selected paths are invalid",
+        "GIT_NOTHING_TO_COMMIT": "There are no staged changes to commit",
+        "GIT_REMOTE_MISSING": "Project does not have a GitHub remote",
+        "GIT_BRANCH_INVALID": "Branch name is invalid or already in use",
+        "GIT_PUSH_FAILED": "Could not push the branch",
+        "GIT_PULL_REQUEST_FAILED": "Could not create the pull request",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -35,6 +41,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Không thể clone repository",
         "GIT_NOT_A_REPOSITORY": "Dự án không phải là repository git",
         "GIT_COMMAND_FAILED": "Không thể đọc trạng thái git",
+        "GIT_INVALID_PATH": "Một hoặc nhiều đường dẫn không hợp lệ",
+        "GIT_NOTHING_TO_COMMIT": "Không có thay đổi nào đã stage để commit",
+        "GIT_REMOTE_MISSING": "Dự án không có remote GitHub",
+        "GIT_BRANCH_INVALID": "Tên nhánh không hợp lệ hoặc đã tồn tại",
+        "GIT_PUSH_FAILED": "Không thể push nhánh",
+        "GIT_PULL_REQUEST_FAILED": "Không thể tạo pull request",
     },
 }
 
