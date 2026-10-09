@@ -13,9 +13,11 @@ const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
 const MAX_EXPIRED_RECONNECTS = 3
 
-// Sidebar widths and the active tab are per-client UI state: they must not be
-// shared across a user's clients, so they are stripped from outgoing state and
-// preserved locally when incoming state is applied.
+// The whole sidebar layout (visibility and widths) and the active tab are
+// per-client UI state: they must not be shared across a user's clients, so they
+// are stripped from outgoing state and preserved locally when incoming state is
+// applied. Otherwise opening or closing a terminal on one client would overwrite
+// the sidebar visibility of every other client.
 function stripLocalState(state: SyncedState): SyncedState {
   const workspaces: Record<number, ProjectWorkspace> = {}
   for (const [key, workspace] of Object.entries(state.workspaces)) {
@@ -25,7 +27,9 @@ function stripLocalState(state: SyncedState): SyncedState {
     workspaces,
     layout: {
       ...state.layout,
+      leftOpen: LAYOUT_DEFAULTS.leftOpen,
       leftWidth: LAYOUT_DEFAULTS.leftWidth,
+      rightOpen: LAYOUT_DEFAULTS.rightOpen,
       rightWidth: LAYOUT_DEFAULTS.rightWidth,
     },
   }
@@ -46,7 +50,9 @@ function mergeLocalState(remote: SyncedState, local: SyncedState): SyncedState {
     workspaces,
     layout: {
       ...remote.layout,
+      leftOpen: local.layout.leftOpen,
       leftWidth: local.layout.leftWidth,
+      rightOpen: local.layout.rightOpen,
       rightWidth: local.layout.rightWidth,
     },
   }
