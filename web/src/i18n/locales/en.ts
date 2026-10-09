@@ -41,6 +41,18 @@ const en = {
     gitPullFailed: 'Could not pull the changes',
     gitNoUpstream: 'The current branch has no upstream to pull from',
   },
+  settings: {
+    title: 'Agent settings',
+    back: 'Back',
+    description: 'Configure the command and arguments used to launch each agent.',
+    command: 'Command',
+    args: 'Arguments',
+    save: 'Save',
+    saving: 'Saving...',
+    saved: 'Saved',
+    saveFailed: 'Could not save',
+    loadFailed: 'Could not load settings',
+  },
   ide: {
     search: 'Search',
     tasks: 'Tasks',

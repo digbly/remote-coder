@@ -1,4 +1,4 @@
-import type { AgentDefinition } from './agents'
+import { launchCommand, type AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
 export type TabKind = 'terminal' | 'editor'
@@ -88,7 +88,7 @@ export function withNewTerminal(
     kind: 'terminal',
     projectId: project.id,
     ...(worktree ? { worktree } : {}),
-    ...(agent ? { agentCommand: agent.command } : {}),
+    ...(agent ? { agentCommand: launchCommand(agent) } : {}),
   }
   return {
     ...workspaces,

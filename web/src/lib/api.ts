@@ -117,6 +117,12 @@ export interface AgentStatus {
   path: string | null
 }
 
+export interface AgentSettingItem {
+  agent_id: string
+  command: string
+  args: string
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const NO_REFRESH_PATHS = new Set(['/auth/login', '/auth/refresh'])
 
@@ -373,6 +379,33 @@ export async function detectAgents(commands: string[]): Promise<AgentStatus[]> {
 export interface TerminalUrlOptions {
   worktree?: string
   agent?: string
+}
+
+export async function fetchAgentSettings(): Promise<AgentSettingItem[]> {
+  const response = await request('/agents/settings')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const data = (await response.json()) as { settings: AgentSettingItem[] }
+  return data.settings
+}
+
+export async function saveAgentSetting(
+  agentId: string,
+  command: string,
+  args: string,
+): Promise<AgentSettingItem> {
+  const response = await request(`/agents/settings/${encodeURIComponent(agentId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, args }),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AgentSettingItem
 }
 
 export function projectTerminalUrl(

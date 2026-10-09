@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { detectAgents } from '../../lib/api'
-import { AGENT_CANDIDATES, type AgentDefinition } from '../../lib/agents'
+import { detectAgents, fetchAgentSettings } from '../../lib/api'
+import {
+  resolveAgents,
+  type AgentDefinition,
+  type AgentOverride,
+} from '../../lib/agents'
 import { CommandIcon, PlusIcon, TerminalIcon } from './icons'
 
 type DetectionState =
@@ -36,16 +40,24 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
   useEffect(() => {
     if (!open || detection.status !== 'loading') return
     let cancelled = false
-    detectAgents(AGENT_CANDIDATES.map((agent) => agent.command))
-      .then((statuses) => {
-        if (cancelled) return
-        const installed = new Set(
-          statuses.filter((status) => status.installed).map((status) => status.command),
-        )
-        setDetection({
-          status: 'ready',
-          agents: AGENT_CANDIDATES.filter((agent) => installed.has(agent.command)),
-        })
+
+    async function load() {
+      const settings = await fetchAgentSettings()
+      const overrides: Record<string, AgentOverride> = {}
+      for (const setting of settings) {
+        overrides[setting.agent_id] = { command: setting.command, args: setting.args }
+      }
+      const agents = resolveAgents(overrides)
+      const statuses = await detectAgents(agents.map((agent) => agent.command))
+      const installed = new Set(
+        statuses.filter((status) => status.installed).map((status) => status.command),
+      )
+      return agents.filter((agent) => installed.has(agent.command))
+    }
+
+    load()
+      .then((agents) => {
+        if (!cancelled) setDetection({ status: 'ready', agents })
       })
       .catch(() => {
         if (!cancelled) setDetection({ status: 'error' })

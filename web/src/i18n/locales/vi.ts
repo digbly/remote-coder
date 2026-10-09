@@ -41,6 +41,18 @@ const vi = {
     gitPullFailed: 'Không thể pull thay đổi',
     gitNoUpstream: 'Nhánh hiện tại không có upstream để pull',
   },
+  settings: {
+    title: 'Cấu hình agent',
+    back: 'Quay lại',
+    description: 'Cấu hình command và tham số dùng để mở từng agent.',
+    command: 'Command',
+    args: 'Tham số',
+    save: 'Lưu',
+    saving: 'Đang lưu...',
+    saved: 'Đã lưu',
+    saveFailed: 'Không lưu được',
+    loadFailed: 'Không tải được cấu hình',
+  },
   ide: {
     search: 'Tìm kiếm',
     tasks: 'Tác vụ',

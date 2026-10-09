@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { RequireAuth } from './components/RequireAuth'
 import { LoginPage } from './routes/LoginPage'
+import { SettingsPage } from './routes/SettingsPage'
 import { WorkspaceLayout } from './routes/WorkspaceLayout'
 
 export const router = createBrowserRouter([
@@ -10,6 +11,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <WorkspaceLayout /> },
       { path: '/projects/:projectId', element: <WorkspaceLayout /> },
+      { path: '/settings', element: <SettingsPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

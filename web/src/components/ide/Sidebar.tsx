@@ -1,6 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchProjects, fetchWorktrees, type Project, type User, type Worktree } from '../../lib/api'
+import { useNavigate } from 'react-router-dom'
+import {
+  fetchProjects,
+  fetchWorktrees,
+  type Project,
+  type User,
+  type Worktree,
+} from '../../lib/api'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import {
   AutomationsIcon,
@@ -172,6 +179,7 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
   const [error, setError] = useState(false)
@@ -287,7 +295,7 @@ export function Sidebar({
           </button>
         </div>
         <div className="mt-1 flex items-center gap-1 px-1">
-          <IconButton label={t('ide.settings')}>
+          <IconButton label={t('ide.settings')} onClick={() => navigate('/settings')}>
             <SettingsIcon />
           </IconButton>
           <IconButton label={t('ide.help')}>

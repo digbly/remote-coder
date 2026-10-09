@@ -116,11 +116,23 @@ def test_terminal_runs_agent_command_on_new_session(
     assert "terminal-repo" in output
 
 
-def test_terminal_ignores_invalid_agent_command(client: TestClient, projects_root: Path) -> None:
+def test_terminal_runs_agent_command_with_args(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
 
-    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=bad%20command"
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=echo%20AGENT_ARGS=1"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        output = _read_until(websocket, "AGENT_ARGS=1")
+
+    assert "AGENT_ARGS=1" in output
+
+
+def test_terminal_ignores_multiline_agent_command(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=bad%0Acommand"
     with client.websocket_connect(url) as websocket:
         websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
         websocket.send_text(json.dumps({"type": "input", "data": "echo MANUAL=1\n"}))

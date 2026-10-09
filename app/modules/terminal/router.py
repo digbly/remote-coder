@@ -89,8 +89,9 @@ async def project_terminal(
     queue, replay = session.subscribe(asyncio.get_running_loop())
 
     # A new session that requested an agent starts by typing its launch command
-    # into the shell. Re-attaching clients reuse the already-running agent.
-    if created and agent is not None and agents_service.valid_command(agent):
+    # (executable plus optional args) into the shell. Re-attaching clients reuse
+    # the already-running agent.
+    if created and agent is not None and agents_service.valid_launch(agent):
         session.write(f"{agent}\n".encode())
 
     sender = asyncio.create_task(_pump_output(queue, websocket))
