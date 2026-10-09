@@ -11,6 +11,7 @@ from app.modules.auth.models import User
 from app.modules.auth.rate_limit import limiter
 from app.modules.auth.security import hash_password
 from app.modules.terminal import service as terminal_service
+from app.modules.vscode import service as vscode_service
 
 USERNAME = "alice"
 OTHER_USERNAME = "bob"
@@ -65,6 +66,7 @@ def client(projects_root) -> TestClient:
         yield TestClient(app)
     finally:
         terminal_service.manager.kill_all()
+        vscode_service.manager.kill_all()
         app.dependency_overrides.clear()
 
 

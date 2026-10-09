@@ -14,6 +14,7 @@ import {
   BellIcon,
   BranchIcon,
   CloseIcon,
+  CodeIcon,
   CollapseIcon,
   FolderPlusIcon,
   HelpIcon,
@@ -77,41 +78,62 @@ function IconButton({
   )
 }
 
-function WorktreeItem({ worktree, onOpen }: { worktree: Worktree; onOpen: () => void }) {
+function WorktreeItem({
+  worktree,
+  onOpen,
+  onOpenVSCode,
+}: {
+  worktree: Worktree
+  onOpen: () => void
+  onOpenVSCode: () => void
+}) {
   const { t } = useTranslation()
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
       title={worktree.path}
-      className="group flex w-full flex-col gap-1 rounded-md px-2 py-1.5 text-left transition hover:bg-[#2a2c30]"
+      className="group flex w-full items-center rounded-md px-2 py-1.5 transition hover:bg-[#2a2c30]"
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span
-          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
-            worktree.is_primary
-              ? 'border-emerald-400/70 text-emerald-400'
-              : 'border-amber-400/70 text-amber-400'
-          }`}
-        >
-          <BranchIcon width={9} height={9} />
-        </span>
-        <span className="truncate text-[13px] text-[#d7dae0] group-hover:text-white">
-          {worktree.branch ?? worktree.name}
-        </span>
-        {worktree.is_primary && (
-          <span className="shrink-0 rounded border border-[#3a3d42] px-1.5 py-px text-[10px] text-[#8b9099]">
-            {t('ide.primary')}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 flex-col gap-1 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
+              worktree.is_primary
+                ? 'border-emerald-400/70 text-emerald-400'
+                : 'border-amber-400/70 text-amber-400'
+            }`}
+          >
+            <BranchIcon width={9} height={9} />
           </span>
-        )}
-      </span>
-      <span className="flex min-w-0 items-center gap-1.5 pl-[22px] text-[11px] text-[#7d828b]">
-        <span className="shrink-0 rounded bg-[#2c2e33] px-1.5 py-px text-[#9aa0a8]">
-          {t('ide.localHost')}
+          <span className="truncate text-[13px] text-[#d7dae0] group-hover:text-white">
+            {worktree.branch ?? worktree.name}
+          </span>
+          {worktree.is_primary && (
+            <span className="shrink-0 rounded border border-[#3a3d42] px-1.5 py-px text-[10px] text-[#8b9099]">
+              {t('ide.primary')}
+            </span>
+          )}
         </span>
-        <span className="truncate">{worktree.name}</span>
-      </span>
-    </button>
+        <span className="flex min-w-0 items-center gap-1.5 pl-[22px] text-[11px] text-[#7d828b]">
+          <span className="shrink-0 rounded bg-[#2c2e33] px-1.5 py-px text-[#9aa0a8]">
+            {t('ide.localHost')}
+          </span>
+          <span className="truncate">{worktree.name}</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label={t('ide.openInVSCode')}
+        title={t('ide.openInVSCode')}
+        onClick={onOpenVSCode}
+        className="ml-1 shrink-0 rounded p-1 text-[#8b9099] opacity-0 transition hover:bg-[#33363b] hover:text-white group-hover:opacity-100 focus:opacity-100"
+      >
+        <CodeIcon width={14} height={14} />
+      </button>
+    </div>
   )
 }
 
@@ -122,6 +144,7 @@ function ProjectItem({
   worktrees,
   onOpenProject,
   onOpenWorktree,
+  onOpenVSCode,
 }: {
   project: Project
   accent: string
@@ -129,6 +152,7 @@ function ProjectItem({
   worktrees: Worktree[] | undefined
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onOpenVSCode: (project: Project, worktree: string) => void
 }) {
   return (
     <div className="pb-1.5">
@@ -151,6 +175,7 @@ function ProjectItem({
               key={worktree.path}
               worktree={worktree}
               onOpen={() => onOpenWorktree(project, worktree.name)}
+              onOpenVSCode={() => onOpenVSCode(project, worktree.name)}
             />
           ))}
         </div>
@@ -164,6 +189,7 @@ interface SidebarProps {
   onLogout: () => void
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onOpenVSCode: (project: Project, worktree: string) => void
   activeProjectId: number | null
   width: number
   onClose: () => void
@@ -174,6 +200,7 @@ export function Sidebar({
   onLogout,
   onOpenProject,
   onOpenWorktree,
+  onOpenVSCode,
   activeProjectId,
   width,
   onClose,
@@ -276,6 +303,7 @@ export function Sidebar({
             worktrees={worktrees[project.id]}
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
+            onOpenVSCode={onOpenVSCode}
           />
         ))}
       </div>

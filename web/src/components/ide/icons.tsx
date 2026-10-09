@@ -290,3 +290,11 @@ export function BranchPlusIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function CodeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m8 6-5 6 5 6M16 6l5 6-5 6" />
+    </Svg>
+  )
+}

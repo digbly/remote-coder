@@ -1,7 +1,7 @@
 import { launchCommand, type AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
-export type TabKind = 'terminal' | 'editor'
+export type TabKind = 'terminal' | 'editor' | 'vscode'
 
 export interface WorkspaceTab {
   id: string
@@ -48,7 +48,7 @@ function isTab(value: unknown): value is WorkspaceTab {
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
-    (value.kind === 'terminal' || value.kind === 'editor') &&
+    (value.kind === 'terminal' || value.kind === 'editor' || value.kind === 'vscode') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentCommand === undefined || typeof value.agentCommand === 'string')
@@ -109,7 +109,38 @@ export function withWorktreeTerminal(
       [project.id]: { tabs, activeId: existing.id },
     }
   }
+
   return withNewTerminal(workspaces, project, { worktree })
+}
+
+export function withVSCodeTab(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  worktree: string,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const existing = tabs.find((tab) => tab.kind === 'vscode' && tab.worktree === worktree)
+  if (existing) {
+    return {
+      ...workspaces,
+      [project.id]: { tabs, activeId: existing.id },
+    }
+  }
+
+  const label = `VS Code: ${worktree}`
+  const count = countByLabel(tabs, label)
+  const id = newTerminalId()
+  const tab: WorkspaceTab = {
+    id,
+    title: count === 0 ? label : `${label} (${count + 1})`,
+    kind: 'vscode',
+    projectId: project.id,
+    worktree,
+  }
+  return {
+    ...workspaces,
+    [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
 }
 
 export function ensureWorkspace(

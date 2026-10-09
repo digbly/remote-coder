@@ -28,6 +28,11 @@ const ERROR_CODE_KEYS = {
   GIT_DISCARD_FAILED: 'apiErrors.gitDiscardFailed',
   GIT_PULL_FAILED: 'apiErrors.gitPullFailed',
   GIT_NO_UPSTREAM: 'apiErrors.gitNoUpstream',
+  VSCODE_DISABLED: 'apiErrors.vscodeDisabled',
+  VSCODE_WORKTREE_NOT_FOUND: 'apiErrors.vscodeWorktreeNotFound',
+  VSCODE_START_FAILED: 'apiErrors.vscodeStartFailed',
+  VSCODE_PROXY_FAILED: 'apiErrors.vscodeProxyFailed',
+  VSCODE_FORBIDDEN: 'apiErrors.vscodeForbidden',
 } as const
 
 export interface User {
@@ -464,6 +469,10 @@ export function projectTerminalUrl(
   const search = params.toString()
   const query = search ? `?${search}` : ''
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`
+}
+
+export function vscodeUrl(projectId: number, worktree: string): string {
+  return `${API_PREFIX}/projects/${projectId}/vscode/${encodeURIComponent(worktree)}/`
 }
 
 export function workspaceUrl(): string {

@@ -36,7 +36,11 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
               >
                 <span
                   className={`h-2 w-2 shrink-0 rounded-sm ${
-                    tab.kind === 'editor' ? 'bg-indigo-400' : 'bg-sky-400'
+                    tab.kind === 'editor'
+                      ? 'bg-indigo-400'
+                      : tab.kind === 'vscode'
+                        ? 'bg-blue-400'
+                        : 'bg-sky-400'
                   }`}
                 />
                 <span className="truncate">{tab.title}</span>
