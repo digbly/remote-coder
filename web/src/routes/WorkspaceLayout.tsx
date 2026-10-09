@@ -6,6 +6,7 @@ import { fetchProject, type Project } from '../lib/api'
 import { useWorkspaceSync } from '../lib/sync'
 import {
   ensureWorkspace,
+  withVSCodeTab,
   withWorktreeTerminal,
   type ActiveProjectRef,
 } from '../lib/workspaceStore'
@@ -69,6 +70,11 @@ export function WorkspaceLayout() {
     update((prev) => ({ ...prev, workspaces: withWorktreeTerminal(prev.workspaces, ref, worktree) }))
   }
 
+  function openVSCode(project: Project, worktree: string) {
+    const ref = activate(project)
+    update((prev) => ({ ...prev, workspaces: withVSCodeTab(prev.workspaces, ref, worktree) }))
+  }
+
   return (
     <IdeShell
       user={user}
@@ -78,6 +84,7 @@ export function WorkspaceLayout() {
       update={update}
       onOpenProject={openProject}
       onOpenWorktree={openWorktree}
+      onOpenVSCode={openVSCode}
     />
   )
 }

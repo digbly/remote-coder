@@ -11,6 +11,7 @@ import { Sidebar } from './ide/Sidebar'
 import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { TopTabs } from './ide/TopTabs'
+import { VSCodePanel } from './ide/VSCodePanel'
 import { ResizeHandle } from './ide/ResizeHandle'
 import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
 
@@ -54,6 +55,7 @@ interface IdeShellProps {
   update: (updater: (prev: SyncedState) => SyncedState) => void
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onOpenVSCode: (project: Project, worktree: string) => void
 }
 
 export function IdeShell({
@@ -64,6 +66,7 @@ export function IdeShell({
   update,
   onOpenProject,
   onOpenWorktree,
+  onOpenVSCode,
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
@@ -97,9 +100,12 @@ export function IdeShell({
   function closeTab(id: string) {
     if (activeProjectId == null) return
     const projectId = activeProjectId
-    void killTerminal(projectId, id).catch(() => {
-      /* the terminal may already be gone */
-    })
+    const closing = workspaces[projectId]?.tabs.find((tab) => tab.id === id)
+    if (closing?.kind !== 'vscode') {
+      void killTerminal(projectId, id).catch(() => {
+        /* the terminal may already be gone */
+      })
+    }
     update((prev) => {
       const workspace = prev.workspaces[projectId]
       if (!workspace) return prev
@@ -119,6 +125,7 @@ export function IdeShell({
             onLogout={onLogout}
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
+            onOpenVSCode={onOpenVSCode}
             activeProjectId={activeProjectId}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
@@ -163,13 +170,21 @@ export function IdeShell({
                     tab.id === activeTabId ? '' : 'pointer-events-none invisible'
                   }`}
                 >
-                  <ProjectTerminal
-                    projectId={tab.projectId}
-                    terminalId={tab.id}
-                    worktree={tab.worktree}
-                    agentCommand={tab.agentCommand}
-                    active={tab.id === activeTabId}
-                  />
+                  {tab.kind === 'vscode' && tab.worktree ? (
+                    <VSCodePanel
+                      projectId={tab.projectId}
+                      worktree={tab.worktree}
+                      title={tab.title}
+                    />
+                  ) : (
+                    <ProjectTerminal
+                      projectId={tab.projectId}
+                      terminalId={tab.id}
+                      worktree={tab.worktree}
+                      agentCommand={tab.agentCommand}
+                      active={tab.id === activeTabId}
+                    />
+                  )}
                 </div>
               ),
             )}

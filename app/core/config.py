@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     terminal_subscriber_queue_chunks: int = 256
     terminal_session_ttl_seconds: int = 21600
 
+    vscode_enabled: bool = True
+    vscode_binary: str = "code-server"
+    vscode_bind_host: str = "127.0.0.1"
+    vscode_port_start: int = 8800
+    vscode_port_end: int = 8900
+    vscode_user_data_root: str = "~/.cache/remote-coder/vscode"
+    vscode_start_timeout_seconds: int = 30
+    vscode_session_ttl_seconds: int = 3600
+    vscode_max_sessions: int = 4
+    vscode_extra_args: str = ""
+
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":
         if self.environment != "development":
