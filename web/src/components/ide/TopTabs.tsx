@@ -1,13 +1,15 @@
 import { useTranslation } from 'react-i18next'
+import type { AgentDefinition } from '../../lib/agents'
 import type { WorkspaceTab } from '../../lib/workspaceStore'
-import { CloseIcon, CommandIcon, PlusIcon } from './icons'
+import { CloseIcon, CommandIcon } from './icons'
+import { NewTabMenu } from './NewTabMenu'
 
 interface TopTabsProps {
   tabs: WorkspaceTab[]
   activeId: string | null
   onSelect: (id: string) => void
   onClose: (id: string) => void
-  onNew: () => void
+  onNew: (agent?: AgentDefinition) => void
 }
 
 export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsProps) {
@@ -50,15 +52,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
             </div>
           )
         })}
-        <button
-          type="button"
-          aria-label={t('ide.newTerminal')}
-          title={t('ide.newTerminal')}
-          onClick={onNew}
-          className="flex w-9 shrink-0 items-center justify-center text-[#8b9099] transition hover:bg-[#222428] hover:text-white"
-        >
-          <PlusIcon />
-        </button>
+        <NewTabMenu onSelect={onNew} />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 px-3">

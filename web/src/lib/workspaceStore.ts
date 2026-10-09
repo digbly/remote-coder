@@ -1,3 +1,4 @@
+import { launchCommand, type AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
 export type TabKind = 'terminal' | 'editor'
@@ -8,6 +9,7 @@ export interface WorkspaceTab {
   kind: TabKind
   projectId?: number
   worktree?: string
+  agentCommand?: string
 }
 
 export interface ProjectWorkspace {
@@ -23,6 +25,11 @@ export interface ActiveProjectRef {
 export interface SyncedState {
   workspaces: Record<number, ProjectWorkspace>
   layout: LayoutState
+}
+
+export interface NewTerminalOptions {
+  worktree?: string
+  agent?: AgentDefinition
 }
 
 export function newTerminalId(): string {
@@ -43,7 +50,8 @@ function isTab(value: unknown): value is WorkspaceTab {
     typeof value.title === 'string' &&
     (value.kind === 'terminal' || value.kind === 'editor') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
-    (value.worktree === undefined || typeof value.worktree === 'string')
+    (value.worktree === undefined || typeof value.worktree === 'string') &&
+    (value.agentCommand === undefined || typeof value.agentCommand === 'string')
   )
 }
 
@@ -60,22 +68,31 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
   return { tabs: scoped, activeId }
 }
 
+function countByLabel(tabs: WorkspaceTab[], label: string): number {
+  return tabs.filter((tab) => tab.title === label || tab.title.startsWith(`${label} (`)).length
+}
+
 export function withNewTerminal(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
-  worktree?: string,
+  options: NewTerminalOptions = {},
 ): Record<number, ProjectWorkspace> {
+  const { agent, worktree } = options
   const tabs = workspaces[project.id]?.tabs ?? []
   const id = newTerminalId()
-  const label = worktree || project.name
-  const sameLabel = tabs.filter((tab) => tab.worktree === worktree).length
-  const title = sameLabel === 0 ? label : `${label} (${sameLabel + 1})`
+  const label = agent ? agent.label : worktree || project.name
+  const count = countByLabel(tabs, label)
+  const tab: WorkspaceTab = {
+    id,
+    title: count === 0 ? label : `${label} (${count + 1})`,
+    kind: 'terminal',
+    projectId: project.id,
+    ...(worktree ? { worktree } : {}),
+    ...(agent ? { agentCommand: launchCommand(agent) } : {}),
+  }
   return {
     ...workspaces,
-    [project.id]: {
-      tabs: [...tabs, { id, title, kind: 'terminal', projectId: project.id, worktree }],
-      activeId: id,
-    },
+    [project.id]: { tabs: [...tabs, tab], activeId: id },
   }
 }
 
