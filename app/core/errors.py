@@ -88,6 +88,14 @@ def api_error(
     )
 
 
+def not_authenticated_error() -> HTTPException:
+    return api_error(
+        ErrorCode.NOT_AUTHENTICATED,
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def _field_errors(exc: RequestValidationError) -> list[dict[str, str]]:
     return [
         {

@@ -1,18 +1,24 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import Settings, get_settings
 from app.core.db import Base, get_db
 from app.main import app
-from app.modules.auth.models import User
+from app.modules.auth import service
+from app.modules.auth.models import RefreshToken, User
 from app.modules.auth.rate_limit import limiter
-from app.modules.auth.security import hash_password
+from app.modules.auth.security import generate_refresh_token, hash_password, hash_refresh_token
 
 USERNAME = "alice"
 PASSWORD = "secret123"
 LOGIN_URL = "/api/v1/auth/login"
+REFRESH_URL = "/api/v1/auth/refresh"
 ME_URL = "/api/v1/auth/me"
 LOGOUT_URL = "/api/v1/auth/logout"
 
@@ -76,6 +82,11 @@ def test_login_success_sets_httponly_cookie(client: TestClient) -> None:
     assert "HttpOnly" in response.headers["set-cookie"]
 
 
+def test_login_success_sets_refresh_cookie(client: TestClient) -> None:
+    _login(client)
+    assert client.cookies.get("refresh_token")
+
+
 def test_login_wrong_password(client: TestClient) -> None:
     assert _login(client, password="wrong").status_code == 401
 
@@ -123,6 +134,174 @@ def test_logout_clears_session(client: TestClient) -> None:
     response = client.post(LOGOUT_URL, headers={"X-CSRF-Token": csrf})
     assert response.status_code == 204
     assert client.get(ME_URL).status_code == 401
+
+
+def _refresh(client: TestClient, csrf: str):
+    return client.post(REFRESH_URL, headers={"X-CSRF-Token": csrf})
+
+
+def test_refresh_requires_csrf(client: TestClient) -> None:
+    _login(client)
+    assert client.post(REFRESH_URL).status_code == 403
+
+
+def test_refresh_without_cookie(client: TestClient) -> None:
+    _login(client)
+    csrf = client.cookies.get("csrf_token")
+    client.cookies.delete("refresh_token")
+    assert _refresh(client, csrf).status_code == 401
+
+
+def test_refresh_rotates_token(client: TestClient) -> None:
+    _login(client)
+    csrf = client.cookies.get("csrf_token")
+    old_refresh = client.cookies.get("refresh_token")
+
+    response = _refresh(client, csrf)
+    assert response.status_code == 200
+    assert response.json()["username"] == USERNAME
+
+    new_refresh = client.cookies.get("refresh_token")
+    assert new_refresh and new_refresh != old_refresh
+    assert client.get(ME_URL).status_code == 200
+
+
+def test_refresh_reuse_revokes_all_tokens(client: TestClient) -> None:
+    _login(client)
+    csrf = client.cookies.get("csrf_token")
+    old_refresh = client.cookies.get("refresh_token")
+
+    assert _refresh(client, csrf).status_code == 200
+    new_refresh = client.cookies.get("refresh_token")
+    csrf = client.cookies.get("csrf_token")
+
+    client.cookies.set("refresh_token", old_refresh)
+    assert _refresh(client, csrf).status_code == 401
+
+    client.cookies.set("refresh_token", new_refresh)
+    csrf = client.cookies.get("csrf_token")
+    assert _refresh(client, csrf).status_code == 401
+
+
+def test_logout_revokes_refresh_token(client: TestClient) -> None:
+    _login(client)
+    csrf = client.cookies.get("csrf_token")
+    refresh_token = client.cookies.get("refresh_token")
+
+    client.post(LOGOUT_URL, headers={"X-CSRF-Token": csrf})
+
+    client.cookies.set("refresh_token", refresh_token)
+    client.cookies.set("csrf_token", "csrf")
+    assert _refresh(client, "csrf").status_code == 401
+
+
+def test_refresh_error_code(client: TestClient) -> None:
+    _login(client)
+    csrf = client.cookies.get("csrf_token")
+    client.cookies.delete("refresh_token")
+    assert _error_code(_refresh(client, csrf)) == "NOT_AUTHENTICATED"
+
+
+def test_refresh_rate_limited(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        refresh_rate_limit_attempts=2,
+        login_rate_limit_attempts=50,
+    )
+    try:
+        _login(client)
+        for _ in range(2):
+            csrf = client.cookies.get("csrf_token")
+            assert _refresh(client, csrf).status_code == 200
+
+        csrf = client.cookies.get("csrf_token")
+        blocked = _refresh(client, csrf)
+        assert blocked.status_code == 429
+        assert blocked.headers.get("Retry-After")
+        assert _error_code(blocked) == "RATE_LIMITED"
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+
+def _service_session():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+
+
+def _add_token(db, user_id: int, raw_token: str, expires_at: datetime) -> None:
+    db.add(
+        RefreshToken(
+            user_id=user_id,
+            token_hash=hash_refresh_token(raw_token),
+            expires_at=expires_at,
+        )
+    )
+
+
+def test_rotate_refresh_token_rejects_expired() -> None:
+    db = _service_session()
+    try:
+        user = User(username="expired", hashed_password=hash_password(PASSWORD))
+        db.add(user)
+        db.commit()
+
+        raw_token = generate_refresh_token()
+        _add_token(db, user.id, raw_token, datetime.now(UTC) - timedelta(seconds=1))
+        db.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            service.rotate_refresh_token(db, raw_token, Settings())
+        assert exc.value.status_code == 401
+    finally:
+        db.close()
+
+
+def test_rotate_refresh_token_rejects_inactive_user() -> None:
+    db = _service_session()
+    try:
+        user = User(
+            username="inactive2",
+            hashed_password=hash_password(PASSWORD),
+            is_active=False,
+        )
+        db.add(user)
+        db.commit()
+
+        raw_token = generate_refresh_token()
+        _add_token(db, user.id, raw_token, datetime.now(UTC) + timedelta(days=1))
+        db.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            service.rotate_refresh_token(db, raw_token, Settings())
+        assert exc.value.status_code == 403
+    finally:
+        db.close()
+
+
+def test_issue_refresh_token_prunes_only_expired() -> None:
+    db = _service_session()
+    try:
+        user = User(username="prune", hashed_password=hash_password(PASSWORD))
+        db.add(user)
+        db.commit()
+
+        expired = generate_refresh_token()
+        active = generate_refresh_token()
+        _add_token(db, user.id, expired, datetime.now(UTC) - timedelta(seconds=1))
+        _add_token(db, user.id, active, datetime.now(UTC) + timedelta(days=1))
+        db.commit()
+
+        service.issue_refresh_token(db, user, Settings())
+
+        hashes = set(db.scalars(select(RefreshToken.token_hash)).all())
+        assert hash_refresh_token(expired) not in hashes
+        assert hash_refresh_token(active) in hashes
+    finally:
+        db.close()
 
 
 def test_login_wrong_password_error_code(client: TestClient) -> None:

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { workspaceUrl } from './api'
+import { refreshSession, workspaceUrl } from './api'
 import { emptySyncedState, parseSyncedState, type SyncedState } from './workspaceStore'
 
 const SEND_DEBOUNCE_MS = 200
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
+const MAX_EXPIRED_RECONNECTS = 3
 
 function newClientId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -81,7 +82,21 @@ export function useWorkspaceSync(): WorkspaceSync {
       socket.onclose = (event) => {
         if (disposed) return
         socketRef.current = null
-        if (event.code === 4401) return // session expired: stop retrying
+        if (event.code === 4401) {
+          // Access token expired: refresh the session, then reconnect with
+          // backoff (bounded, in case refresh cannot restore the session).
+          void refreshSession().then((refreshed) => {
+            if (disposed || !refreshed) return
+            attemptsRef.current += 1
+            if (attemptsRef.current > MAX_EXPIRED_RECONNECTS) return
+            const delay = Math.min(
+              RECONNECT_BASE_MS * 2 ** (attemptsRef.current - 1),
+              RECONNECT_MAX_MS,
+            )
+            reconnectTimerRef.current = window.setTimeout(connect, delay)
+          })
+          return
+        }
         attemptsRef.current += 1
         const delay = Math.min(
           RECONNECT_BASE_MS * 2 ** (attemptsRef.current - 1),

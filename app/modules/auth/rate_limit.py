@@ -56,18 +56,47 @@ class SlidingWindowRateLimiter:
 limiter = SlidingWindowRateLimiter()
 
 
-def login_rate_limit(
-    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+def _enforce_limit(
+    request: Request,
+    settings: Settings,
+    *,
+    key_prefix: str,
+    limit: int,
+    window_seconds: int,
 ) -> None:
     client = request.client.host if request.client else "unknown"
     allowed = limiter.allow(
-        key=f"login:{client}",
-        limit=settings.login_rate_limit_attempts,
-        window_seconds=settings.login_rate_limit_window_seconds,
+        key=f"{key_prefix}:{client}",
+        limit=limit,
+        window_seconds=window_seconds,
     )
     if not allowed:
         raise api_error(
             ErrorCode.RATE_LIMITED,
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            headers={"Retry-After": str(settings.login_rate_limit_window_seconds)},
+            headers={"Retry-After": str(window_seconds)},
         )
+
+
+def login_rate_limit(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> None:
+    _enforce_limit(
+        request,
+        settings,
+        key_prefix="login",
+        limit=settings.login_rate_limit_attempts,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    )
+
+
+def refresh_rate_limit(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> None:
+    _enforce_limit(
+        request,
+        settings,
+        key_prefix="refresh",
+        limit=settings.refresh_rate_limit_attempts,
+        window_seconds=settings.refresh_rate_limit_window_seconds,
+    )

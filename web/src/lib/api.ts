@@ -104,9 +104,45 @@ export interface GitBranches {
   branches: string[]
 }
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const NO_REFRESH_PATHS = new Set(['/auth/login', '/auth/refresh'])
+
 function readCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
   return match ? decodeURIComponent(match[1]) : null
+}
+
+function buildHeaders(init: HeadersInit | undefined, method: string): Headers {
+  const headers = new Headers(init)
+  headers.set('Accept-Language', i18n.resolvedLanguage ?? 'en')
+  if (!SAFE_METHODS.has(method.toUpperCase())) {
+    headers.set(CSRF_HEADER, readCookie(CSRF_COOKIE) ?? '')
+  }
+  return headers
+}
+
+let refreshPromise: Promise<boolean> | null = null
+
+async function rotateSession(): Promise<boolean> {
+  const run = () =>
+    fetch(`${API_PREFIX}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildHeaders(undefined, 'POST'),
+    })
+      .then((response) => response.ok)
+      .catch(() => false)
+
+  // Serialize across tabs so a concurrent refresh sends the rotated cookie
+  // instead of replaying the previous one (which the server treats as theft).
+  return navigator.locks ? navigator.locks.request('auth-refresh', run) : run()
+}
+
+export function refreshSession(): Promise<boolean> {
+  refreshPromise ??= rotateSession().finally(() => {
+    refreshPromise = null
+  })
+  return refreshPromise
 }
 
 function isKnownErrorCode(code: string): code is keyof typeof ERROR_CODE_KEYS {
@@ -129,9 +165,20 @@ function extractError(data: unknown): string | null {
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers)
-  headers.set('Accept-Language', i18n.resolvedLanguage ?? 'en')
-  return fetch(`${API_PREFIX}${path}`, { credentials: 'include', ...init, headers })
+  const method = init.method ?? 'GET'
+  const send = () =>
+    fetch(`${API_PREFIX}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: buildHeaders(init.headers, method),
+    })
+
+  const response = await send()
+  if (response.status === 401 && !NO_REFRESH_PATHS.has(path) && (await refreshSession())) {
+    return send()
+  }
+
+  return response
 }
 
 export async function login(username: string, password: string): Promise<User> {
@@ -159,10 +206,7 @@ export async function fetchMe(): Promise<User> {
 }
 
 export async function logout(): Promise<void> {
-  await request('/auth/logout', {
-    method: 'POST',
-    headers: { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' },
-  })
+  await request('/auth/logout', { method: 'POST' })
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -177,10 +221,7 @@ export async function fetchProjects(): Promise<Project[]> {
 async function createProject(path: string, payload: unknown): Promise<Project> {
   const response = await request(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!response.ok) {
@@ -220,10 +261,7 @@ export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const response = await request(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -302,6 +340,5 @@ export function workspaceUrl(): string {
 export async function killTerminal(projectId: number, terminalId: string): Promise<void> {
   await request(`/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`, {
     method: 'DELETE',
-    headers: { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' },
   })
 }

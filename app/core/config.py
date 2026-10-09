@@ -24,12 +24,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./database/database.sqlite"
     secret_key: str = DEFAULT_SECRET_KEY
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 1440
+    refresh_token_expire_days: int = 30
 
     admin_username: str = "admin"
     admin_password: str = DEFAULT_ADMIN_PASSWORD
 
     access_token_cookie_name: str = "access_token"
+    refresh_token_cookie_name: str = "refresh_token"
     csrf_cookie_name: str = "csrf_token"
     csrf_header_name: str = "X-CSRF-Token"
     cookie_secure: bool = False
@@ -37,6 +39,8 @@ class Settings(BaseSettings):
 
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 60
+    refresh_rate_limit_attempts: int = 30
+    refresh_rate_limit_window_seconds: int = 60
 
     projects_root: str = "~/projects"
     github_clone_timeout_seconds: int = 120

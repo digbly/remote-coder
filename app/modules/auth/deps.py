@@ -5,7 +5,7 @@ from fastapi import Depends, Request, status
 from sqlalchemy import select
 
 from app.core.deps import DbDep, SettingsDep
-from app.core.errors import ErrorCode, api_error
+from app.core.errors import ErrorCode, api_error, not_authenticated_error
 from app.modules.auth.models import User
 from app.modules.auth.security import csrf_tokens_match, decode_access_token
 
@@ -13,11 +13,7 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 def get_current_user(request: Request, db: DbDep, settings: SettingsDep) -> User:
-    unauthorized = api_error(
-        ErrorCode.NOT_AUTHENTICATED,
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    unauthorized = not_authenticated_error()
 
     token = request.cookies.get(settings.access_token_cookie_name)
     if not token:
