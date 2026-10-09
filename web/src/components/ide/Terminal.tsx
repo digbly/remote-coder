@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
@@ -11,7 +11,7 @@ interface TerminalMessage {
   rows?: number
 }
 
-export function ProjectTerminal({
+export const ProjectTerminal = memo(function ProjectTerminal({
   projectId,
   terminalId,
   active,
@@ -118,4 +118,4 @@ export function ProjectTerminal({
   }, [active])
 
   return <div ref={containerRef} className="h-full w-full bg-[#0f1012] px-2 py-1" />
-}
+})

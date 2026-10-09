@@ -224,3 +224,21 @@ export function RefreshIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function PanelLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+    </Svg>
+  )
+}
+
+export function PanelRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M15 3v18" />
+    </Svg>
+  )
+}

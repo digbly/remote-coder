@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { killTerminal, type Project, type User } from '../lib/api'
+import {
+  LEFT_MAX,
+  LEFT_MIN,
+  RIGHT_MAX,
+  RIGHT_MIN,
+  loadLayout,
+  saveLayout,
+  type LayoutState,
+} from '../lib/layoutStore'
 import {
   loadPersistedWorkspaces,
   newTerminalId,
@@ -11,6 +21,8 @@ import { Sidebar } from './ide/Sidebar'
 import { SourceControlPanel } from './ide/SourceControlPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { TopTabs } from './ide/TopTabs'
+import { ResizeHandle } from './ide/ResizeHandle'
+import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
 
 function withNewTerminal(
   workspaces: Record<number, ProjectWorkspace>,
@@ -28,7 +40,40 @@ function withNewTerminal(
   }
 }
 
+function SidebarRail({
+  side,
+  label,
+  onClick,
+}: {
+  side: 'left' | 'right'
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <div
+      className={`flex w-9 shrink-0 flex-col items-center bg-[#1b1c1f] ${
+        side === 'left' ? 'border-r' : 'border-l'
+      } border-[#2c2e33]`}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onClick={onClick}
+        className="mt-3 rounded-md p-1.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+      >
+        {side === 'left' ? (
+          <PanelLeftIcon width={16} height={16} />
+        ) : (
+          <PanelRightIcon width={16} height={16} />
+        )}
+      </button>
+    </div>
+  )
+}
+
 export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const { t } = useTranslation()
   const [restored] = useState(loadPersistedWorkspaces)
   const [workspaces, setWorkspaces] = useState<Record<number, ProjectWorkspace>>(
     restored.workspaces,
@@ -36,10 +81,20 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
   const [activeProject, setActiveProject] = useState<ActiveProjectRef | null>(
     restored.activeProject,
   )
+  const [layout, setLayout] = useState<LayoutState>(loadLayout)
 
   useEffect(() => {
     savePersistedWorkspaces({ activeProject, workspaces })
   }, [activeProject, workspaces])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveLayout(layout), 150)
+    return () => window.clearTimeout(timer)
+  }, [layout])
+
+  function updateLayout(patch: Partial<LayoutState>) {
+    setLayout((prev) => ({ ...prev, ...patch }))
+  }
 
   const activeProjectId = activeProject?.id ?? null
   const activeWorkspace = activeProjectId != null ? workspaces[activeProjectId] : undefined
@@ -89,12 +144,32 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0f1012] text-[#e6e8ec]">
-      <Sidebar
-        user={user}
-        onLogout={onLogout}
-        onOpenProject={openProject}
-        activeProjectId={activeProjectId}
-      />
+      {layout.leftOpen ? (
+        <>
+          <Sidebar
+            user={user}
+            onLogout={onLogout}
+            onOpenProject={openProject}
+            activeProjectId={activeProjectId}
+            width={layout.leftWidth}
+            onClose={() => updateLayout({ leftOpen: false })}
+          />
+          <ResizeHandle
+            side="left"
+            width={layout.leftWidth}
+            min={LEFT_MIN}
+            max={LEFT_MAX}
+            onResize={(leftWidth) => updateLayout({ leftWidth })}
+            label={t('ide.resizeSidebar')}
+          />
+        </>
+      ) : (
+        <SidebarRail
+          side="left"
+          label={t('ide.showSidebar')}
+          onClick={() => updateLayout({ leftOpen: true })}
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopTabs
           tabs={activeTabs}
@@ -122,9 +197,31 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
               ),
             )}
           </div>
-          {activeProjectId != null && (
-            <SourceControlPanel key={activeProjectId} projectId={activeProjectId} />
-          )}
+          {activeProjectId != null &&
+            (layout.rightOpen ? (
+              <>
+                <ResizeHandle
+                  side="right"
+                  width={layout.rightWidth}
+                  min={RIGHT_MIN}
+                  max={RIGHT_MAX}
+                  onResize={(rightWidth) => updateLayout({ rightWidth })}
+                  label={t('ide.resizePanel')}
+                />
+                <SourceControlPanel
+                  key={activeProjectId}
+                  projectId={activeProjectId}
+                  width={layout.rightWidth}
+                  onClose={() => updateLayout({ rightOpen: false })}
+                />
+              </>
+            ) : (
+              <SidebarRail
+                side="right"
+                label={t('ide.showPanel')}
+                onClick={() => updateLayout({ rightOpen: true })}
+              />
+            ))}
         </div>
       </div>
     </div>

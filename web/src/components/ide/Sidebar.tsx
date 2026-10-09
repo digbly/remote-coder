@@ -6,6 +6,7 @@ import {
   AutomationsIcon,
   BellIcon,
   BranchIcon,
+  CloseIcon,
   CollapseIcon,
   FolderPlusIcon,
   HelpIcon,
@@ -61,9 +62,18 @@ interface SidebarProps {
   onLogout: () => void
   onOpenProject: (project: Project) => void
   activeProjectId: number | null
+  width: number
+  onClose: () => void
 }
 
-export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: SidebarProps) {
+export function Sidebar({
+  user,
+  onLogout,
+  onOpenProject,
+  activeProjectId,
+  width,
+  onClose,
+}: SidebarProps) {
   const { t } = useTranslation()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [error, setError] = useState(false)
@@ -91,15 +101,23 @@ export function Sidebar({ user, onLogout, onOpenProject, activeProjectId }: Side
   }
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-[#2c2e33] bg-[#1b1c1f] text-sm">
+    <aside
+      style={{ width }}
+      className="flex shrink-0 flex-col bg-[#1b1c1f] text-sm"
+    >
       <div className="flex items-center gap-2 px-3.5 py-3.5">
         <span className="flex gap-1.5">
           <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
           <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
           <span className="h-3 w-3 rounded-full bg-[#28c840]" />
         </span>
-        <span className="ml-1 text-[13px] font-semibold tracking-wide text-white">
+        <span className="ml-1 min-w-0 truncate text-[13px] font-semibold tracking-wide text-white">
           {t('common.appName')}
+        </span>
+        <span className="ml-auto shrink-0">
+          <IconButton label={t('ide.hideSidebar')} onClick={onClose}>
+            <CloseIcon width={14} height={14} />
+          </IconButton>
         </span>
       </div>
 
