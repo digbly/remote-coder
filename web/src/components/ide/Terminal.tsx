@@ -15,11 +15,13 @@ export const ProjectTerminal = memo(function ProjectTerminal({
   projectId,
   terminalId,
   worktree,
+  agentCommand,
   active,
 }: {
   projectId: number
   terminalId: string
   worktree?: string
+  agentCommand?: string
   active: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -45,7 +47,9 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     terminal.open(container)
     fitNow()
 
-    const socket = new WebSocket(projectTerminalUrl(projectId, terminalId, worktree))
+    const socket = new WebSocket(
+      projectTerminalUrl(projectId, terminalId, { worktree, agent: agentCommand }),
+    )
     socket.binaryType = 'arraybuffer'
 
     let disposed = false
@@ -108,7 +112,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       terminal.dispose()
       fitRef.current = null
     }
-  }, [projectId, terminalId, worktree])
+  }, [projectId, terminalId, worktree, agentCommand])
 
   useEffect(() => {
     if (!active) return

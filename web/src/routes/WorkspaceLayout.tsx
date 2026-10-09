@@ -66,7 +66,7 @@ export function WorkspaceLayout() {
 
   function openWorktree(project: Project, worktree: string) {
     const ref = activate(project)
-    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, ref, worktree) }))
+    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, ref, { worktree }) }))
   }
 
   return (

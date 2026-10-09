@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { killTerminal, type Project, type User } from '../lib/api'
+import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
   withNewTerminal,
@@ -77,8 +78,8 @@ export function IdeShell({
   const activeTabId = activeWorkspace?.activeId ?? null
   const allTabs = Object.values(workspaces).flatMap((workspace) => workspace.tabs)
 
-  function openTerminal(project: ActiveProjectRef) {
-    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project) }))
+  function openTerminal(project: ActiveProjectRef, agent?: AgentDefinition) {
+    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
   }
 
   function selectTab(id: string) {
@@ -144,7 +145,7 @@ export function IdeShell({
           activeId={activeTabId}
           onSelect={selectTab}
           onClose={closeTab}
-          onNew={() => activeProject && openTerminal(activeProject)}
+          onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1">
@@ -166,6 +167,7 @@ export function IdeShell({
                     projectId={tab.projectId}
                     terminalId={tab.id}
                     worktree={tab.worktree}
+                    agentCommand={tab.agentCommand}
                     active={tab.id === activeTabId}
                   />
                 </div>

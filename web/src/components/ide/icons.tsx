@@ -207,6 +207,15 @@ export function UndoIcon(props: IconProps) {
   )
 }
 
+export function TerminalIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 9 3 3-3 3M13 15h4" />
+    </Svg>
+  )
+}
+
 export function CommandIcon(props: IconProps) {
   return (
     <Svg {...props}>

@@ -102,6 +102,45 @@ def test_terminal_runs_shell_in_project_directory(client: TestClient, projects_r
     assert "terminal-repo" in output
 
 
+def test_terminal_runs_agent_command_on_new_session(
+    client: TestClient, projects_root: Path
+) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=pwd"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        output = _read_until(websocket, "terminal-repo")
+
+    assert "terminal-repo" in output
+
+
+def test_terminal_runs_agent_command_with_args(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=echo%20AGENT_ARGS=1"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        output = _read_until(websocket, "AGENT_ARGS=1")
+
+    assert "AGENT_ARGS=1" in output
+
+
+def test_terminal_ignores_multiline_agent_command(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=bad%0Acommand"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        websocket.send_text(json.dumps({"type": "input", "data": "echo MANUAL=1\n"}))
+        output = _read_until(websocket, "MANUAL=1")
+
+    assert "MANUAL=1" in output
+
+
 def test_terminal_interrupts_foreground_process(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
