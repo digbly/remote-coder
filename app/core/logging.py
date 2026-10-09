@@ -8,9 +8,12 @@ from app.core.config import Settings
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s %(message)s"
 DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
-# Uvicorn installs its own handlers and disables propagation; clear them so its
-# records flow through the root handler and every log line shares one format.
-_UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _root_level(log_level: str) -> str:
+    """Root must stay verbose enough for the error handler's WARNING threshold."""
+    return min(log_level, "WARNING", key=_LOG_LEVELS.index)
 
 
 class DailyFileHandler(FileHandler):
@@ -69,19 +72,37 @@ def configure_logging(settings: Settings) -> None:
                     "class": "logging.StreamHandler",
                     "formatter": "default",
                     "stream": "ext://sys.stdout",
+                    "level": settings.log_level,
                 },
-                "file": {
+                "access": {
                     "()": "app.core.logging.DailyFileHandler",
                     "formatter": "default",
                     "directory": settings.log_dir,
+                    "prefix": "access",
+                    "level": "INFO",
+                },
+                "error": {
+                    "()": "app.core.logging.DailyFileHandler",
+                    "formatter": "default",
+                    "directory": settings.log_dir,
+                    "prefix": "error",
+                    "level": "WARNING",
                 },
             },
             "loggers": {
-                name: {"handlers": [], "propagate": True} for name in _UVICORN_LOGGERS
+                # Uvicorn installs its own handlers and disables propagation;
+                # clear them so its records flow through this config instead.
+                "uvicorn": {"handlers": [], "propagate": True},
+                "uvicorn.error": {"handlers": [], "propagate": True},
+                "uvicorn.access": {
+                    "handlers": ["access"],
+                    "level": "INFO",
+                    "propagate": True,
+                },
             },
             "root": {
-                "level": settings.log_level,
-                "handlers": ["console", "file"],
+                "level": _root_level(settings.log_level),
+                "handlers": ["console", "error"],
             },
         }
     )
