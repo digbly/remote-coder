@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { refreshSession, workspaceUrl } from './api'
 import { emptySyncedState, parseSyncedState, type SyncedState } from './workspaceStore'
 
@@ -118,19 +118,22 @@ export function useWorkspaceSync(): WorkspaceSync {
     }
   }, [clientId])
 
-  function update(updater: (prev: SyncedState) => SyncedState) {
-    const next = updater(stateRef.current)
-    stateRef.current = next
-    setState(next)
-    if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current)
-    sendTimerRef.current = window.setTimeout(() => {
-      sendTimerRef.current = null
-      const socket = socketRef.current
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'update', state: next, origin: clientId }))
-      }
-    }, SEND_DEBOUNCE_MS)
-  }
+  const update = useCallback(
+    (updater: (prev: SyncedState) => SyncedState) => {
+      const next = updater(stateRef.current)
+      stateRef.current = next
+      setState(next)
+      if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current)
+      sendTimerRef.current = window.setTimeout(() => {
+        sendTimerRef.current = null
+        const socket = socketRef.current
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'update', state: next, origin: clientId }))
+        }
+      }, SEND_DEBOUNCE_MS)
+    },
+    [clientId],
+  )
 
   return { state, update }
 }

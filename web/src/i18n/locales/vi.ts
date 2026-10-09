@@ -69,6 +69,8 @@ const vi = {
     memory: 'Bộ nhớ',
     workspaceConflict: 'Xung đột workspace',
     signOut: 'Đăng xuất',
+    noProjectSelected: 'Chưa mở dự án nào',
+    openProjectHint: 'Chọn một dự án ở thanh bên để bắt đầu',
     settings: 'Cài đặt',
     help: 'Trợ giúp',
     sourceControl: 'Quản lý mã nguồn',

@@ -20,7 +20,6 @@ export interface ActiveProjectRef {
 }
 
 export interface SyncedState {
-  activeProject: ActiveProjectRef | null
   workspaces: Record<number, ProjectWorkspace>
   layout: LayoutState
 }
@@ -34,15 +33,6 @@ export function newTerminalId(): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isProjectRef(value: unknown): value is ActiveProjectRef {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'number' &&
-    Number.isInteger(value.id) &&
-    typeof value.name === 'string'
-  )
 }
 
 function isTab(value: unknown): value is WorkspaceTab {
@@ -68,8 +58,33 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
   return { tabs: scoped, activeId }
 }
 
+export function withNewTerminal(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const id = newTerminalId()
+  const title = tabs.length === 0 ? project.name : `${project.name} (${tabs.length + 1})`
+  return {
+    ...workspaces,
+    [project.id]: {
+      tabs: [...tabs, { id, title, kind: 'terminal', projectId: project.id }],
+      activeId: id,
+    },
+  }
+}
+
+export function ensureWorkspace(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+): Record<number, ProjectWorkspace> {
+  const existing = workspaces[project.id]
+  if (existing && existing.tabs.length > 0) return workspaces
+  return withNewTerminal(workspaces, project)
+}
+
 export function emptySyncedState(): SyncedState {
-  return { activeProject: null, workspaces: {}, layout: normalizeLayout(undefined) }
+  return { workspaces: {}, layout: normalizeLayout(undefined) }
 }
 
 export function parseSyncedState(value: unknown): SyncedState | null {
@@ -85,7 +100,6 @@ export function parseSyncedState(value: unknown): SyncedState | null {
   }
 
   return {
-    activeProject: isProjectRef(value.activeProject) ? value.activeProject : null,
     workspaces,
     layout: normalizeLayout(value.layout),
   }
