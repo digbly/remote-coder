@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_dir: str = "storage/logs"
 
     database_url: str = "sqlite:///./database/database.sqlite"
     secret_key: str = DEFAULT_SECRET_KEY
