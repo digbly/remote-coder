@@ -135,7 +135,7 @@ async def _pump_output(queue: asyncio.Queue[bytes | None], websocket: WebSocket)
     except (WebSocketDisconnect, RuntimeError):
         return
     finally:
-        with suppress(RuntimeError, ClosedResourceError):
+        with suppress(RuntimeError, ClosedResourceError, WebSocketDisconnect):
             await websocket.close()
 
 
