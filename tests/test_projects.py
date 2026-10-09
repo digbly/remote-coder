@@ -360,3 +360,44 @@ def test_openapi_documents_projects_paths(client: TestClient) -> None:
     for status_code in ("400", "401", "403", "409", "422"):
         schema = responses[status_code]["content"]["application/json"]["schema"]
         assert schema["$ref"].endswith("/ErrorResponse")
+
+
+def test_project_files_lists_tree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "main.py").write_text("x")
+    (repo / "README.md").write_text("x")
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text("x")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/files")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["truncated"] is False
+    assert [entry["name"] for entry in body["entries"]] == ["src", "README.md"]
+    directory = body["entries"][0]
+    assert directory["type"] == "directory"
+    assert directory["path"] == "src"
+    assert [child["name"] for child in directory["children"]] == ["main.py"]
+
+
+def test_project_files_requires_auth(client: TestClient) -> None:
+    assert client.get(f"{PROJECTS_URL}/1/files").status_code == 401
+
+
+def test_project_files_scoped_to_owner(client: TestClient, projects_root) -> None:
+    _login(client)
+    folder = projects_root / "repo"
+    folder.mkdir()
+    (folder / "a.txt").write_text("x")
+    project_id = _register_local(client, folder)["id"]
+
+    client.cookies.clear()
+    _login(client, username=OTHER_USERNAME)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/files")
+    assert response.status_code == 404
+    assert _error_code(response) == "PROJECT_NOT_FOUND"

@@ -7,7 +7,7 @@ import {
   type SyncedState,
 } from '../lib/workspaceStore'
 import { Sidebar } from './ide/Sidebar'
-import { SourceControlPanel } from './ide/SourceControlPanel'
+import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { TopTabs } from './ide/TopTabs'
 import { ResizeHandle } from './ide/ResizeHandle'
@@ -183,7 +183,7 @@ export function IdeShell({
                   onResize={(rightWidth) => updateLayout({ rightWidth })}
                   label={t('ide.resizePanel')}
                 />
-                <SourceControlPanel
+                <RightPanel
                   key={activeProjectId}
                   projectId={activeProjectId}
                   width={layout.rightWidth}

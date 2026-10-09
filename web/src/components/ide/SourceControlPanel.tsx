@@ -21,7 +21,6 @@ import {
 import {
   BranchIcon,
   ChevronDownIcon,
-  CloseIcon,
   CloudDownloadIcon,
   CloudUploadIcon,
   CommitIcon,
@@ -161,11 +160,9 @@ type BusyAction = 'stage' | 'commit' | 'pullRequest' | 'discard' | 'push' | 'pul
 
 interface SourceControlPanelProps {
   projectId: number
-  width: number
-  onClose: () => void
 }
 
-export function SourceControlPanel({ projectId, width, onClose }: SourceControlPanelProps) {
+export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -385,11 +382,7 @@ export function SourceControlPanel({ projectId, width, onClose }: SourceControlP
   const disabled = busy !== null
 
   return (
-    <aside
-      aria-label={t('ide.sourceControl')}
-      style={{ width }}
-      className="flex shrink-0 flex-col bg-[#1b1c1f] text-sm"
-    >
+    <div className="flex min-h-0 flex-1 flex-col text-sm">
       <div className="flex items-center gap-1.5 px-3.5 py-3">
         <button
           type="button"
@@ -437,15 +430,6 @@ export function SourceControlPanel({ projectId, width, onClose }: SourceControlP
             className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
           >
             <RefreshIcon width={14} height={14} />
-          </button>
-          <button
-            type="button"
-            aria-label={t('ide.hidePanel')}
-            title={t('ide.hidePanel')}
-            onClick={onClose}
-            className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
-          >
-            <CloseIcon width={14} height={14} />
           </button>
         </span>
       </div>
@@ -657,6 +641,6 @@ export function SourceControlPanel({ projectId, width, onClose }: SourceControlP
           )}
         </div>
       )}
-    </aside>
+    </div>
   )
 }

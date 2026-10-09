@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
@@ -53,3 +53,15 @@ class DirectoryListing(BaseModel):
     path: str
     parent: str | None
     directories: list[DirectoryEntry]
+
+
+class FileNode(BaseModel):
+    name: str
+    path: str
+    type: Literal["file", "directory"]
+    children: list["FileNode"] = Field(default_factory=list)
+
+
+class FileTreeRead(BaseModel):
+    entries: list[FileNode] = Field(default_factory=list)
+    truncated: bool = False

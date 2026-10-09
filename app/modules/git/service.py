@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -15,6 +16,8 @@ from app.modules.git.schemas import (
     GitCommitRead,
     GitPullRequestCreate,
     GitPullRequestRead,
+    GitPullRequestStatusRead,
+    GitPullRequestSummary,
     GitStatusRead,
     GitWorktreeRead,
 )
@@ -413,6 +416,59 @@ def create_pull_request(
     return GitPullRequestRead(url=url, branch=branch, base=base)
 
 
+def get_current_pull_request(
+    db: Session, owner: User, project_id: int, settings: Settings
+) -> GitPullRequestStatusRead:
+    """Return the pull request for the current branch, or ``None`` when absent.
+
+    Every failure (no GitHub remote, no ``gh`` CLI, unauthenticated, no open
+    pull request) resolves to an empty result so the UI can show an empty state
+    instead of an error.
+    """
+    path = _project_repository(db, owner, project_id, settings)
+    if _github_remote(path, settings) is None:
+        return GitPullRequestStatusRead()
+
+    if not _current_branch(path, settings):
+        return GitPullRequestStatusRead()
+
+    result = _try_run_gh(
+        path,
+        [
+            "pr",
+            "view",
+            "--json",
+            "number,title,url,state,isDraft,headRefName,baseRefName",
+        ],
+        timeout=settings.github_pr_timeout_seconds,
+    )
+    if result is None or result.returncode != 0:
+        return GitPullRequestStatusRead()
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return GitPullRequestStatusRead()
+    if not isinstance(data, dict) or "number" not in data:
+        return GitPullRequestStatusRead()
+    try:
+        number = int(data["number"])
+    except (TypeError, ValueError):
+        return GitPullRequestStatusRead()
+
+    return GitPullRequestStatusRead(
+        pull_request=GitPullRequestSummary(
+            number=number,
+            title=str(data.get("title", "")),
+            url=str(data.get("url", "")),
+            state=str(data.get("state", "")),
+            is_draft=bool(data.get("isDraft", False)),
+            head=data.get("headRefName") or None,
+            base=data.get("baseRefName") or None,
+        )
+    )
+
+
 def parse_status(output: str) -> GitStatusRead:
     """Parse ``git status --porcelain=v2 --branch -z`` output.
 
@@ -617,6 +673,24 @@ def _run_gh(path: Path, args: list[str], *, timeout: int) -> subprocess.Complete
         raise api_error(
             ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         ) from exc
+
+
+def _try_run_gh(
+    path: Path, args: list[str], *, timeout: int
+) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["gh", *args],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            env=_git_env(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
 
 
 def _raise_status_error(result: subprocess.CompletedProcess[str]) -> None:

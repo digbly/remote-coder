@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -645,3 +646,82 @@ def test_create_branch_rejects_invalid_name(client: TestClient, projects_root) -
     )
     assert response.status_code == 400
     assert _error_code(response) == "GIT_BRANCH_INVALID"
+
+
+def test_current_pull_request_without_remote(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request")
+
+    assert response.status_code == 200
+    assert response.json() == {"pull_request": None}
+
+
+def test_current_pull_request_returns_summary(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    project_id = _register_local(client, repo)["id"]
+
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if command[0] == "gh":
+            payload = {
+                "number": 7,
+                "title": "Add feature",
+                "url": "https://github.com/example/myrepo/pull/7",
+                "state": "OPEN",
+                "isDraft": False,
+                "headRefName": "feature/x",
+                "baseRefName": "main",
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "pull_request": {
+            "number": 7,
+            "title": "Add feature",
+            "url": "https://github.com/example/myrepo/pull/7",
+            "state": "OPEN",
+            "is_draft": False,
+            "head": "feature/x",
+            "base": "main",
+        }
+    }
+
+
+def test_current_pull_request_absent_when_gh_fails(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    project_id = _register_local(client, repo)["id"]
+
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if command[0] == "gh":
+            return subprocess.CompletedProcess(command, 1, "", "no pull requests found")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request")
+
+    assert response.status_code == 200
+    assert response.json() == {"pull_request": None}

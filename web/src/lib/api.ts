@@ -99,6 +99,32 @@ export interface GitPullRequestResult {
   base: string
 }
 
+export interface GitPullRequestSummary {
+  number: number
+  title: string
+  url: string
+  state: string
+  is_draft: boolean
+  head: string | null
+  base: string | null
+}
+
+export interface GitPullRequestStatus {
+  pull_request: GitPullRequestSummary | null
+}
+
+export interface FileNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  children: FileNode[]
+}
+
+export interface FileTree {
+  entries: FileNode[]
+  truncated: boolean
+}
+
 export interface GitBranches {
   current: string | null
   branches: string[]
@@ -342,6 +368,24 @@ export function createPullRequest(
   branch: string,
 ): Promise<GitPullRequestResult> {
   return postJson(`/projects/${projectId}/git/pull-request`, { branch })
+}
+
+export async function fetchCurrentPullRequest(projectId: number): Promise<GitPullRequestStatus> {
+  const response = await request(`/projects/${projectId}/git/pull-request`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as GitPullRequestStatus
+}
+
+export async function fetchFileTree(projectId: number): Promise<FileTree> {
+  const response = await request(`/projects/${projectId}/files`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as FileTree
 }
 
 export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {

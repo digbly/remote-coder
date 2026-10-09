@@ -12,6 +12,7 @@ from app.modules.git.schemas import (
     GitPathsUpdate,
     GitPullRequestCreate,
     GitPullRequestRead,
+    GitPullRequestStatusRead,
     GitStatusRead,
     GitWorktreeRead,
 )
@@ -231,3 +232,17 @@ def create_pull_request(
     _csrf: CsrfDep,
 ) -> GitPullRequestRead:
     return service.create_pull_request(db, current_user, project_id, payload, settings)
+
+
+@router.get(
+    "/{project_id}/git/pull-request",
+    response_model=GitPullRequestStatusRead,
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+def read_current_pull_request(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+) -> GitPullRequestStatusRead:
+    return service.get_current_pull_request(db, current_user, project_id, settings)

@@ -17,12 +17,17 @@ from app.modules.projects.models import Project, ProjectSource
 from app.modules.projects.schemas import (
     DirectoryEntry,
     DirectoryListing,
+    FileNode,
+    FileTreeRead,
     GithubProjectCreate,
     LocalProjectCreate,
 )
 
 DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
+MAX_TREE_DEPTH = 12
+MAX_TREE_ENTRIES = 5000
+_EXCLUDED_DIRECTORIES = {".git"}
 
 _GITHUB_URL_RE = re.compile(
     r"^(?:https?://|git@)?(?:www\.)?github\.com[/:]"
@@ -72,6 +77,22 @@ def browse_directories(path: str | None) -> DirectoryListing:
         parent=parent,
         directories=directories,
     )
+
+
+def list_files(db: Session, owner: User, project_id: int) -> FileTreeRead:
+    """Return the project's files as a read-only tree.
+
+    Symbolic links are reported as files (never traversed) and the ``.git``
+    directory is hidden, so the walk cannot loop or escape the project root.
+    """
+    project = get_project(db, owner, project_id)
+    root = Path(project.path)
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    state = _TreeLimits()
+    entries = _build_tree(root, root, depth=0, state=state)
+    return FileTreeRead(entries=entries, truncated=state.truncated)
 
 
 def get_project(db: Session, owner: User, project_id: int) -> Project:
@@ -251,3 +272,48 @@ def _conflict_code(exc: IntegrityError) -> ErrorCode:
     if "path" in message:
         return ErrorCode.PROJECT_PATH_EXISTS
     return ErrorCode.PROJECT_NAME_EXISTS
+
+
+class _TreeLimits:
+    def __init__(self) -> None:
+        self.count = 0
+        self.truncated = False
+
+
+def _build_tree(root: Path, directory: Path, *, depth: int, state: _TreeLimits) -> list[FileNode]:
+    if depth >= MAX_TREE_DEPTH:
+        state.truncated = True
+        return []
+
+    try:
+        with os.scandir(directory) as iterator:
+            children = sorted(
+                iterator,
+                key=lambda entry: (not entry.is_dir(follow_symlinks=False), entry.name.lower()),
+            )
+    except OSError:
+        return []
+
+    nodes: list[FileNode] = []
+    for entry in children:
+        if state.count >= MAX_TREE_ENTRIES:
+            state.truncated = True
+            break
+        if entry.name in _EXCLUDED_DIRECTORIES:
+            continue
+
+        state.count += 1
+        relative = Path(entry.path).relative_to(root).as_posix()
+        if entry.is_dir(follow_symlinks=False):
+            nodes.append(
+                FileNode(
+                    name=entry.name,
+                    path=relative,
+                    type="directory",
+                    children=_build_tree(root, Path(entry.path), depth=depth + 1, state=state),
+                )
+            )
+        else:
+            nodes.append(FileNode(name=entry.name, path=relative, type="file"))
+
+    return nodes

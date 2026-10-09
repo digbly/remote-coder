@@ -7,6 +7,7 @@ from app.modules.projects import service
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     DirectoryListing,
+    FileTreeRead,
     GithubProjectCreate,
     LocalProjectCreate,
     ProjectRead,
@@ -75,6 +76,15 @@ def browse_directories(
 )
 def read_project(project_id: int, current_user: CurrentUser, db: DbDep) -> Project:
     return service.get_project(db, current_user, project_id)
+
+
+@router.get(
+    "/{project_id}/files",
+    response_model=FileTreeRead,
+    responses=error_responses(400, 401, 403, 404),
+)
+def list_project_files(project_id: int, current_user: CurrentUser, db: DbDep) -> FileTreeRead:
+    return service.list_files(db, current_user, project_id)
 
 
 @router.delete(

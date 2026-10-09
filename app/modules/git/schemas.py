@@ -41,6 +41,20 @@ class GitPullRequestRead(BaseModel):
     base: str
 
 
+class GitPullRequestSummary(BaseModel):
+    number: int
+    title: str
+    url: str
+    state: str
+    is_draft: bool = False
+    head: str | None = None
+    base: str | None = None
+
+
+class GitPullRequestStatusRead(BaseModel):
+    pull_request: GitPullRequestSummary | None = None
+
+
 class GitBranchCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
