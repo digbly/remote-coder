@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
 from app.modules.auth.deps import CurrentUser
-from app.modules.auth.websocket import same_origin, websocket_user
+from app.modules.auth.websocket import reject, same_origin, websocket_user
 from app.modules.workspace import service
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
@@ -33,12 +33,12 @@ def get_workspace(current_user: CurrentUser, db: DbDep) -> WorkspaceState:
 @router.websocket("/ws")
 async def sync_workspace(websocket: WebSocket, db: DbDep, settings: SettingsDep) -> None:
     if not same_origin(websocket):
-        await websocket.close(code=WS_FORBIDDEN)
+        await reject(websocket, WS_FORBIDDEN)
         return
 
     user = websocket_user(websocket, db, settings)
     if user is None:
-        await websocket.close(code=WS_UNAUTHORIZED)
+        await reject(websocket, WS_UNAUTHORIZED)
         return
 
     user_id = user.id

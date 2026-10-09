@@ -311,11 +311,6 @@ export function Sidebar({
       className="flex shrink-0 flex-col bg-[#1b1c1f] text-sm"
     >
       <div className="flex items-center gap-2 px-3.5 py-3.5">
-        <span className="flex gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-          <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-          <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-        </span>
         <span className="ml-1 min-w-0 truncate text-[13px] font-semibold tracking-wide text-white">
           {t('common.appName')}
         </span>

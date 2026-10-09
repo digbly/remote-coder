@@ -7,10 +7,9 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from app.modules.terminal.service import TerminalSession
-from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login
+from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login, assert_ws_close
 
 
 def _register_project(client: TestClient, projects_root: Path) -> int:
@@ -35,32 +34,20 @@ def _terminal_url(project_id: int, terminal_id: str) -> str:
 
 
 def test_terminal_requires_authentication(client: TestClient, projects_root: Path) -> None:
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(_terminal_url(1, uuid4().hex)):
-            pass
-
-    assert exc.value.code == 4401
+    assert_ws_close(client, _terminal_url(1, uuid4().hex), 4401)
 
 
 def test_terminal_rejects_unknown_project(client: TestClient, projects_root: Path) -> None:
     _login(client)
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(_terminal_url(999, uuid4().hex)):
-            pass
-
-    assert exc.value.code == 4404
+    assert_ws_close(client, _terminal_url(999, uuid4().hex), 4404)
 
 
 def test_terminal_rejects_invalid_id(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(_terminal_url(project_id, "bad id!")):
-            pass
-
-    assert exc.value.code == 4404
+    assert_ws_close(client, _terminal_url(project_id, "bad id!"), 4404)
 
 
 def test_terminal_scoped_to_project_owner(client: TestClient, projects_root: Path) -> None:
@@ -69,25 +56,19 @@ def test_terminal_scoped_to_project_owner(client: TestClient, projects_root: Pat
     client.cookies.clear()
 
     _login(client, username=OTHER_USERNAME)
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(_terminal_url(project_id, uuid4().hex)):
-            pass
-
-    assert exc.value.code == 4404
+    assert_ws_close(client, _terminal_url(project_id, uuid4().hex), 4404)
 
 
 def test_terminal_rejects_cross_site_origin(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(
-            _terminal_url(project_id, uuid4().hex),
-            headers={"origin": "http://evil.example"},
-        ):
-            pass
-
-    assert exc.value.code == 4403
+    assert_ws_close(
+        client,
+        _terminal_url(project_id, uuid4().hex),
+        4403,
+        headers={"origin": "http://evil.example"},
+    )
 
 
 def test_terminal_runs_shell_in_project_directory(client: TestClient, projects_root: Path) -> None:
@@ -287,11 +268,7 @@ def test_terminal_rejects_unknown_worktree(client: TestClient, projects_root: Pa
     project_id = response.json()["id"]
 
     url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=does-not-exist"
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(url):
-            pass
-
-    assert exc.value.code == 4404
+    assert_ws_close(client, url, 4404)
 
 
 def test_subscriber_queue_drops_oldest_when_full() -> None:

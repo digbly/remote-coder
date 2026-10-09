@@ -14,7 +14,7 @@ from app.core.deps import DbDep, SettingsDep
 from app.core.errors import ErrorCode, api_error
 from app.modules.auth.deps import CurrentUser
 from app.modules.auth.models import User
-from app.modules.auth.websocket import same_origin, websocket_user
+from app.modules.auth.websocket import reject, same_origin, websocket_user
 from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.vscode import service
@@ -119,18 +119,18 @@ async def proxy_ws(
     subpath: str = "",
 ) -> None:
     if not same_origin(websocket):
-        await websocket.close(code=WS_FORBIDDEN)
+        await reject(websocket, WS_FORBIDDEN)
         return
 
     user = websocket_user(websocket, db, settings)
     if user is None:
-        await websocket.close(code=WS_UNAUTHORIZED)
+        await reject(websocket, WS_UNAUTHORIZED)
         return
 
     try:
         session = await _ensure_session(db, settings, user, project_id, worktree)
     except Exception as exc:  # noqa: BLE001 - translate HTTP errors into WS codes
-        await websocket.close(code=_ws_close_code(exc))
+        await reject(websocket, _ws_close_code(exc))
         return
 
     db.close()
@@ -149,7 +149,7 @@ async def proxy_ws(
             open_timeout=settings.vscode_start_timeout_seconds,
         )
     except (OSError, websockets.WebSocketException):
-        await websocket.close(code=WS_INTERNAL_ERROR)
+        await reject(websocket, WS_INTERNAL_ERROR)
         return
 
     await websocket.accept(subprotocol=upstream.subprotocol)

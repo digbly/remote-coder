@@ -49,3 +49,15 @@ def resolve_user(db: Session, token: str | None, settings: Settings) -> User | N
 def websocket_user(websocket: WebSocket, db: Session, settings: Settings) -> User | None:
     """Resolve the authenticated user from the access-token cookie."""
     return resolve_user(db, websocket.cookies.get(settings.access_token_cookie_name), settings)
+
+
+async def reject(websocket: WebSocket, code: int) -> None:
+    """Accept the handshake, then close with an application close code.
+
+    Uvicorn turns a close *before* ``accept()`` into an HTTP 403 during the
+    handshake, which browsers surface as an opaque ``1006`` and never expose the
+    code to. Accepting first lets the client observe ``code`` (4401/4403/4404)
+    and react — for example by refreshing an expired session and reconnecting.
+    """
+    await websocket.accept()
+    await websocket.close(code=code)

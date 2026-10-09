@@ -2,7 +2,15 @@ import { memo, useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { projectTerminalUrl } from '../../lib/api'
+import { projectTerminalUrl, refreshSession } from '../../lib/api'
+
+const RECONNECT_BASE_MS = 500
+const RECONNECT_MAX_MS = 15000
+const MAX_RECONNECT_ATTEMPTS = 6
+const MAX_EXPIRED_RECONNECTS = 3
+// A connection that stayed open at least this long is treated as healthy, so
+// the backoff counter resets (e.g. after a dev-server reload).
+const STABLE_CONNECTION_MS = 3000
 
 interface TerminalMessage {
   type: 'input' | 'resize'
@@ -47,12 +55,11 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     terminal.open(container)
     fitNow()
 
-    const socket = new WebSocket(
-      projectTerminalUrl(projectId, terminalId, { worktree, agentId }),
-    )
-    socket.binaryType = 'arraybuffer'
-
     let disposed = false
+    let socket: WebSocket | null = null
+    let reconnectTimer: number | null = null
+    let attempts = 0
+    let openedAt = 0
 
     function fitNow() {
       try {
@@ -63,7 +70,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     }
 
     function send(message: TerminalMessage) {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message))
       }
     }
@@ -73,28 +80,89 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       send({ type: 'resize', cols: terminal.cols, rows: terminal.rows })
     }
 
-    socket.onopen = () => {
-      syncSize()
-      terminal.focus()
+    function writeStatus(text: string) {
+      terminal.write(`\r\n\x1b[90m[${text}]\x1b[0m\r\n`)
     }
 
-    socket.onmessage = (event) => {
+    function scheduleReconnect() {
+      if (disposed || reconnectTimer !== null) return
+      const delay = Math.min(RECONNECT_BASE_MS * 2 ** (attempts - 1), RECONNECT_MAX_MS)
+      writeStatus('reconnecting…')
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null
+        connect()
+      }, delay)
+    }
+
+    function connect() {
       if (disposed) return
-      terminal.write(
-        typeof event.data === 'string' ? event.data : new Uint8Array(event.data as ArrayBuffer),
+      const next = new WebSocket(
+        projectTerminalUrl(projectId, terminalId, { worktree, agentId }),
       )
+      next.binaryType = 'arraybuffer'
+      socket = next
+      openedAt = 0
+
+      next.onopen = () => {
+        openedAt = Date.now()
+        // Clear the screen before any server output: a reconnect replays the
+        // whole session buffer, which must overwrite rather than append. This
+        // also resets the screen when a connection is rejected (accepted then
+        // closed with 4401/4404), which is fine since that session is gone.
+        terminal.reset()
+        syncSize()
+        terminal.focus()
+      }
+
+      next.onmessage = (event) => {
+        if (disposed) return
+        terminal.write(
+          typeof event.data === 'string' ? event.data : new Uint8Array(event.data as ArrayBuffer),
+        )
+      }
+
+      next.onclose = (event) => {
+        if (disposed) return
+        socket = null
+        // A connection that stayed open long enough is considered healthy, so
+        // the backoff resets (for example after a dev-server reload).
+        if (openedAt !== 0 && Date.now() - openedAt >= STABLE_CONNECTION_MS) {
+          attempts = 0
+        }
+
+        if (event.code === 4404) {
+          writeStatus('project unavailable')
+          return
+        }
+
+        attempts += 1
+        const expired = event.code === 4401
+        const limit = expired ? MAX_EXPIRED_RECONNECTS : MAX_RECONNECT_ATTEMPTS
+        if (attempts > limit) {
+          writeStatus(expired ? 'session expired' : 'disconnected')
+          return
+        }
+
+        // The server rejects an expired session before completing the
+        // WebSocket handshake, which browsers surface as an opaque 1006. Refresh
+        // the session on the first failure of a burst so an expired access
+        // token can still recover, then reconnect with backoff.
+        if (expired || attempts === 1) {
+          void refreshSession().then((refreshed) => {
+            if (disposed) return
+            if (expired && !refreshed) {
+              writeStatus('session expired')
+              return
+            }
+            scheduleReconnect()
+          })
+          return
+        }
+        scheduleReconnect()
+      }
     }
 
-    socket.onclose = (event) => {
-      if (disposed) return
-      const reason =
-        event.code === 4401
-          ? 'session expired'
-          : event.code === 4404
-            ? 'project unavailable'
-            : 'disconnected'
-      terminal.write(`\r\n\x1b[90m[${reason}]\x1b[0m\r\n`)
-    }
+    connect()
 
     const dataDisposable = terminal.onData((data) => send({ type: 'input', data }))
 
@@ -103,12 +171,15 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     return () => {
       disposed = true
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       resizeObserver.disconnect()
       dataDisposable.dispose()
-      socket.onopen = null
-      socket.onmessage = null
-      socket.onclose = null
-      socket.close()
+      if (socket) {
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onclose = null
+        socket.close()
+      }
       terminal.dispose()
       fitRef.current = null
     }

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import Settings, get_settings
 from app.core.db import Base, get_db
@@ -77,3 +78,22 @@ def _login(client: TestClient, username: str = USERNAME) -> None:
 
 def _csrf(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": client.cookies.get("csrf_token")}
+
+
+def assert_ws_close(
+    client: TestClient,
+    url: str,
+    code: int,
+    headers: dict[str, str] | None = None,
+) -> None:
+    """Assert the socket is accepted and then closed with ``code``.
+
+    The server accepts before rejecting so browsers receive the application
+    close code instead of an opaque 1006, so the code arrives after the
+    handshake and must be read from the stream.
+    """
+    kwargs = {"headers": headers} if headers is not None else {}
+    with client.websocket_connect(url, **kwargs) as websocket:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            websocket.receive_text()
+    assert exc.value.code == code

@@ -13,11 +13,11 @@ from fastapi.testclient import TestClient
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse, RedirectResponse
 from starlette.routing import Route, WebSocketRoute
-from starlette.websockets import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket
 
 from app.core.config import Settings
 from app.modules.vscode import service
-from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login
+from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login, assert_ws_close
 
 
 def _register_repo_with_worktree(client: TestClient, projects_root: Path) -> tuple[int, Path]:
@@ -153,25 +153,19 @@ def test_vscode_scoped_to_project_owner(client: TestClient, projects_root: Path)
 
 
 def test_vscode_ws_requires_authentication(client: TestClient, projects_root: Path) -> None:
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(_vscode_url(1, "wt-agent", "ws")):
-            pass
-
-    assert exc.value.code == 4401
+    assert_ws_close(client, _vscode_url(1, "wt-agent", "ws"), 4401)
 
 
 def test_vscode_ws_rejects_cross_site_origin(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id, _ = _register_repo_with_worktree(client, projects_root)
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(
-            _vscode_url(project_id, "wt-agent", "ws"),
-            headers={"origin": "http://evil.example"},
-        ):
-            pass
-
-    assert exc.value.code == 4403
+    assert_ws_close(
+        client,
+        _vscode_url(project_id, "wt-agent", "ws"),
+        4403,
+        headers={"origin": "http://evil.example"},
+    )
 
 
 def test_vscode_proxies_http(

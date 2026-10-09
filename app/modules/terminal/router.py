@@ -10,7 +10,7 @@ from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
 from app.modules.agents import service as agents_service
 from app.modules.auth.deps import CsrfDep, CurrentUser
-from app.modules.auth.websocket import same_origin, websocket_user
+from app.modules.auth.websocket import reject, same_origin, websocket_user
 from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.terminal import service
@@ -34,26 +34,26 @@ async def project_terminal(
     agent_id: str | None = None,
 ) -> None:
     if not same_origin(websocket):
-        await websocket.close(code=WS_FORBIDDEN)
+        await reject(websocket, WS_FORBIDDEN)
         return
 
     if not service.valid_terminal_id(terminal_id):
-        await websocket.close(code=WS_NOT_FOUND)
+        await reject(websocket, WS_NOT_FOUND)
         return
 
     user = websocket_user(websocket, db, settings)
     if user is None:
-        await websocket.close(code=WS_UNAUTHORIZED)
+        await reject(websocket, WS_UNAUTHORIZED)
         return
 
     project = service.get_project(db, user, project_id)
     if project is None:
-        await websocket.close(code=WS_NOT_FOUND)
+        await reject(websocket, WS_NOT_FOUND)
         return
 
     cwd = Path(project.path)
     if not cwd.is_dir():
-        await websocket.close(code=WS_NOT_FOUND)
+        await reject(websocket, WS_NOT_FOUND)
         return
 
     if worktree is not None:
@@ -61,7 +61,7 @@ async def project_terminal(
         # point the shell at an arbitrary directory.
         resolved = await asyncio.to_thread(git_service.find_worktree, cwd, worktree, settings)
         if resolved is None or not resolved.is_dir():
-            await websocket.close(code=WS_NOT_FOUND)
+            await reject(websocket, WS_NOT_FOUND)
             return
         cwd = resolved
 

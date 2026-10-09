@@ -1,10 +1,8 @@
 import json
 
-import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
-from tests.conftest import OTHER_USERNAME, _login
+from tests.conftest import OTHER_USERNAME, _login, assert_ws_close
 
 GET_URL = "/api/v1/workspace"
 WS_URL = "/api/v1/workspace/ws"
@@ -28,21 +26,13 @@ def test_workspace_get_requires_authentication(client: TestClient) -> None:
 
 
 def test_workspace_websocket_requires_authentication(client: TestClient) -> None:
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(WS_URL):
-            pass
-
-    assert exc.value.code == 4401
+    assert_ws_close(client, WS_URL, 4401)
 
 
 def test_workspace_websocket_rejects_cross_site_origin(client: TestClient) -> None:
     _login(client)
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(WS_URL, headers={"origin": "http://evil.example"}):
-            pass
-
-    assert exc.value.code == 4403
+    assert_ws_close(client, WS_URL, 4403, headers={"origin": "http://evil.example"})
 
 
 def test_workspace_starts_empty(client: TestClient) -> None:
