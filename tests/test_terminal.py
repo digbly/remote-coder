@@ -281,6 +281,24 @@ def test_subscriber_queue_drops_oldest_when_full() -> None:
     assert queue.get_nowait() == b"c"
 
 
+def test_terminal_skips_noop_resize(monkeypatch) -> None:
+    applied: list[tuple[int, int]] = []
+
+    def fake_set_winsize(_fd: int, cols: int, rows: int) -> None:
+        applied.append((cols, rows))
+
+    monkeypatch.setattr("app.modules.terminal.service._set_winsize", fake_set_winsize)
+    session = TerminalSession(Path("/tmp"), "/bin/bash", 1024, replay_bytes=4096, queue_chunks=4)
+    session._master_fd = 7
+
+    session.resize(120, 30)
+    session.resize(120, 30)
+    session.resize(100, 40)
+    session.resize(100, 40)
+
+    assert applied == [(120, 30), (100, 40)]
+
+
 def test_replay_starts_at_escape_boundary_after_trimming() -> None:
     session = TerminalSession(
         Path("/tmp"), "/bin/bash", 1024, replay_bytes=9, queue_chunks=4

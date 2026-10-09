@@ -34,6 +34,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
@@ -77,7 +78,12 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     function syncSize() {
       fitNow()
-      send({ type: 'resize', cols: terminal.cols, rows: terminal.rows })
+      const cols = terminal.cols
+      const rows = terminal.rows
+      const last = lastSizeRef.current
+      if (last && last.cols === cols && last.rows === rows) return
+      lastSizeRef.current = { cols, rows }
+      send({ type: 'resize', cols, rows })
     }
 
     function writeStatus(text: string) {
@@ -110,6 +116,10 @@ export const ProjectTerminal = memo(function ProjectTerminal({
         // also resets the screen when a connection is rejected (accepted then
         // closed with 4401/4404), which is fine since that session is gone.
         terminal.reset()
+        // Force one size sync per connection so a resize made by another
+        // client while we were away is picked up; the server ignores it when
+        // the size is unchanged, so this does not re-trigger SIGWINCH.
+        lastSizeRef.current = null
         syncSize()
         terminal.focus()
       }

@@ -83,6 +83,8 @@ class TerminalSession:
         self._queue_chunks = max(1, queue_chunks)
         self._process: subprocess.Popen[bytes] | None = None
         self._master_fd = -1
+        self._cols = DEFAULT_COLS
+        self._rows = DEFAULT_ROWS
         self._buffer: deque[bytes] = deque()
         self._buffer_bytes = 0
         self._trimmed = False
@@ -227,6 +229,13 @@ class TerminalSession:
         fd = self._master_fd
         if fd < 0:
             return
+        # TIOCSWINSZ delivers SIGWINCH to the shell even when the size is
+        # unchanged, and the shell redraws its prompt on each SIGWINCH. Skip
+        # no-op resizes so duplicate events do not spew repeated prompts.
+        if cols == self._cols and rows == self._rows:
+            return
+        self._cols = cols
+        self._rows = rows
         _set_winsize(fd, cols, rows)
 
     def kill(self) -> None:
