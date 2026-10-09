@@ -8,6 +8,7 @@ from app.modules.git.schemas import (
     GitBranchCreate,
     GitBranchesRead,
     GitCommitCreate,
+    GitCommitMessageRead,
     GitCommitRead,
     GitPathsUpdate,
     GitPullRequestCreate,
@@ -216,6 +217,22 @@ def commit_staged(
     _csrf: CsrfDep,
 ) -> GitCommitRead:
     return service.commit_staged(db, current_user, project_id, payload.message, settings)
+
+
+@router.post(
+    "/{project_id}/git/commit-message",
+    response_model=GitCommitMessageRead,
+    responses=error_responses(400, 401, 403, 404, 422, 500),
+)
+def generate_commit_message(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> GitCommitMessageRead:
+    agent_id, message = service.generate_commit_message(db, current_user, project_id, settings)
+    return GitCommitMessageRead(message=message, agent_id=agent_id)
 
 
 @router.post(

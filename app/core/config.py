@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     terminal_session_ttl_seconds: int = 21600
 
     agent_models_cache_ttl_seconds: int = 300
+    agent_commit_message_timeout_seconds: int = 120
+    agent_commit_message_diff_max_bytes: int = 100_000
 
     vscode_enabled: bool = True
     vscode_binary: str = "code-server"

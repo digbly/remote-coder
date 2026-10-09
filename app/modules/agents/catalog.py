@@ -13,15 +13,20 @@ class CliAgent(Agent):
 
 
 DEFAULT_AGENT_SPECS: tuple[AgentSpec, ...] = (
-    AgentSpec(id="claude", label="Claude Code", command="claude"),
+    AgentSpec(id="claude", label="Claude Code", command="claude", prompt_args=("-p", "{prompt}")),
     AgentSpec(id="agy", label="Antigravity", command="agy"),
-    AgentSpec(id="opencode", label="OpenCode", command="opencode"),
-    AgentSpec(id="codex", label="Codex", command="codex"),
-    AgentSpec(id="gemini", label="Gemini CLI", command="gemini"),
+    AgentSpec(id="opencode", label="OpenCode", command="opencode", prompt_args=("run", "{prompt}")),
+    AgentSpec(id="codex", label="Codex", command="codex", prompt_args=("exec", "{prompt}")),
+    AgentSpec(id="gemini", label="Gemini CLI", command="gemini", prompt_args=("-p", "{prompt}")),
     AgentSpec(id="aider", label="Aider", command="aider"),
-    AgentSpec(id="goose", label="Goose", command="goose"),
-    AgentSpec(id="cursor-agent", label="Cursor Agent", command="cursor-agent"),
-    AgentSpec(id="crush", label="Crush", command="crush"),
+    AgentSpec(id="goose", label="Goose", command="goose", prompt_args=("run", "-t", "{prompt}")),
+    AgentSpec(
+        id="cursor-agent",
+        label="Cursor Agent",
+        command="cursor-agent",
+        prompt_args=("-p", "{prompt}"),
+    ),
+    AgentSpec(id="crush", label="Crush", command="crush", prompt_args=("run", "{prompt}")),
 )
 
 # Agents that expose their model list through a ``models`` subcommand. Others

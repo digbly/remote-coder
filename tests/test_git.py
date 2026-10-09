@@ -4,7 +4,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.modules.git.service import parse_status, parse_worktrees
+from app.modules.git.service import (
+    _COMMIT_MESSAGE_MAX_CHARS,
+    _clean_commit_message,
+    parse_status,
+    parse_worktrees,
+)
 from tests.conftest import LOCAL_URL, OTHER_USERNAME, PROJECTS_URL, _csrf, _login
 
 
@@ -725,3 +730,108 @@ def test_current_pull_request_absent_when_gh_fails(
 
     assert response.status_code == 200
     assert response.json() == {"pull_request": None}
+
+
+AGENTS_DEFAULT_URL = "/api/v1/agents/default"
+
+
+def _set_default_agent(client: TestClient, agent_id: str) -> None:
+    response = client.put(AGENTS_DEFAULT_URL, json={"agent_id": agent_id}, headers=_csrf(client))
+    assert response.status_code == 200, response.text
+
+
+def test_commit_message_requires_default_agent(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 400
+    assert _error_code(response) == "AGENT_NOT_CONFIGURED"
+
+
+def test_commit_message_reports_unsupported_agent(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    _set_default_agent(client, "aider")
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 400
+    assert _error_code(response) == "AGENT_UNSUPPORTED"
+
+
+def test_commit_message_generates_with_default_agent(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    _set_default_agent(client, "claude")
+
+    captured: dict = {}
+    real_run = subprocess.run
+
+    def fake_run(argv, *args, **kwargs):
+        if argv and argv[0] == "claude":
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(argv, 0, "feat: update tracked\n", "")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.agents.service.subprocess.run", fake_run)
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 200, response.json()
+    assert response.json() == {"message": "feat: update tracked", "agent_id": "claude"}
+    assert captured["argv"][:2] == ["claude", "-p"]
+    assert "hello" in captured["argv"][2]
+
+
+def test_commit_message_requires_staged_or_working_changes(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    _set_default_agent(client, "claude")
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_NOTHING_TO_COMMIT"
+
+
+def test_clean_commit_message_strips_code_fences() -> None:
+    assert _clean_commit_message("```\nfeat: add thing\n```\n") == "feat: add thing"
+    assert _clean_commit_message("```text\nfix: bug\n\nbody\n```") == "fix: bug\n\nbody"
+
+
+def test_clean_commit_message_caps_length() -> None:
+    assert len(_clean_commit_message("a" * (_COMMIT_MESSAGE_MAX_CHARS + 500))) == (
+        _COMMIT_MESSAGE_MAX_CHARS
+    )

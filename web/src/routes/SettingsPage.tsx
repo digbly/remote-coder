@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRightIcon } from '../components/ide/icons'
-import { fetchAgents, saveAgentSetting } from '../lib/api'
+import { fetchAgentSettings, fetchAgents, saveAgentSetting, setDefaultAgent } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -12,10 +12,14 @@ const inputClass =
 
 function AgentSettingRow({
   agent,
+  isDefault,
   onSaved,
+  onSetDefault,
 }: {
   agent: AgentDefinition
+  isDefault: boolean
   onSaved: (agentId: string, command: string, args: string) => void
+  onSetDefault: (agentId: string) => void
 }) {
   const { t } = useTranslation()
   const [command, setCommand] = useState(agent.command)
@@ -39,17 +43,34 @@ function AgentSettingRow({
     <div className="rounded-lg border border-[#2c2e33] bg-[#1b1c1f] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-white">{agent.label}</p>
+          <p className="flex items-center gap-2 text-sm font-medium text-white">
+            {agent.label}
+            {isDefault && (
+              <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+                {t('settings.defaultBadge')}
+              </span>
+            )}
+          </p>
           <p className="text-xs text-[#7d828b]">{agent.id}</p>
         </div>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!canSave}
-          className="rounded-md bg-[#2a2c30] px-3 py-1 text-[12px] text-[#d7dae0] transition hover:bg-[#33363b] disabled:opacity-50"
-        >
-          {status === 'saving' ? t('settings.saving') : t('settings.save')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onSetDefault(agent.id)}
+            disabled={isDefault}
+            className="rounded-md border border-[#3a3d43] bg-[#23252a] px-3 py-1 text-[12px] text-[#d7dae0] transition hover:bg-[#2a2c32] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t('settings.setDefault')}
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className="rounded-md bg-[#2a2c30] px-3 py-1 text-[12px] text-[#d7dae0] transition hover:bg-[#33363b] disabled:opacity-50"
+          >
+            {status === 'saving' ? t('settings.saving') : t('settings.save')}
+          </button>
+        </div>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="block text-xs text-[#9aa0a8]">
@@ -91,6 +112,8 @@ export function SettingsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [agents, setAgents] = useState<AgentDefinition[] | null>(null)
+  const [defaultAgentId, setDefaultAgentId] = useState<string | null>(null)
+  const [defaultError, setDefaultError] = useState(false)
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -102,6 +125,13 @@ export function SettingsPage() {
       .catch(() => {
         if (active) setError(true)
       })
+    fetchAgentSettings()
+      .then((result) => {
+        if (active) setDefaultAgentId(result.default_agent_id)
+      })
+      .catch(() => {
+        if (active) setDefaultError(true)
+      })
     return () => {
       active = false
     }
@@ -111,6 +141,16 @@ export function SettingsPage() {
     setAgents((prev) =>
       prev ? prev.map((agent) => (agent.id === agentId ? { ...agent, command, args } : agent)) : prev,
     )
+  }
+
+  async function handleSetDefault(agentId: string) {
+    setDefaultError(false)
+    try {
+      const result = await setDefaultAgent(agentId)
+      setDefaultAgentId(result.default_agent_id)
+    } catch {
+      setDefaultError(true)
+    }
   }
 
   return (
@@ -129,13 +169,22 @@ export function SettingsPage() {
       <main className="mx-auto max-w-3xl px-6 py-6">
         <p className="mb-5 text-sm text-[#9aa0a8]">{t('settings.description')}</p>
         {error && <p className="text-sm text-[#f0a9b0]">{t('settings.loadFailed')}</p>}
+        {defaultError && (
+          <p className="mb-3 text-sm text-[#f0a9b0]">{t('settings.defaultFailed')}</p>
+        )}
         {agents === null && !error && (
           <p className="text-sm text-[#7d828b]">{t('common.loading')}</p>
         )}
         {agents && (
           <div className="space-y-3">
             {agents.map((agent) => (
-              <AgentSettingRow key={agent.id} agent={agent} onSaved={handleSaved} />
+              <AgentSettingRow
+                key={agent.id}
+                agent={agent}
+                isDefault={agent.id === defaultAgentId}
+                onSaved={handleSaved}
+                onSetDefault={handleSetDefault}
+              />
             ))}
           </div>
         )}
