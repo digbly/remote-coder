@@ -1,4 +1,4 @@
-import { launchCommand, type AgentDefinition } from './agents'
+import type { AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
 export type TabKind = 'terminal' | 'editor' | 'vscode'
@@ -9,7 +9,7 @@ export interface WorkspaceTab {
   kind: TabKind
   projectId?: number
   worktree?: string
-  agentCommand?: string
+  agentId?: string
   filePath?: string
 }
 
@@ -52,7 +52,7 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.kind === 'terminal' || value.kind === 'editor' || value.kind === 'vscode') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
-    (value.agentCommand === undefined || typeof value.agentCommand === 'string') &&
+    (value.agentId === undefined || typeof value.agentId === 'string') &&
     (value.filePath === undefined || typeof value.filePath === 'string')
   )
 }
@@ -90,7 +90,7 @@ export function withNewTerminal(
     kind: 'terminal',
     projectId: project.id,
     ...(worktree ? { worktree } : {}),
-    ...(agent ? { agentCommand: launchCommand(agent) } : {}),
+    ...(agent ? { agentId: agent.id } : {}),
   }
   return {
     ...workspaces,

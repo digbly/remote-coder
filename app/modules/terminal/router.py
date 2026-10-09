@@ -31,7 +31,7 @@ async def project_terminal(
     db: DbDep,
     settings: SettingsDep,
     worktree: str | None = None,
-    agent: str | None = None,
+    agent_id: str | None = None,
 ) -> None:
     if not same_origin(websocket):
         await websocket.close(code=WS_FORBIDDEN)
@@ -65,6 +65,11 @@ async def project_terminal(
             return
         cwd = resolved
 
+    # Resolve the launch line and environment from the agent registry before
+    # releasing the database connection used to read the user's overrides.
+    launch = agents_service.resolve_launch(db, user, agent_id) if agent_id is not None else None
+    agent_env = agents_service.agent_env(agent_id) if agent_id is not None else {}
+
     # Release the database connection: it is not needed for the (potentially
     # long-lived) terminal session and would otherwise exhaust the pool.
     db.close()
@@ -77,6 +82,7 @@ async def project_terminal(
             (user.id, project_id, terminal_id),
             cwd=cwd,
             shell=settings.terminal_shell,
+            env=agent_env,
             read_chunk_bytes=settings.terminal_read_chunk_bytes,
             replay_bytes=settings.terminal_replay_bytes,
             queue_chunks=settings.terminal_subscriber_queue_chunks,
@@ -91,8 +97,8 @@ async def project_terminal(
     # A new session that requested an agent starts by typing its launch command
     # (executable plus optional args) into the shell. Re-attaching clients reuse
     # the already-running agent.
-    if created and agent is not None and agents_service.valid_launch(agent):
-        session.write(f"{agent}\n".encode())
+    if created and launch is not None and agents_service.valid_launch(launch):
+        session.write(f"{launch}\n".encode())
 
     sender = asyncio.create_task(_pump_output(queue, websocket))
     receiver = asyncio.create_task(_pump_input(session, websocket))

@@ -45,6 +45,7 @@ const en = {
     gitDiscardFailed: 'Could not discard the changes',
     gitPullFailed: 'Could not pull the changes',
     gitNoUpstream: 'The current branch has no upstream to pull from',
+    agentNotFound: 'Unknown agent',
     vscodeDisabled: 'The VS Code server is disabled',
     vscodeWorktreeNotFound: 'Worktree not found',
     vscodeStartFailed: 'Could not start the VS Code server',

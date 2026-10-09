@@ -73,9 +73,11 @@ class TerminalSession:
         read_chunk_bytes: int,
         replay_bytes: int,
         queue_chunks: int,
+        env: dict[str, str] | None = None,
     ) -> None:
         self._cwd = cwd
         self._shell = shell
+        self._env = env or {}
         self._chunk = read_chunk_bytes
         self._replay_bytes = replay_bytes
         self._queue_chunks = max(1, queue_chunks)
@@ -95,6 +97,7 @@ class TerminalSession:
         _set_winsize(slave_fd, DEFAULT_COLS, DEFAULT_ROWS)
         env = os.environ.copy()
         env["TERM"] = env.get("TERM", "xterm-256color")
+        env.update(self._env)
 
         try:
             process = subprocess.Popen(
@@ -262,6 +265,7 @@ class TerminalManager:
         read_chunk_bytes: int,
         replay_bytes: int,
         queue_chunks: int,
+        env: dict[str, str] | None = None,
     ) -> tuple[TerminalSession, bool]:
         """Return the live session for ``key`` and whether it was just created."""
         with self._lock:
@@ -269,7 +273,7 @@ class TerminalManager:
             if session is not None and not session.exited:
                 return session, False
 
-            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks)
+            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks, env)
             session.on_exit = lambda ended, key=key: self._discard(key, ended)
             session.start()
             self._sessions[key] = session

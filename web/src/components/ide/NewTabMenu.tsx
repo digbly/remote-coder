@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { detectAgents, fetchAgentSettings } from '../../lib/api'
-import {
-  resolveAgents,
-  type AgentDefinition,
-  type AgentOverride,
-} from '../../lib/agents'
+import { fetchAgents } from '../../lib/api'
+import type { AgentDefinition } from '../../lib/agents'
 import { CommandIcon, PlusIcon, TerminalIcon } from './icons'
 
 type DetectionState =
@@ -42,17 +38,8 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
     let cancelled = false
 
     async function load() {
-      const settings = await fetchAgentSettings()
-      const overrides: Record<string, AgentOverride> = {}
-      for (const setting of settings) {
-        overrides[setting.agent_id] = { command: setting.command, args: setting.args }
-      }
-      const agents = resolveAgents(overrides)
-      const statuses = await detectAgents(agents.map((agent) => agent.command))
-      const installed = new Set(
-        statuses.filter((status) => status.installed).map((status) => status.command),
-      )
-      return agents.filter((agent) => installed.has(agent.command))
+      const agents = await fetchAgents()
+      return agents.filter((agent) => agent.installed)
     }
 
     load()

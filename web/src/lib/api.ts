@@ -1,4 +1,5 @@
 import i18n from '../i18n'
+import type { AgentDefinition } from './agents'
 
 const API_PREFIX = '/api/v1'
 const CSRF_COOKIE = 'csrf_token'
@@ -33,6 +34,7 @@ const ERROR_CODE_KEYS = {
   GIT_DISCARD_FAILED: 'apiErrors.gitDiscardFailed',
   GIT_PULL_FAILED: 'apiErrors.gitPullFailed',
   GIT_NO_UPSTREAM: 'apiErrors.gitNoUpstream',
+  AGENT_NOT_FOUND: 'apiErrors.agentNotFound',
   VSCODE_DISABLED: 'apiErrors.vscodeDisabled',
   VSCODE_WORKTREE_NOT_FOUND: 'apiErrors.vscodeWorktreeNotFound',
   VSCODE_START_FAILED: 'apiErrors.vscodeStartFailed',
@@ -151,12 +153,6 @@ export interface Worktree {
   path: string
   branch: string | null
   is_primary: boolean
-}
-
-export interface AgentStatus {
-  command: string
-  installed: boolean
-  path: string | null
 }
 
 export interface AgentSettingItem {
@@ -452,30 +448,19 @@ export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {
   return (await response.json()) as Worktree[]
 }
 
-export async function detectAgents(commands: string[]): Promise<AgentStatus[]> {
-  const query = encodeURIComponent(commands.join(','))
-  const response = await request(`/agents?commands=${query}`)
+export async function fetchAgents(): Promise<AgentDefinition[]> {
+  const response = await request('/agents')
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
-  const data = (await response.json()) as { agents: AgentStatus[] }
+  const data = (await response.json()) as { agents: AgentDefinition[] }
   return data.agents
 }
 
 export interface TerminalUrlOptions {
   worktree?: string
-  agent?: string
-}
-
-export async function fetchAgentSettings(): Promise<AgentSettingItem[]> {
-  const response = await request('/agents/settings')
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
-  }
-  const data = (await response.json()) as { settings: AgentSettingItem[] }
-  return data.settings
+  agentId?: string
 }
 
 export async function saveAgentSetting(
@@ -503,7 +488,7 @@ export function projectTerminalUrl(
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const params = new URLSearchParams()
   if (options.worktree) params.set('worktree', options.worktree)
-  if (options.agent) params.set('agent', options.agent)
+  if (options.agentId) params.set('agent_id', options.agentId)
   const search = params.toString()
   const query = search ? `?${search}` : ''
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`

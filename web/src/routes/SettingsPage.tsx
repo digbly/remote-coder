@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRightIcon } from '../components/ide/icons'
-import { fetchAgentSettings, saveAgentSetting } from '../lib/api'
-import { AGENT_CANDIDATES, type AgentDefinition, type AgentOverride } from '../lib/agents'
+import { fetchAgents, saveAgentSetting } from '../lib/api'
+import type { AgentDefinition } from '../lib/agents'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -12,16 +12,14 @@ const inputClass =
 
 function AgentSettingRow({
   agent,
-  override,
   onSaved,
 }: {
   agent: AgentDefinition
-  override?: AgentOverride
   onSaved: (agentId: string, command: string, args: string) => void
 }) {
   const { t } = useTranslation()
-  const [command, setCommand] = useState(override?.command ?? agent.command)
-  const [args, setArgs] = useState(override?.args ?? agent.args)
+  const [command, setCommand] = useState(agent.command)
+  const [args, setArgs] = useState(agent.args)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
   const canSave = command.trim().length > 0 && status !== 'saving'
@@ -92,19 +90,14 @@ function AgentSettingRow({
 export function SettingsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [overrides, setOverrides] = useState<Record<string, AgentOverride> | null>(null)
+  const [agents, setAgents] = useState<AgentDefinition[] | null>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     let active = true
-    fetchAgentSettings()
-      .then((settings) => {
-        if (!active) return
-        const map: Record<string, AgentOverride> = {}
-        for (const setting of settings) {
-          map[setting.agent_id] = { command: setting.command, args: setting.args }
-        }
-        setOverrides(map)
+    fetchAgents()
+      .then((result) => {
+        if (active) setAgents(result)
       })
       .catch(() => {
         if (active) setError(true)
@@ -115,7 +108,9 @@ export function SettingsPage() {
   }, [])
 
   function handleSaved(agentId: string, command: string, args: string) {
-    setOverrides((prev) => ({ ...(prev ?? {}), [agentId]: { command, args } }))
+    setAgents((prev) =>
+      prev ? prev.map((agent) => (agent.id === agentId ? { ...agent, command, args } : agent)) : prev,
+    )
   }
 
   return (
@@ -134,18 +129,13 @@ export function SettingsPage() {
       <main className="mx-auto max-w-3xl px-6 py-6">
         <p className="mb-5 text-sm text-[#9aa0a8]">{t('settings.description')}</p>
         {error && <p className="text-sm text-[#f0a9b0]">{t('settings.loadFailed')}</p>}
-        {overrides === null && !error && (
+        {agents === null && !error && (
           <p className="text-sm text-[#7d828b]">{t('common.loading')}</p>
         )}
-        {overrides && (
+        {agents && (
           <div className="space-y-3">
-            {AGENT_CANDIDATES.map((agent) => (
-              <AgentSettingRow
-                key={agent.id}
-                agent={agent}
-                override={overrides[agent.id]}
-                onSaved={handleSaved}
-              />
+            {agents.map((agent) => (
+              <AgentSettingRow key={agent.id} agent={agent} onSaved={handleSaved} />
             ))}
           </div>
         )}

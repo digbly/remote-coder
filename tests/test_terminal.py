@@ -107,8 +107,13 @@ def test_terminal_runs_agent_command_on_new_session(
 ) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
+    client.put(
+        "/api/v1/agents/settings/claude",
+        json={"command": "pwd", "args": ""},
+        headers=_csrf(client),
+    )
 
-    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=pwd"
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent_id=claude"
     with client.websocket_connect(url) as websocket:
         websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
         output = _read_until(websocket, "terminal-repo")
@@ -119,8 +124,13 @@ def test_terminal_runs_agent_command_on_new_session(
 def test_terminal_runs_agent_command_with_args(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
+    client.put(
+        "/api/v1/agents/settings/claude",
+        json={"command": "echo", "args": "AGENT_ARGS=1"},
+        headers=_csrf(client),
+    )
 
-    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=echo%20AGENT_ARGS=1"
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent_id=claude"
     with client.websocket_connect(url) as websocket:
         websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
         output = _read_until(websocket, "AGENT_ARGS=1")
@@ -128,17 +138,40 @@ def test_terminal_runs_agent_command_with_args(client: TestClient, projects_root
     assert "AGENT_ARGS=1" in output
 
 
-def test_terminal_ignores_multiline_agent_command(client: TestClient, projects_root: Path) -> None:
+def test_terminal_ignores_unknown_agent(client: TestClient, projects_root: Path) -> None:
     _login(client)
     project_id = _register_project(client, projects_root)
 
-    url = f"{_terminal_url(project_id, uuid4().hex)}?agent=bad%0Acommand"
+    url = f"{_terminal_url(project_id, uuid4().hex)}?agent_id=does-not-exist"
     with client.websocket_connect(url) as websocket:
         websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
         websocket.send_text(json.dumps({"type": "input", "data": "echo MANUAL=1\n"}))
         output = _read_until(websocket, "MANUAL=1")
 
     assert "MANUAL=1" in output
+
+
+def test_terminal_session_applies_env_overrides(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_popen(*_args, **kwargs):
+        captured.update(kwargs["env"])
+        raise OSError
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    session = TerminalSession(
+        tmp_path,
+        "/bin/sh",
+        1024,
+        replay_bytes=4096,
+        queue_chunks=8,
+        env={"RC_AGENT_ENV": "present"},
+    )
+
+    with pytest.raises(OSError):
+        session.start()
+
+    assert captured["RC_AGENT_ENV"] == "present"
 
 
 def test_terminal_interrupts_foreground_process(client: TestClient, projects_root: Path) -> None:

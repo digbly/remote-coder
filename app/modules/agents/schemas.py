@@ -1,14 +1,23 @@
 from pydantic import BaseModel, Field
 
 
-class AgentStatus(BaseModel):
+class AgentDefinition(BaseModel):
+    id: str
+    label: str
     command: str
+    args: str
+    description: str = ""
+    homepage: str | None = None
     installed: bool
     path: str | None = None
 
 
 class AgentListResponse(BaseModel):
-    agents: list[AgentStatus]
+    agents: list[AgentDefinition]
+
+
+class AgentModelsResponse(BaseModel):
+    models: list[str]
 
 
 class AgentSettingUpdate(BaseModel):

@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import re
-import shutil
+import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.agents.base import Agent
+from app.modules.agents.catalog import registry
 from app.modules.agents.models import AgentSetting
-from app.modules.agents.schemas import AgentStatus
+from app.modules.agents.schemas import AgentDefinition
 from app.modules.auth.models import User
 
 # Agent commands are bare executable names resolved on the server's PATH; reject
 # anything that could escape the PATH lookup (slashes, whitespace, metacharacters).
-_COMMAND_RE = re.compile(r"^[A-Za-z0-9._+-]{1,64}$")
-MAX_AGENTS = 50
+COMMAND_MAX = 64
 ARGS_MAX = 1024
-LAUNCH_MAX = 1024
+# A built launch line is "command args"; keep the cap large enough that any
+# accepted command/args pair still passes valid_launch.
+LAUNCH_MAX = COMMAND_MAX + 1 + ARGS_MAX
+_COMMAND_RE = re.compile(rf"^[A-Za-z0-9._+-]{{1,{COMMAND_MAX}}}$")
 
 
 def valid_command(command: str) -> bool:
@@ -39,19 +43,6 @@ def valid_launch(command_line: str) -> bool:
     return not _has_control_chars(command_line)
 
 
-def detect_agents(commands: list[str]) -> list[AgentStatus]:
-    """Report which of the requested commands are installed on the server's PATH."""
-    agents: list[AgentStatus] = []
-    seen: set[str] = set()
-    for command in commands:
-        if command in seen or not valid_command(command):
-            continue
-        seen.add(command)
-        path = shutil.which(command)
-        agents.append(AgentStatus(command=command, installed=path is not None, path=path))
-    return agents
-
-
 def get_agent_settings(db: Session, user: User) -> list[AgentSetting]:
     return list(
         db.scalars(
@@ -60,6 +51,10 @@ def get_agent_settings(db: Session, user: User) -> list[AgentSetting]:
             .order_by(AgentSetting.agent_id)
         )
     )
+
+
+def _overrides(db: Session, user: User) -> dict[str, AgentSetting]:
+    return {setting.agent_id: setting for setting in get_agent_settings(db, user)}
 
 
 def save_agent_setting(
@@ -79,3 +74,88 @@ def save_agent_setting(
     db.commit()
     db.refresh(setting)
     return setting
+
+
+def list_agents(db: Session, user: User) -> list[AgentDefinition]:
+    """Merge the registered catalog with the user's overrides and host detection."""
+    overrides = _overrides(db, user)
+    definitions: list[AgentDefinition] = []
+    for agent in registry.all():
+        spec = agent.spec
+        override = overrides.get(spec.id)
+        command = override.command if override else spec.command
+        args = override.args if override else spec.args
+        path = agent.detect(command)
+        definitions.append(
+            AgentDefinition(
+                id=spec.id,
+                label=spec.label,
+                command=command,
+                args=args,
+                description=spec.description,
+                homepage=spec.homepage,
+                installed=path is not None,
+                path=path,
+            )
+        )
+    return definitions
+
+
+def agent_exists(agent_id: str) -> bool:
+    """Whether an id is registered in the catalog."""
+    return registry.get(agent_id) is not None
+
+
+def effective_config(db: Session, user: User, agent: Agent) -> tuple[str, str]:
+    """Effective (command, args) for an agent, applying the user's override."""
+    override = db.scalar(
+        select(AgentSetting).where(
+            AgentSetting.user_id == user.id, AgentSetting.agent_id == agent.id
+        )
+    )
+    if override is None:
+        return agent.spec.command, agent.spec.args
+    return override.command, override.args
+
+
+def resolve_launch(db: Session, user: User, agent_id: str) -> str | None:
+    """Build the launch line for a registered agent, or ``None`` if unknown."""
+    agent = registry.get(agent_id)
+    if agent is None:
+        return None
+    return agent.build_launch(*effective_config(db, user, agent))
+
+
+async def list_models(db: Session, user: User, agent_id: str, ttl_seconds: int) -> list[str] | None:
+    """Models a registered agent can use, or ``None`` if the agent is unknown."""
+    agent = registry.get(agent_id)
+    if agent is None:
+        return None
+    command, args = effective_config(db, user, agent)
+    return await _cached_models(agent, command, args, ttl_seconds)
+
+
+# Model listing can spawn a CLI, so cache results to avoid a process per UI render.
+_models_cache: dict[tuple[str, str, str], tuple[float, list[str]]] = {}
+
+
+async def _cached_models(agent: Agent, command: str, args: str, ttl_seconds: int) -> list[str]:
+    key = (agent.id, command, args)
+    now = time.monotonic()
+    cached = _models_cache.get(key)
+    if cached is not None and ttl_seconds > 0 and now - cached[0] < ttl_seconds:
+        return cached[1]
+    models = await agent.list_models(command, args)
+    _models_cache[key] = (now, models)
+    return models
+
+
+def clear_models_cache() -> None:
+    """Drop all cached model lists (used by tests)."""
+    _models_cache.clear()
+
+
+def agent_env(agent_id: str) -> dict[str, str]:
+    """Environment overrides the agent needs, empty for unknown agents."""
+    agent = registry.get(agent_id)
+    return agent.env_overrides() if agent is not None else {}

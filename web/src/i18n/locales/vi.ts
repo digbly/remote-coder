@@ -45,6 +45,7 @@ const vi = {
     gitDiscardFailed: 'Không thể hoàn tác thay đổi',
     gitPullFailed: 'Không thể pull thay đổi',
     gitNoUpstream: 'Nhánh hiện tại không có upstream để pull',
+    agentNotFound: 'Agent không tồn tại',
     vscodeDisabled: 'VS Code server đang bị tắt',
     vscodeWorktreeNotFound: 'Không tìm thấy worktree',
     vscodeStartFailed: 'Không thể khởi động VS Code server',

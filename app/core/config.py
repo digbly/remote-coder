@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     terminal_subscriber_queue_chunks: int = 256
     terminal_session_ttl_seconds: int = 21600
 
+    agent_models_cache_ttl_seconds: int = 300
+
     vscode_enabled: bool = True
     vscode_binary: str = "code-server"
     vscode_bind_host: str = "127.0.0.1"

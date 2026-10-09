@@ -192,7 +192,7 @@ export function IdeShell({
                       projectId={tab.projectId}
                       terminalId={tab.id}
                       worktree={tab.worktree}
-                      agentCommand={tab.agentCommand}
+                      agentId={tab.agentId}
                       active={active}
                     />
                   )}
