@@ -85,6 +85,7 @@ async def project_terminal(
             shell=settings.terminal_shell,
             read_chunk_bytes=settings.terminal_read_chunk_bytes,
             replay_bytes=settings.terminal_replay_bytes,
+            queue_chunks=settings.terminal_subscriber_queue_chunks,
         )
     except OSError:
         await websocket.close(code=WS_INTERNAL_ERROR)

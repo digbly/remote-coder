@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -7,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.modules.terminal.service import TerminalSession
 from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login
 
 
@@ -171,3 +173,23 @@ def test_terminal_kill_scoped_to_project_owner(client: TestClient, projects_root
     )
 
     assert response.status_code == 404
+
+
+def test_subscriber_queue_drops_oldest_when_full() -> None:
+    queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=2)
+    TerminalSession._deliver(queue, b"a")
+    TerminalSession._deliver(queue, b"b")
+    TerminalSession._deliver(queue, b"c")
+
+    assert queue.get_nowait() == b"b"
+    assert queue.get_nowait() == b"c"
+
+
+def test_replay_starts_at_escape_boundary_after_trimming() -> None:
+    session = TerminalSession(
+        Path("/tmp"), "/bin/bash", 1024, replay_bytes=9, queue_chunks=4
+    )
+    session._append(b"\x1b[31")
+    session._append(b"mX\x1b[0m")
+
+    assert session._replay() == b"\x1b[0m"

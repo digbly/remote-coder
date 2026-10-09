@@ -88,15 +88,24 @@ class TerminalSession:
     only terminated by an explicit :meth:`kill`.
     """
 
-    def __init__(self, cwd: Path, shell: str, read_chunk_bytes: int, replay_bytes: int) -> None:
+    def __init__(
+        self,
+        cwd: Path,
+        shell: str,
+        read_chunk_bytes: int,
+        replay_bytes: int,
+        queue_chunks: int,
+    ) -> None:
         self._cwd = cwd
         self._shell = shell
         self._chunk = read_chunk_bytes
         self._replay_bytes = replay_bytes
+        self._queue_chunks = max(1, queue_chunks)
         self._process: subprocess.Popen[bytes] | None = None
         self._master_fd = -1
         self._buffer: deque[bytes] = deque()
         self._buffer_bytes = 0
+        self._trimmed = False
         self._subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue[bytes | None]]] = []
         self._lock = threading.Lock()
         self.exited = False
@@ -167,13 +176,40 @@ class TerminalSession:
         self._buffer_bytes += len(data)
         while self._buffer_bytes > self._replay_bytes and self._buffer:
             self._buffer_bytes -= len(self._buffer.popleft())
+            self._trimmed = True
+
+    def _replay(self) -> bytes:
+        data = b"".join(self._buffer)
+        if self._trimmed:
+            # The oldest bytes were dropped, so the buffer may start in the
+            # middle of an escape sequence. Start from the first escape to give
+            # the client a byte stream it can render without misinterpreting an
+            # orphaned sequence fragment.
+            escape = data.find(b"\x1b")
+            if escape > 0:
+                data = data[escape:]
+        return data
+
+    @staticmethod
+    def _deliver(queue: asyncio.Queue[bytes | None], item: bytes | None) -> None:
+        if queue.full():
+            # A slow subscriber must not grow without bound; drop the oldest
+            # chunk so it always receives the most recent output.
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            queue.put_nowait(item)
+        except asyncio.QueueFull:
+            pass
 
     @staticmethod
     def _post(
         loop: asyncio.AbstractEventLoop, queue: asyncio.Queue[bytes | None], item: bytes | None
     ) -> None:
         try:
-            loop.call_soon_threadsafe(queue.put_nowait, item)
+            loop.call_soon_threadsafe(TerminalSession._deliver, queue, item)
         except RuntimeError:
             # The subscriber's event loop is already closed.
             pass
@@ -181,9 +217,9 @@ class TerminalSession:
     def subscribe(
         self, loop: asyncio.AbstractEventLoop
     ) -> tuple[asyncio.Queue[bytes | None], bytes]:
-        queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=self._queue_chunks)
         with self._lock:
-            replay = b"".join(self._buffer)
+            replay = self._replay()
             if self.exited:
                 queue.put_nowait(None)
             else:
@@ -247,13 +283,14 @@ class TerminalManager:
         shell: str,
         read_chunk_bytes: int,
         replay_bytes: int,
+        queue_chunks: int,
     ) -> TerminalSession:
         with self._lock:
             session = self._sessions.get(key)
             if session is not None and not session.exited:
                 return session
 
-            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes)
+            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks)
             session.on_exit = lambda ended, key=key: self._discard(key, ended)
             session.start()
             self._sessions[key] = session
