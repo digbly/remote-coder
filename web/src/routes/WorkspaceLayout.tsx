@@ -6,7 +6,7 @@ import { fetchProject, type Project } from '../lib/api'
 import { useWorkspaceSync } from '../lib/sync'
 import {
   ensureWorkspace,
-  withNewTerminal,
+  withWorktreeTerminal,
   type ActiveProjectRef,
 } from '../lib/workspaceStore'
 
@@ -66,7 +66,7 @@ export function WorkspaceLayout() {
 
   function openWorktree(project: Project, worktree: string) {
     const ref = activate(project)
-    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, ref, { worktree }) }))
+    update((prev) => ({ ...prev, workspaces: withWorktreeTerminal(prev.workspaces, ref, worktree) }))
   }
 
   return (

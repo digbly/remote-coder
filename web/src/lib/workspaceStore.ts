@@ -96,6 +96,22 @@ export function withNewTerminal(
   }
 }
 
+export function withWorktreeTerminal(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  worktree: string,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const existing = tabs.find((tab) => tab.worktree === worktree)
+  if (existing) {
+    return {
+      ...workspaces,
+      [project.id]: { tabs, activeId: existing.id },
+    }
+  }
+  return withNewTerminal(workspaces, project, { worktree })
+}
+
 export function ensureWorkspace(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
