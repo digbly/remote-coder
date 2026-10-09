@@ -1,8 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import type { AgentDefinition } from '../../lib/agents'
-import type { WorkspaceTab } from '../../lib/workspaceStore'
+import type { TabKind, WorkspaceTab } from '../../lib/workspaceStore'
 import { CloseIcon, CommandIcon } from './icons'
 import { NewTabMenu } from './NewTabMenu'
+
+const TAB_DOT_COLORS: Record<TabKind, string> = {
+  terminal: 'bg-sky-400',
+  editor: 'bg-indigo-400',
+  vscode: 'bg-blue-400',
+}
 
 interface TopTabsProps {
   tabs: WorkspaceTab[]
@@ -34,11 +40,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
                 onClick={() => onSelect(tab.id)}
                 className="flex min-w-0 items-center gap-2"
               >
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-sm ${
-                    tab.kind === 'editor' ? 'bg-indigo-400' : 'bg-sky-400'
-                  }`}
-                />
+                <span className={`h-2 w-2 shrink-0 rounded-sm ${TAB_DOT_COLORS[tab.kind]}`} />
                 <span className="truncate">{tab.title}</span>
               </button>
               <button

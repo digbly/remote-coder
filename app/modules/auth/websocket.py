@@ -1,7 +1,7 @@
 from urllib.parse import urlsplit
 
 import jwt
-from fastapi import WebSocket
+from fastapi import Request, WebSocket
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,13 +10,17 @@ from app.modules.auth.models import User
 from app.modules.auth.security import decode_access_token
 
 
-def same_origin(websocket: WebSocket) -> bool:
-    """Reject cross-site WebSocket handshakes (CSWSH)."""
-    origin = websocket.headers.get("origin")
+def same_origin(source: Request | WebSocket) -> bool:
+    """Reject cross-site requests from a different origin.
+
+    Covers both WebSocket handshakes (CSWSH) and same-origin proxy requests; a
+    missing ``Origin`` is treated as same-origin for non-browser clients.
+    """
+    origin = source.headers.get("origin")
     if not origin:
         return True
 
-    host = websocket.headers.get("host")
+    host = source.headers.get("host")
     if not host:
         return False
 

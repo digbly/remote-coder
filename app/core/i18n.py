@@ -33,6 +33,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "GIT_DISCARD_FAILED": "Could not discard the changes",
         "GIT_PULL_FAILED": "Could not pull the changes",
         "GIT_NO_UPSTREAM": "The current branch has no upstream to pull from",
+        "VSCODE_DISABLED": "The VS Code server is disabled",
+        "VSCODE_WORKTREE_NOT_FOUND": "Worktree not found",
+        "VSCODE_START_FAILED": "Could not start the VS Code server",
+        "VSCODE_PROXY_FAILED": "Could not reach the VS Code server",
+        "VSCODE_FORBIDDEN": "Cross-site request rejected",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -63,6 +68,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "GIT_DISCARD_FAILED": "Không thể hoàn tác thay đổi",
         "GIT_PULL_FAILED": "Không thể pull thay đổi",
         "GIT_NO_UPSTREAM": "Nhánh hiện tại không có upstream để pull",
+        "VSCODE_DISABLED": "VS Code server đang bị tắt",
+        "VSCODE_WORKTREE_NOT_FOUND": "Không tìm thấy worktree",
+        "VSCODE_START_FAILED": "Không thể khởi động VS Code server",
+        "VSCODE_PROXY_FAILED": "Không thể kết nối tới VS Code server",
+        "VSCODE_FORBIDDEN": "Từ chối yêu cầu cross-site",
     },
 }
 
