@@ -78,6 +78,7 @@ const en = {
     viewAll: 'View all',
     closeTab: 'Close {{title}}',
     newTerminal: 'New terminal',
+    openTerminal: 'Open terminal',
     openInVSCode: 'Open in VS Code',
     agents: 'Agents',
     noAgents: 'No agents detected',

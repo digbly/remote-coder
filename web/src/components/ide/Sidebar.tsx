@@ -22,6 +22,7 @@ import {
   SearchIcon,
   SettingsIcon,
   TasksIcon,
+  TerminalIcon,
 } from './icons'
 import { NewProjectDialog } from './NewProjectDialog'
 
@@ -82,15 +83,21 @@ function WorktreeItem({
   worktree,
   onOpen,
   onOpenVSCode,
+  onContextMenu,
 }: {
   worktree: Worktree
   onOpen: () => void
   onOpenVSCode: () => void
+  onContextMenu: (x: number, y: number) => void
 }) {
   const { t } = useTranslation()
   return (
     <div
       title={worktree.path}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onContextMenu(event.clientX, event.clientY)
+      }}
       className="group flex w-full items-center rounded-md px-2 py-1.5 transition hover:bg-[#2a2c30]"
     >
       <button
@@ -145,6 +152,7 @@ function ProjectItem({
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
+  onWorktreeContextMenu,
 }: {
   project: Project
   accent: string
@@ -153,6 +161,7 @@ function ProjectItem({
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
+  onWorktreeContextMenu: (worktree: string, x: number, y: number) => void
 }) {
   return (
     <div className="pb-1.5">
@@ -176,6 +185,7 @@ function ProjectItem({
               worktree={worktree}
               onOpen={() => onOpenWorktree(project, worktree.name)}
               onOpenVSCode={() => onOpenVSCode(project, worktree.name)}
+              onContextMenu={(x, y) => onWorktreeContextMenu(worktree.name, x, y)}
             />
           ))}
         </div>
@@ -183,6 +193,17 @@ function ProjectItem({
     </div>
   )
 }
+
+interface WorktreeMenu {
+  x: number
+  y: number
+  project: Project
+  worktree: string
+}
+
+const MENU_WIDTH = 208
+const MENU_HEIGHT = 104
+const MENU_MARGIN = 8
 
 interface SidebarProps {
   user: User
@@ -211,6 +232,27 @@ export function Sidebar({
   const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
+  const [menu, setMenu] = useState<WorktreeMenu | null>(null)
+
+  useEffect(() => {
+    if (!menu) return
+    function close() {
+      setMenu(null)
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [menu])
 
   useEffect(() => {
     let active = true
@@ -237,6 +279,24 @@ export function Sidebar({
       .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
       .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: [] })))
     onOpenProject(project)
+  }
+
+  function openWorktreeMenu(project: Project, worktree: string, x: number, y: number) {
+    const maxX = Math.max(MENU_MARGIN, window.innerWidth - MENU_WIDTH - MENU_MARGIN)
+    const maxY = Math.max(MENU_MARGIN, window.innerHeight - MENU_HEIGHT - MENU_MARGIN)
+    setMenu({
+      x: Math.min(x, maxX),
+      y: Math.min(y, maxY),
+      project,
+      worktree,
+    })
+  }
+
+  function runMenuAction(action: (project: Project, worktree: string) => void) {
+    if (!menu) return
+    const current = menu
+    setMenu(null)
+    action(current.project, current.worktree)
   }
 
   return (
@@ -304,6 +364,9 @@ export function Sidebar({
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
+            onWorktreeContextMenu={(worktree, x, y) =>
+              openWorktreeMenu(project, worktree, x, y)
+            }
           />
         ))}
       </div>
@@ -340,6 +403,38 @@ export function Sidebar({
           onClose={() => setShowNewProject(false)}
           onCreated={handleCreated}
         />
+      )}
+
+      {menu && (
+        <div
+          role="menu"
+          style={{ top: menu.y, left: menu.x }}
+          onMouseDown={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+          className="fixed z-30 w-52 overflow-hidden rounded-md border border-[#2c2e33] bg-[#1b1c1f] py-1 text-[12px] shadow-xl shadow-black/40"
+        >
+          <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wide text-[#6b7078]">
+            {menu.worktree}
+          </p>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runMenuAction(onOpenWorktree)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+          >
+            <TerminalIcon width={13} height={13} />
+            {t('ide.openTerminal')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runMenuAction(onOpenVSCode)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+          >
+            <CodeIcon width={13} height={13} />
+            {t('ide.openInVSCode')}
+          </button>
+        </div>
       )}
     </aside>
   )

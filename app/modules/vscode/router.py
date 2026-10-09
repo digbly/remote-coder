@@ -1,7 +1,6 @@
 import asyncio
 from contextlib import suppress
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import httpx
 import websockets
@@ -12,9 +11,10 @@ from starlette.responses import StreamingResponse
 
 from app.core.config import Settings
 from app.core.deps import DbDep, SettingsDep
-from app.core.errors import ErrorCode, api_error, not_authenticated_error
+from app.core.errors import ErrorCode, api_error
+from app.modules.auth.deps import CurrentUser
 from app.modules.auth.models import User
-from app.modules.auth.websocket import resolve_user, same_origin, websocket_user
+from app.modules.auth.websocket import same_origin, websocket_user
 from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.vscode import service
@@ -85,17 +85,15 @@ async def proxy_http(
     request: Request,
     project_id: int,
     worktree: str,
+    current_user: CurrentUser,
     db: DbDep,
     settings: SettingsDep,
     subpath: str = "",
 ) -> StreamingResponse:
-    user = resolve_user(db, request.cookies.get(settings.access_token_cookie_name), settings)
-    if user is None:
-        raise not_authenticated_error()
-    if not _same_origin(request):
+    if not same_origin(request):
         raise api_error(ErrorCode.VSCODE_FORBIDDEN, status_code=status.HTTP_403_FORBIDDEN)
 
-    session = await _ensure_session(db, settings, user, project_id, worktree)
+    session = await _ensure_session(db, settings, current_user, project_id, worktree)
     # The database connection is not needed while the body streams.
     db.close()
     return await _forward_http(
@@ -281,16 +279,6 @@ def _proxy_prefix(settings: Settings, project_id: int, worktree: str) -> str:
 def _subprotocols(websocket: WebSocket) -> list[str]:
     header = websocket.headers.get("sec-websocket-protocol", "")
     return [item.strip() for item in header.split(",") if item.strip()]
-
-
-def _same_origin(request: Request) -> bool:
-    origin = request.headers.get("origin")
-    if not origin:
-        return True
-    host = request.headers.get("host")
-    if not host:
-        return False
-    return urlsplit(origin).netloc == host
 
 
 def _ws_close_code(exc: Exception) -> int:

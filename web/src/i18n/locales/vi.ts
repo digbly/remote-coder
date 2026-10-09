@@ -78,6 +78,7 @@ const vi = {
     viewAll: 'Xem tất cả',
     closeTab: 'Đóng {{title}}',
     newTerminal: 'Terminal mới',
+    openTerminal: 'Mở terminal',
     openInVSCode: 'Mở trong VS Code',
     agents: 'Agent',
     noAgents: 'Không phát hiện agent nào',
