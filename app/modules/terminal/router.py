@@ -10,6 +10,7 @@ from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
 from app.modules.auth.deps import CsrfDep, CurrentUser
 from app.modules.auth.websocket import same_origin, websocket_user
+from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.terminal import service
 
@@ -28,6 +29,7 @@ async def project_terminal(
     terminal_id: str,
     db: DbDep,
     settings: SettingsDep,
+    worktree: str | None = None,
 ) -> None:
     if not same_origin(websocket):
         await websocket.close(code=WS_FORBIDDEN)
@@ -51,6 +53,15 @@ async def project_terminal(
     if not cwd.is_dir():
         await websocket.close(code=WS_NOT_FOUND)
         return
+
+    if worktree is not None:
+        # Resolve against the project's worktree registry so a client cannot
+        # point the shell at an arbitrary directory.
+        resolved = await asyncio.to_thread(git_service.find_worktree, cwd, worktree, settings)
+        if resolved is None or not resolved.is_dir():
+            await websocket.close(code=WS_NOT_FOUND)
+            return
+        cwd = resolved
 
     # Release the database connection: it is not needed for the (potentially
     # long-lived) terminal session and would otherwise exhaust the pool.

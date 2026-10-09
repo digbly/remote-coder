@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.modules.git.service import parse_status
+from app.modules.git.service import parse_status, parse_worktrees
 from tests.conftest import LOCAL_URL, OTHER_USERNAME, PROJECTS_URL, _csrf, _login
 
 
@@ -556,6 +556,80 @@ def test_branches_list_create_and_checkout(client: TestClient, projects_root) ->
     )
     assert switched.status_code == 200
     assert switched.json()["branch"] == "main"
+
+
+def test_parse_worktrees_marks_primary_and_sorts_first(tmp_path: Path) -> None:
+    primary = tmp_path / "repo"
+    linked = tmp_path / "zzz-agent"
+    output = (
+        f"worktree {linked}\n"
+        "HEAD 1111111111111111111111111111111111111111\n"
+        "branch refs/heads/agent\n"
+        "\n"
+        f"worktree {primary}\n"
+        "HEAD 2222222222222222222222222222222222222222\n"
+        "branch refs/heads/main\n"
+        "\n"
+    )
+
+    result = parse_worktrees(output, primary=primary)
+
+    assert [worktree.name for worktree in result] == ["repo", "zzz-agent"]
+    assert result[0].is_primary is True
+    assert result[1].is_primary is False
+    assert result[0].branch == "main"
+    assert result[1].branch == "agent"
+
+
+def test_parse_worktrees_detached_head_has_no_branch(tmp_path: Path) -> None:
+    primary = tmp_path / "repo"
+    output = (
+        f"worktree {primary}\n"
+        "HEAD 2222222222222222222222222222222222222222\n"
+        "detached\n"
+    )
+
+    result = parse_worktrees(output, primary=primary)
+
+    assert result[0].branch is None
+    assert result[0].is_primary is True
+
+
+def test_list_worktrees(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    linked = projects_root / "myrepo-agent"
+    _git(repo, "worktree", "add", "-b", "agent-setting", str(linked))
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/worktrees")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [worktree["name"] for worktree in body] == ["myrepo", "myrepo-agent"]
+    assert body[0]["is_primary"] is True
+    assert body[0]["branch"] == "main"
+    assert body[1]["is_primary"] is False
+    assert body[1]["branch"] == "agent-setting"
+
+
+def test_list_worktrees_requires_auth(client: TestClient) -> None:
+    assert client.get(f"{PROJECTS_URL}/1/git/worktrees").status_code == 401
+
+
+def test_list_worktrees_scoped_to_owner(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    client.cookies.clear()
+    _login(client, username=OTHER_USERNAME)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/worktrees")
+    assert response.status_code == 404
+    assert _error_code(response) == "PROJECT_NOT_FOUND"
 
 
 def test_create_branch_rejects_invalid_name(client: TestClient, projects_root) -> None:

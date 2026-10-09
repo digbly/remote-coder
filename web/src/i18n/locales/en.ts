@@ -51,6 +51,7 @@ const en = {
     projectsError: 'Failed to load projects',
     noProjects: 'No projects yet',
     primary: 'primary',
+    localHost: 'local',
     createPr: 'Create PR',
     message: 'Message',
     commit: 'Commit',

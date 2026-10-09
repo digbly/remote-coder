@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchProjects, type Project, type User } from '../../lib/api'
+import { fetchProjects, fetchWorktrees, type Project, type User, type Worktree } from '../../lib/api'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import {
   AutomationsIcon,
@@ -17,10 +17,23 @@ import {
 } from './icons'
 import { NewProjectDialog } from './NewProjectDialog'
 
-const PROJECT_ACCENTS = ['text-violet-400', 'text-sky-400', 'text-emerald-400', 'text-amber-400']
+const PROJECT_ACCENTS = ['bg-violet-400', 'bg-sky-400', 'bg-emerald-400', 'bg-amber-400']
 
 function projectAccent(index: number) {
   return PROJECT_ACCENTS[index % PROJECT_ACCENTS.length]
+}
+
+async function loadWorktrees(projects: Project[]): Promise<Record<number, Worktree[]>> {
+  const entries = await Promise.all(
+    projects.map(async (project) => {
+      try {
+        return [project.id, await fetchWorktrees(project.id)] as const
+      } catch {
+        return [project.id, [] as Worktree[]] as const
+      }
+    }),
+  )
+  return Object.fromEntries(entries)
 }
 
 function NavItem({ icon, label }: { icon: ReactNode; label: string }) {
@@ -57,10 +70,93 @@ function IconButton({
   )
 }
 
+function WorktreeItem({ worktree, onOpen }: { worktree: Worktree; onOpen: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={worktree.path}
+      className="group flex w-full flex-col gap-1 rounded-md px-2 py-1.5 text-left transition hover:bg-[#2a2c30]"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
+            worktree.is_primary
+              ? 'border-emerald-400/70 text-emerald-400'
+              : 'border-amber-400/70 text-amber-400'
+          }`}
+        >
+          <BranchIcon width={9} height={9} />
+        </span>
+        <span className="truncate text-[13px] text-[#d7dae0] group-hover:text-white">
+          {worktree.branch ?? worktree.name}
+        </span>
+        {worktree.is_primary && (
+          <span className="shrink-0 rounded border border-[#3a3d42] px-1.5 py-px text-[10px] text-[#8b9099]">
+            {t('ide.primary')}
+          </span>
+        )}
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5 pl-[22px] text-[11px] text-[#7d828b]">
+        <span className="shrink-0 rounded bg-[#2c2e33] px-1.5 py-px text-[#9aa0a8]">
+          {t('ide.localHost')}
+        </span>
+        <span className="truncate">{worktree.name}</span>
+      </span>
+    </button>
+  )
+}
+
+function ProjectItem({
+  project,
+  accent,
+  active,
+  worktrees,
+  onOpenProject,
+  onOpenWorktree,
+}: {
+  project: Project
+  accent: string
+  active: boolean
+  worktrees: Worktree[] | undefined
+  onOpenProject: (project: Project) => void
+  onOpenWorktree: (project: Project, worktree: string) => void
+}) {
+  return (
+    <div className="pb-1.5">
+      <button
+        type="button"
+        onClick={() => onOpenProject(project)}
+        title={project.path}
+        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition ${
+          active ? 'bg-[#2a2c30] text-white' : 'text-[#d7dae0] hover:bg-[#24262a] hover:text-white'
+        }`}
+      >
+        <span className={`h-3.5 w-3.5 shrink-0 rounded-sm ${accent}`} aria-hidden="true" />
+        <span className="truncate font-medium">{project.name}</span>
+      </button>
+
+      {worktrees && worktrees.length > 0 && (
+        <div className="mt-1 space-y-0.5 rounded-lg border border-[#2c2e33] bg-[#202124] p-1">
+          {worktrees.map((worktree) => (
+            <WorktreeItem
+              key={worktree.path}
+              worktree={worktree}
+              onOpen={() => onOpenWorktree(project, worktree.name)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface SidebarProps {
   user: User
   onLogout: () => void
   onOpenProject: (project: Project) => void
+  onOpenWorktree: (project: Project, worktree: string) => void
   activeProjectId: number | null
   width: number
   onClose: () => void
@@ -70,20 +166,25 @@ export function Sidebar({
   user,
   onLogout,
   onOpenProject,
+  onOpenWorktree,
   activeProjectId,
   width,
   onClose,
 }: SidebarProps) {
   const { t } = useTranslation()
   const [projects, setProjects] = useState<Project[] | null>(null)
+  const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
 
   useEffect(() => {
     let active = true
     fetchProjects()
-      .then((list) => {
-        if (active) setProjects(list)
+      .then(async (list) => {
+        if (!active) return
+        setProjects(list)
+        const loaded = await loadWorktrees(list)
+        if (active) setWorktrees(loaded)
       })
       .catch(() => {
         if (active) setError(true)
@@ -97,6 +198,9 @@ export function Sidebar({
     setShowNewProject(false)
     setError(false)
     setProjects((prev) => (prev ? [project, ...prev] : [project]))
+    fetchWorktrees(project.id)
+      .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
+      .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: [] })))
     onOpenProject(project)
   }
 
@@ -155,23 +259,17 @@ export function Sidebar({
         {projects?.length === 0 && (
           <p className="px-2.5 py-1.5 text-[13px] text-[#7d828b]">{t('ide.noProjects')}</p>
         )}
-        {projects?.map((project, index) => {
-          const active = project.id === activeProjectId
-          return (
-            <button
-              key={project.id}
-              type="button"
-              onClick={() => onOpenProject(project)}
-              title={project.path}
-              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition ${
-                active ? 'bg-[#2a2c30] text-white' : 'text-[#c2c6cc] hover:bg-[#24262a] hover:text-white'
-              }`}
-            >
-              <BranchIcon width={14} height={14} className={`shrink-0 ${projectAccent(index)}`} />
-              <span className="truncate">{project.name}</span>
-            </button>
-          )
-        })}
+        {projects?.map((project, index) => (
+          <ProjectItem
+            key={project.id}
+            project={project}
+            accent={projectAccent(index)}
+            active={project.id === activeProjectId}
+            worktrees={worktrees[project.id]}
+            onOpenProject={onOpenProject}
+            onOpenWorktree={onOpenWorktree}
+          />
+        ))}
       </div>
 
       <div className="border-t border-[#2c2e33] px-2 py-2">

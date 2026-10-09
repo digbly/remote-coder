@@ -14,10 +14,12 @@ interface TerminalMessage {
 export const ProjectTerminal = memo(function ProjectTerminal({
   projectId,
   terminalId,
+  worktree,
   active,
 }: {
   projectId: number
   terminalId: string
+  worktree?: string
   active: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -43,7 +45,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     terminal.open(container)
     fitNow()
 
-    const socket = new WebSocket(projectTerminalUrl(projectId, terminalId))
+    const socket = new WebSocket(projectTerminalUrl(projectId, terminalId, worktree))
     socket.binaryType = 'arraybuffer'
 
     let disposed = false
@@ -106,7 +108,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       terminal.dispose()
       fitRef.current = null
     }
-  }, [projectId, terminalId])
+  }, [projectId, terminalId, worktree])
 
   useEffect(() => {
     if (!active) return

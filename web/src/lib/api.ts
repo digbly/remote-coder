@@ -104,6 +104,13 @@ export interface GitBranches {
   branches: string[]
 }
 
+export interface Worktree {
+  name: string
+  path: string
+  branch: string | null
+  is_primary: boolean
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const NO_REFRESH_PATHS = new Set(['/auth/login', '/auth/refresh'])
 
@@ -337,9 +344,23 @@ export function createPullRequest(
   return postJson(`/projects/${projectId}/git/pull-request`, { branch })
 }
 
-export function projectTerminalUrl(projectId: number, terminalId: string): string {
+export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {
+  const response = await request(`/projects/${projectId}/git/worktrees`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as Worktree[]
+}
+
+export function projectTerminalUrl(
+  projectId: number,
+  terminalId: string,
+  worktree?: string,
+): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`
+  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`
 }
 
 export function workspaceUrl(): string {

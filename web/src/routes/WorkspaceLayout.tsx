@@ -4,7 +4,11 @@ import { IdeShell } from '../components/IdeShell'
 import { useAuth } from '../lib/authContext'
 import { fetchProject, type Project } from '../lib/api'
 import { useWorkspaceSync } from '../lib/sync'
-import { ensureWorkspace, type ActiveProjectRef } from '../lib/workspaceStore'
+import {
+  ensureWorkspace,
+  withNewTerminal,
+  type ActiveProjectRef,
+} from '../lib/workspaceStore'
 
 function parseProjectId(projectId: string | undefined): number | null {
   if (projectId === undefined) return null
@@ -48,11 +52,21 @@ export function WorkspaceLayout() {
 
   if (!user) return null
 
-  function openProject(project: Project) {
+  function activate(project: Project): ActiveProjectRef {
     const ref = { id: project.id, name: project.name }
     setActiveProject(ref)
-    update((prev) => ({ ...prev, workspaces: ensureWorkspace(prev.workspaces, ref) }))
     navigate(`/projects/${project.id}`)
+    return ref
+  }
+
+  function openProject(project: Project) {
+    const ref = activate(project)
+    update((prev) => ({ ...prev, workspaces: ensureWorkspace(prev.workspaces, ref) }))
+  }
+
+  function openWorktree(project: Project, worktree: string) {
+    const ref = activate(project)
+    update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, ref, worktree) }))
   }
 
   return (
@@ -63,6 +77,7 @@ export function WorkspaceLayout() {
       state={state}
       update={update}
       onOpenProject={openProject}
+      onOpenWorktree={openWorktree}
     />
   )
 }

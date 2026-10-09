@@ -51,6 +51,7 @@ const vi = {
     projectsError: 'Không tải được danh sách dự án',
     noProjects: 'Chưa có dự án nào',
     primary: 'chính',
+    localHost: 'local',
     createPr: 'Tạo PR',
     message: 'Nội dung',
     commit: 'Commit',

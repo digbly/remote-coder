@@ -48,3 +48,10 @@ class GitBranchCreate(BaseModel):
 class GitBranchesRead(BaseModel):
     current: str | None = None
     branches: list[str] = Field(default_factory=list)
+
+
+class GitWorktreeRead(BaseModel):
+    name: str
+    path: str
+    branch: str | None = None
+    is_primary: bool = False

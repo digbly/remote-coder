@@ -13,6 +13,7 @@ from app.modules.git.schemas import (
     GitPullRequestCreate,
     GitPullRequestRead,
     GitStatusRead,
+    GitWorktreeRead,
 )
 
 router = APIRouter(prefix="/projects", tags=["git"])
@@ -138,6 +139,20 @@ def pull_branch(
     _csrf: CsrfDep,
 ) -> GitStatusRead:
     return service.pull_branch(db, current_user, project_id, settings)
+
+
+@router.get(
+    "/{project_id}/git/worktrees",
+    response_model=list[GitWorktreeRead],
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+def list_worktrees(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+) -> list[GitWorktreeRead]:
+    return service.list_worktrees(db, current_user, project_id, settings)
 
 
 @router.get(

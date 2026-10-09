@@ -7,6 +7,7 @@ export interface WorkspaceTab {
   title: string
   kind: TabKind
   projectId?: number
+  worktree?: string
 }
 
 export interface ProjectWorkspace {
@@ -41,7 +42,8 @@ function isTab(value: unknown): value is WorkspaceTab {
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
     (value.kind === 'terminal' || value.kind === 'editor') &&
-    (value.projectId === undefined || typeof value.projectId === 'number')
+    (value.projectId === undefined || typeof value.projectId === 'number') &&
+    (value.worktree === undefined || typeof value.worktree === 'string')
   )
 }
 
@@ -61,14 +63,17 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
 export function withNewTerminal(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
+  worktree?: string,
 ): Record<number, ProjectWorkspace> {
   const tabs = workspaces[project.id]?.tabs ?? []
   const id = newTerminalId()
-  const title = tabs.length === 0 ? project.name : `${project.name} (${tabs.length + 1})`
+  const label = worktree || project.name
+  const sameLabel = tabs.filter((tab) => tab.worktree === worktree).length
+  const title = sameLabel === 0 ? label : `${label} (${sameLabel + 1})`
   return {
     ...workspaces,
     [project.id]: {
-      tabs: [...tabs, { id, title, kind: 'terminal', projectId: project.id }],
+      tabs: [...tabs, { id, title, kind: 'terminal', projectId: project.id, worktree }],
       activeId: id,
     },
   }

@@ -16,6 +16,7 @@ from app.modules.git.schemas import (
     GitPullRequestCreate,
     GitPullRequestRead,
     GitStatusRead,
+    GitWorktreeRead,
 )
 from app.modules.projects.service import get_project, parse_github_repository
 
@@ -33,6 +34,7 @@ _AHEAD_BEHIND_PREFIX = "# branch.ab "
 
 _BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,255}$")
 _DEFAULT_BRANCHES = ("main", "master")
+_WORKTREE_BRANCH_PREFIX = "refs/heads/"
 
 
 def get_git_status(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
@@ -171,6 +173,86 @@ def list_branches(
     )
     branches = sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
     return GitBranchesRead(current=_current_branch(path, settings) or None, branches=branches)
+
+
+def list_worktrees(
+    db: Session, owner: User, project_id: int, settings: Settings
+) -> list[GitWorktreeRead]:
+    """Return every git worktree registered for the project, primary first."""
+    path = _project_repository(db, owner, project_id, settings)
+    result = _run_git(
+        path,
+        ["worktree", "list", "--porcelain"],
+        timeout=settings.git_status_timeout_seconds,
+    )
+    if result.returncode != 0:
+        _raise_status_error(result)
+        raise api_error(
+            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return parse_worktrees(result.stdout, primary=path)
+
+
+def find_worktree(path: Path, name: str, settings: Settings) -> Path | None:
+    """Resolve a worktree directory by its basename, or ``None`` if unknown.
+
+    The name comes from the client, so it is matched against git's own worktree
+    registry instead of being treated as a filesystem path.
+    """
+    try:
+        result = _run_git(
+            path,
+            ["worktree", "list", "--porcelain"],
+            timeout=settings.git_status_timeout_seconds,
+        )
+    except HTTPException:
+        return None
+    if result.returncode != 0:
+        return None
+    for worktree in parse_worktrees(result.stdout, primary=path):
+        if worktree.name == name:
+            return Path(worktree.path)
+    return None
+
+
+def parse_worktrees(output: str, primary: Path) -> list[GitWorktreeRead]:
+    """Parse ``git worktree list --porcelain`` output.
+
+    Each worktree is a blank-line separated block whose first line is
+    ``worktree <path>`` and optionally a ``branch <ref>`` line.
+    """
+    primary_resolved = primary.resolve()
+    worktrees: list[GitWorktreeRead] = []
+    current: dict[str, str] | None = None
+
+    for line in output.splitlines():
+        if line.startswith("worktree "):
+            if current is not None:
+                worktrees.append(_build_worktree(current, primary_resolved))
+            current = {"path": line[len("worktree ") :]}
+        elif current is not None and line.startswith("branch "):
+            current["branch"] = line[len("branch ") :]
+
+    if current is not None:
+        worktrees.append(_build_worktree(current, primary_resolved))
+
+    worktrees.sort(key=lambda worktree: (not worktree.is_primary, worktree.name.lower()))
+    return worktrees
+
+
+def _build_worktree(raw: dict[str, str], primary_resolved: Path) -> GitWorktreeRead:
+    path = Path(raw["path"])
+    branch_ref = raw.get("branch")
+    branch = (
+        branch_ref[len(_WORKTREE_BRANCH_PREFIX) :]
+        if branch_ref is not None and branch_ref.startswith(_WORKTREE_BRANCH_PREFIX)
+        else None
+    )
+    try:
+        is_primary = path.resolve() == primary_resolved
+    except OSError:
+        is_primary = False
+    return GitWorktreeRead(name=path.name, path=str(path), branch=branch, is_primary=is_primary)
 
 
 def create_branch(

@@ -52,6 +52,7 @@ interface IdeShellProps {
   state: SyncedState
   update: (updater: (prev: SyncedState) => SyncedState) => void
   onOpenProject: (project: Project) => void
+  onOpenWorktree: (project: Project, worktree: string) => void
 }
 
 export function IdeShell({
@@ -61,6 +62,7 @@ export function IdeShell({
   state,
   update,
   onOpenProject,
+  onOpenWorktree,
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
@@ -115,6 +117,7 @@ export function IdeShell({
             user={user}
             onLogout={onLogout}
             onOpenProject={onOpenProject}
+            onOpenWorktree={onOpenWorktree}
             activeProjectId={activeProjectId}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
@@ -162,6 +165,7 @@ export function IdeShell({
                   <ProjectTerminal
                     projectId={tab.projectId}
                     terminalId={tab.id}
+                    worktree={tab.worktree}
                     active={tab.id === activeTabId}
                   />
                 </div>

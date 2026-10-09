@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -173,6 +174,52 @@ def test_terminal_kill_scoped_to_project_owner(client: TestClient, projects_root
     )
 
     assert response.status_code == 404
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _init_repo(repo: Path) -> None:
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("hello\n")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-qm", "init")
+
+
+def test_terminal_runs_shell_in_worktree_directory(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    repo = projects_root / "wt-main"
+    _init_repo(repo)
+    _git(repo, "worktree", "add", "-b", "agent", str(projects_root / "wt-agent"))
+    response = client.post(LOCAL_URL, json={"path": str(repo)}, headers=_csrf(client))
+    project_id = response.json()["id"]
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=wt-agent"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        websocket.send_text(json.dumps({"type": "input", "data": "pwd\n"}))
+        output = _read_until(websocket, "wt-agent")
+
+    assert "wt-agent" in output
+
+
+def test_terminal_rejects_unknown_worktree(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    repo = projects_root / "wt-main"
+    _init_repo(repo)
+    response = client.post(LOCAL_URL, json={"path": str(repo)}, headers=_csrf(client))
+    project_id = response.json()["id"]
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=does-not-exist"
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(url):
+            pass
+
+    assert exc.value.code == 4404
 
 
 def test_subscriber_queue_drops_oldest_when_full() -> None:
