@@ -242,3 +242,42 @@ export function PanelRightIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h16M10 11v6M14 11v6" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </Svg>
+  )
+}
+
+export function CloudUploadIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 17a4 4 0 0 1-.6-8A5.5 5.5 0 0 1 17 9a3.5 3.5 0 0 1 .5 7" />
+      <path d="M12 21v-9M9 15l3-3 3 3" />
+    </Svg>
+  )
+}
+
+export function CloudDownloadIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 17a4 4 0 0 1-.6-8A5.5 5.5 0 0 1 17 9a3.5 3.5 0 0 1 .5 7" />
+      <path d="M12 12v9M9 18l3 3 3-3" />
+    </Svg>
+  )
+}
+
+export function BranchPlusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="5" r="2.5" />
+      <circle cx="6" cy="19" r="2.5" />
+      <path d="M6 7.5v9M18 9.5a6 6 0 0 1-6 6H9" />
+      <path d="M16 3v6M13 6h6" />
+    </Svg>
+  )
+}

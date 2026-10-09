@@ -25,6 +25,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "GIT_BRANCH_INVALID": "Branch name is invalid or already in use",
         "GIT_PUSH_FAILED": "Could not push the branch",
         "GIT_PULL_REQUEST_FAILED": "Could not create the pull request",
+        "GIT_DISCARD_FAILED": "Could not discard the changes",
+        "GIT_PULL_FAILED": "Could not pull the changes",
+        "GIT_NO_UPSTREAM": "The current branch has no upstream to pull from",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -47,6 +50,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "GIT_BRANCH_INVALID": "Tên nhánh không hợp lệ hoặc đã tồn tại",
         "GIT_PUSH_FAILED": "Không thể push nhánh",
         "GIT_PULL_REQUEST_FAILED": "Không thể tạo pull request",
+        "GIT_DISCARD_FAILED": "Không thể hoàn tác thay đổi",
+        "GIT_PULL_FAILED": "Không thể pull thay đổi",
+        "GIT_NO_UPSTREAM": "Nhánh hiện tại không có upstream để pull",
     },
 }
 

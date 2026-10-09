@@ -39,3 +39,12 @@ class GitPullRequestRead(BaseModel):
     url: str
     branch: str
     base: str
+
+
+class GitBranchCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class GitBranchesRead(BaseModel):
+    current: str | None = None
+    branches: list[str] = Field(default_factory=list)

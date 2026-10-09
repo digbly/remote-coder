@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.auth.models import User
 from app.modules.git.schemas import (
+    GitBranchesRead,
     GitChange,
     GitCommitRead,
     GitPullRequestCreate,
@@ -58,6 +59,15 @@ def stage_paths(
     return _read_status(path, settings)
 
 
+def stage_all(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+    """Stage every change in the working tree, then return the refreshed status."""
+    path = _project_repository(db, owner, project_id, settings)
+
+    result = _run_git(path, ["add", "-A"], timeout=settings.git_commit_timeout_seconds)
+    _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    return _read_status(path, settings)
+
+
 def unstage_paths(
     db: Session, owner: User, project_id: int, paths: list[str], settings: Settings
 ) -> GitStatusRead:
@@ -65,6 +75,140 @@ def unstage_paths(
     path = _project_repository(db, owner, project_id, settings)
     _validate_paths(paths)
 
+    _unstage(path, paths, settings)
+    return _read_status(path, settings)
+
+
+def unstage_all(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+    """Move every staged path back to the working tree."""
+    path = _project_repository(db, owner, project_id, settings)
+    current = _read_status(path, settings)
+
+    _unstage(path, [change.path for change in current.staged], settings)
+    return _read_status(path, settings)
+
+
+def discard_paths(
+    db: Session, owner: User, project_id: int, paths: list[str], settings: Settings
+) -> GitStatusRead:
+    """Discard working tree and index changes for the given paths.
+
+    Paths present in ``HEAD`` are restored from it; every other path is
+    removed from the index (when staged) and from disk. Rename targets may be
+    passed alongside their original path so both sides are reverted.
+    """
+    path = _project_repository(db, owner, project_id, settings)
+    _validate_paths(paths)
+    if not paths:
+        return _read_status(path, settings)
+
+    restore, remove = _partition_by_head(path, paths, settings)
+
+    if restore:
+        _run_discard(
+            path, ["restore", "--source=HEAD", "--staged", "--worktree", "--", *restore], settings
+        )
+
+    if remove:
+        staged, _ = _partition_tracked(path, remove, settings)
+        if staged:
+            _run_discard(path, ["rm", "--cached", "-r", "--", *staged], settings)
+        _run_discard(path, ["clean", "-f", "-d", "--", *remove], settings)
+
+    return _read_status(path, settings)
+
+
+def pull_branch(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+    """Fast-forward the current branch from its upstream."""
+    path = _project_repository(db, owner, project_id, settings)
+    branch = _current_branch(path, settings)
+    if not branch or _upstream_branch(path, branch, settings) is None:
+        raise api_error(ErrorCode.GIT_NO_UPSTREAM, status_code=status.HTTP_400_BAD_REQUEST)
+
+    result = _run_git(
+        path,
+        ["pull", "--ff-only"],
+        timeout=settings.git_push_timeout_seconds,
+        error_code=ErrorCode.GIT_PULL_FAILED,
+    )
+    if result.returncode != 0:
+        raise api_error(ErrorCode.GIT_PULL_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
+    return _read_status(path, settings)
+
+
+def push_branch(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+    """Push the current branch, setting its upstream on the first push."""
+    path = _project_repository(db, owner, project_id, settings)
+    branch = _current_branch(path, settings)
+    if not branch:
+        raise api_error(ErrorCode.GIT_BRANCH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    if _upstream_branch(path, branch, settings) is None:
+        args = ["push", "-u", "origin", branch]
+    else:
+        args = ["push"]
+
+    result = _run_git(
+        path,
+        args,
+        timeout=settings.git_push_timeout_seconds,
+        error_code=ErrorCode.GIT_PUSH_FAILED,
+    )
+    if result.returncode != 0:
+        raise api_error(ErrorCode.GIT_PUSH_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
+    return _read_status(path, settings)
+
+
+def list_branches(
+    db: Session, owner: User, project_id: int, settings: Settings
+) -> GitBranchesRead:
+    """Return the current branch together with every local branch."""
+    path = _project_repository(db, owner, project_id, settings)
+    result = _run_git(
+        path,
+        ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        timeout=settings.git_status_timeout_seconds,
+    )
+    branches = sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
+    return GitBranchesRead(current=_current_branch(path, settings) or None, branches=branches)
+
+
+def create_branch(
+    db: Session, owner: User, project_id: int, name: str, settings: Settings
+) -> GitStatusRead:
+    """Create and check out a new branch."""
+    path = _project_repository(db, owner, project_id, settings)
+    _checkout(path, name.strip(), create=True, settings=settings)
+    return _read_status(path, settings)
+
+
+def checkout_branch(
+    db: Session, owner: User, project_id: int, name: str, settings: Settings
+) -> GitStatusRead:
+    """Switch to an existing local branch."""
+    path = _project_repository(db, owner, project_id, settings)
+    _checkout(path, name.strip(), create=False, settings=settings)
+    return _read_status(path, settings)
+
+
+def _checkout(path: Path, branch: str, *, create: bool, settings: Settings) -> None:
+    if not _valid_branch_name(branch):
+        raise api_error(ErrorCode.GIT_BRANCH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    args = ["checkout", "-b", branch] if create else ["checkout", branch]
+    result = _run_git(
+        path,
+        args,
+        timeout=settings.git_commit_timeout_seconds,
+        error_code=ErrorCode.GIT_BRANCH_INVALID,
+    )
+    if result.returncode != 0:
+        raise api_error(ErrorCode.GIT_BRANCH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+
+def _unstage(path: Path, paths: list[str], settings: Settings) -> None:
+    if not paths:
+        return
     if _has_head(path, settings):
         args = ["restore", "--staged", "--", *paths]
     else:
@@ -72,7 +216,44 @@ def unstage_paths(
 
     result = _run_git(path, args, timeout=settings.git_commit_timeout_seconds)
     _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
-    return _read_status(path, settings)
+
+
+def _run_discard(path: Path, args: list[str], settings: Settings) -> None:
+    result = _run_git(
+        path,
+        args,
+        timeout=settings.git_commit_timeout_seconds,
+        error_code=ErrorCode.GIT_DISCARD_FAILED,
+    )
+    _ensure_success(result, ErrorCode.GIT_DISCARD_FAILED)
+
+
+def _partition_by_head(
+    path: Path, paths: list[str], settings: Settings
+) -> tuple[list[str], list[str]]:
+    if not _has_head(path, settings):
+        return [], list(paths)
+
+    result = _run_git(
+        path,
+        ["ls-tree", "-r", "--name-only", "-z", "HEAD"],
+        timeout=settings.git_status_timeout_seconds,
+    )
+    head_paths = set(result.stdout.split("\0"))
+    return [p for p in paths if p in head_paths], [p for p in paths if p not in head_paths]
+
+
+def _partition_tracked(
+    path: Path, paths: list[str], settings: Settings
+) -> tuple[list[str], list[str]]:
+    result = _run_git(
+        path,
+        ["ls-files", "-z", "--", *paths],
+        timeout=settings.git_status_timeout_seconds,
+    )
+    tracked = set(result.stdout.split("\0"))
+    return [p for p in paths if p in tracked], [p for p in paths if p not in tracked]
+
 
 
 def commit_staged(
@@ -284,6 +465,16 @@ def _current_branch(path: Path, settings: Settings) -> str:
         path, ["rev-parse", "--abbrev-ref", "HEAD"], timeout=settings.git_status_timeout_seconds
     )
     return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _upstream_branch(path: Path, branch: str, settings: Settings) -> str | None:
+    result = _run_git(
+        path,
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{branch}@{{upstream}}"],
+        timeout=settings.git_status_timeout_seconds,
+    )
+    upstream = result.stdout.strip()
+    return upstream if result.returncode == 0 and upstream else None
 
 
 def _last_url(output: str) -> str | None:

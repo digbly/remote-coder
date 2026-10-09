@@ -25,6 +25,9 @@ const ERROR_CODE_KEYS = {
   GIT_BRANCH_INVALID: 'apiErrors.gitBranchInvalid',
   GIT_PUSH_FAILED: 'apiErrors.gitPushFailed',
   GIT_PULL_REQUEST_FAILED: 'apiErrors.gitPullRequestFailed',
+  GIT_DISCARD_FAILED: 'apiErrors.gitDiscardFailed',
+  GIT_PULL_FAILED: 'apiErrors.gitPullFailed',
+  GIT_NO_UPSTREAM: 'apiErrors.gitNoUpstream',
 } as const
 
 export interface User {
@@ -94,6 +97,11 @@ export interface GitPullRequestResult {
   url: string
   branch: string
   base: string
+}
+
+export interface GitBranches {
+  current: string | null
+  branches: string[]
 }
 
 function readCookie(name: string): string | null {
@@ -231,6 +239,43 @@ export function stagePaths(projectId: number, paths: string[]): Promise<GitStatu
 
 export function unstagePaths(projectId: number, paths: string[]): Promise<GitStatus> {
   return postJson(`/projects/${projectId}/git/unstage`, { paths })
+}
+
+export function stageAllPaths(projectId: number): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/stage-all`, {})
+}
+
+export function unstageAllPaths(projectId: number): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/unstage-all`, {})
+}
+
+export function discardPaths(projectId: number, paths: string[]): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/discard`, { paths })
+}
+
+export function pushBranch(projectId: number): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/push`, {})
+}
+
+export function pullBranch(projectId: number): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/pull`, {})
+}
+
+export async function fetchBranches(projectId: number): Promise<GitBranches> {
+  const response = await request(`/projects/${projectId}/git/branches`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as GitBranches
+}
+
+export function createBranch(projectId: number, name: string): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/branches`, { name })
+}
+
+export function checkoutBranch(projectId: number, name: string): Promise<GitStatus> {
+  return postJson(`/projects/${projectId}/git/checkout`, { name })
 }
 
 export function commitChanges(projectId: number, message: string): Promise<GitCommitResult> {
