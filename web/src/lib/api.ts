@@ -218,6 +218,16 @@ export async function fetchProjects(): Promise<Project[]> {
   return (await response.json()) as Project[]
 }
 
+export async function fetchProject(projectId: number): Promise<Project> {
+  const response = await request(`/projects/${projectId}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    const fallbackKey = response.status === 404 ? 'apiErrors.projectNotFound' : 'apiErrors.unknown'
+    throw new Error(extractError(data) ?? i18n.t(fallbackKey))
+  }
+  return (await response.json()) as Project
+}
+
 async function createProject(path: string, payload: unknown): Promise<Project> {
   const response = await request(path, {
     method: 'POST',

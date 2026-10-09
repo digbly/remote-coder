@@ -69,6 +69,8 @@ const en = {
     memory: 'Memory',
     workspaceConflict: 'Workspace conflict',
     signOut: 'Sign out',
+    noProjectSelected: 'No project open',
+    openProjectHint: 'Select a project from the sidebar to get started',
     settings: 'Settings',
     help: 'Help',
     sourceControl: 'Source Control',

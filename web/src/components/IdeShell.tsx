@@ -1,30 +1,17 @@
 import { useTranslation } from 'react-i18next'
 import { killTerminal, type Project, type User } from '../lib/api'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
-import { newTerminalId, type ActiveProjectRef, type ProjectWorkspace } from '../lib/workspaceStore'
-import { useWorkspaceSync } from '../lib/sync'
+import {
+  withNewTerminal,
+  type ActiveProjectRef,
+  type SyncedState,
+} from '../lib/workspaceStore'
 import { Sidebar } from './ide/Sidebar'
 import { SourceControlPanel } from './ide/SourceControlPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { TopTabs } from './ide/TopTabs'
 import { ResizeHandle } from './ide/ResizeHandle'
 import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
-
-function withNewTerminal(
-  workspaces: Record<number, ProjectWorkspace>,
-  project: ActiveProjectRef,
-): Record<number, ProjectWorkspace> {
-  const tabs = workspaces[project.id]?.tabs ?? []
-  const id = newTerminalId()
-  const title = tabs.length === 0 ? project.name : `${project.name} (${tabs.length + 1})`
-  return {
-    ...workspaces,
-    [project.id]: {
-      tabs: [...tabs, { id, title, kind: 'terminal', projectId: project.id }],
-      activeId: id,
-    },
-  }
-}
 
 function SidebarRail({
   side,
@@ -58,10 +45,25 @@ function SidebarRail({
   )
 }
 
-export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void }) {
+interface IdeShellProps {
+  user: User
+  onLogout: () => void
+  activeProject: ActiveProjectRef | null
+  state: SyncedState
+  update: (updater: (prev: SyncedState) => SyncedState) => void
+  onOpenProject: (project: Project) => void
+}
+
+export function IdeShell({
+  user,
+  onLogout,
+  activeProject,
+  state,
+  update,
+  onOpenProject,
+}: IdeShellProps) {
   const { t } = useTranslation()
-  const { state, update } = useWorkspaceSync()
-  const { activeProject, workspaces, layout } = state
+  const { workspaces, layout } = state
 
   function updateLayout(patch: Partial<LayoutState>) {
     update((prev) => ({ ...prev, layout: { ...prev.layout, ...patch } }))
@@ -75,27 +77,6 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
 
   function openTerminal(project: ActiveProjectRef) {
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project) }))
-  }
-
-  function openProject(project: Project) {
-    update((prev) => {
-      const existing = prev.workspaces[project.id]
-      const nextWorkspaces =
-        existing && existing.tabs.length > 0
-          ? {
-              ...prev.workspaces,
-              [project.id]: {
-                ...existing,
-                activeId: existing.activeId ?? existing.tabs[existing.tabs.length - 1].id,
-              },
-            }
-          : withNewTerminal(prev.workspaces, project)
-      return {
-        ...prev,
-        activeProject: { id: project.id, name: project.name },
-        workspaces: nextWorkspaces,
-      }
-    })
   }
 
   function selectTab(id: string) {
@@ -133,7 +114,7 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
           <Sidebar
             user={user}
             onLogout={onLogout}
-            onOpenProject={openProject}
+            onOpenProject={onOpenProject}
             activeProjectId={activeProjectId}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
@@ -164,6 +145,12 @@ export function IdeShell({ user, onLogout }: { user: User; onLogout: () => void 
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1">
+            {activeProjectId == null && (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
+                <p className="text-sm text-[#8b9099]">{t('ide.noProjectSelected')}</p>
+                <p className="text-xs text-[#5f646c]">{t('ide.openProjectHint')}</p>
+              </div>
+            )}
             {allTabs.map((tab) =>
               tab.projectId == null ? null : (
                 <div
