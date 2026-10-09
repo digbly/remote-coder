@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
+from app.modules.agents import service as agent_service
 from app.modules.auth.models import User
 from app.modules.git.schemas import (
     GitBranchesRead,
@@ -38,6 +39,21 @@ _AHEAD_BEHIND_PREFIX = "# branch.ab "
 _BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,255}$")
 _DEFAULT_BRANCHES = ("main", "master")
 _WORKTREE_BRANCH_PREFIX = "refs/heads/"
+
+_COMMIT_MESSAGE_PROMPT = (
+    "You are an expert software engineer writing a git commit message.\n"
+    "Write ONE commit message for the changes below.\n"
+    "Rules:\n"
+    "- Use the imperative mood in the subject line.\n"
+    "- Keep the subject line under 72 characters.\n"
+    "- Follow Conventional Commits (feat, fix, docs, refactor, test, chore) when it fits.\n"
+    "- Optionally add a short body after a blank line.\n"
+    "- Output only the commit message, without quotes, markdown or explanation."
+)
+
+# Cap the generated message so a chatty agent cannot return an unbounded blob.
+_COMMIT_MESSAGE_MAX_CHARS = 5000
+_FENCE_LINE = re.compile(r"^```[A-Za-z0-9_+-]*$")
 
 
 def get_git_status(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
@@ -365,6 +381,58 @@ def commit_staged(
     )
     commit_hash = revision.stdout.strip() if revision.returncode == 0 else ""
     return GitCommitRead(commit=commit_hash, branch=current.branch)
+
+
+def generate_commit_message(
+    db: Session, owner: User, project_id: int, settings: Settings
+) -> tuple[str, str]:
+    """Generate a commit message for the current changes using the default agent.
+
+    Returns ``(agent_id, message)``. The staged diff is preferred so the message
+    describes what will actually be committed; otherwise the working tree diff
+    (or the changed-file list) is used.
+    """
+    path = _project_repository(db, owner, project_id, settings)
+    repo_status = _read_status(path, settings)
+    if not (repo_status.staged or repo_status.unstaged or repo_status.untracked):
+        raise api_error(ErrorCode.GIT_NOTHING_TO_COMMIT, status_code=status.HTTP_400_BAD_REQUEST)
+
+    changes = _commit_message_changes(path, repo_status, settings)
+    prompt = f"{_COMMIT_MESSAGE_PROMPT}\n\n{changes}"
+    agent_id, output = agent_service.run_agent_prompt(
+        db, owner, prompt, path, settings.agent_commit_message_timeout_seconds
+    )
+
+    message = _clean_commit_message(output)
+    if not message:
+        raise api_error(
+            ErrorCode.AGENT_GENERATE_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return agent_id, message
+
+
+def _clean_commit_message(output: str) -> str:
+    """Strip wrapping markdown code fences and surrounding whitespace."""
+    lines = output.strip().splitlines()
+    if lines and _FENCE_LINE.match(lines[0].strip()):
+        lines = lines[1:]
+        if lines and _FENCE_LINE.match(lines[-1].strip()):
+            lines = lines[:-1]
+    return "\n".join(lines).strip()[:_COMMIT_MESSAGE_MAX_CHARS]
+
+
+def _commit_message_changes(path: Path, repo_status: GitStatusRead, settings: Settings) -> str:
+    staged = bool(repo_status.staged) or bool(repo_status.conflicted)
+    args = ["diff", "--cached"] if staged else ["diff"]
+    result = _run_git(path, args, timeout=settings.git_status_timeout_seconds)
+    diff = result.stdout if result.returncode == 0 else ""
+    if diff.strip():
+        return diff[: settings.agent_commit_message_diff_max_bytes]
+
+    paths = [change.path for change in repo_status.staged]
+    paths += [change.path for change in repo_status.unstaged]
+    paths += list(repo_status.untracked)
+    return "Changed files:\n" + "\n".join(dict.fromkeys(paths))
 
 
 def create_pull_request(

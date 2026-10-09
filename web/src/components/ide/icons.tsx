@@ -308,3 +308,11 @@ export function ExternalLinkIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function SparklesIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3v4M12 17v4M5.5 5.5l2.8 2.8M15.7 15.7l2.8 2.8M3 12h4M17 12h4M5.5 18.5l2.8-2.8M15.7 8.3l2.8-2.8" />
+    </Svg>
+  )
+}

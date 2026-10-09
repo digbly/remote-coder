@@ -31,6 +31,11 @@ class GitCommitRead(BaseModel):
     branch: str | None = None
 
 
+class GitCommitMessageRead(BaseModel):
+    message: str
+    agent_id: str
+
+
 class GitPullRequestCreate(BaseModel):
     branch: str = Field(min_length=1, max_length=255)
 

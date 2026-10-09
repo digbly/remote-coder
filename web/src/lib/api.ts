@@ -35,6 +35,9 @@ const ERROR_CODE_KEYS = {
   GIT_PULL_FAILED: 'apiErrors.gitPullFailed',
   GIT_NO_UPSTREAM: 'apiErrors.gitNoUpstream',
   AGENT_NOT_FOUND: 'apiErrors.agentNotFound',
+  AGENT_NOT_CONFIGURED: 'apiErrors.agentNotConfigured',
+  AGENT_UNSUPPORTED: 'apiErrors.agentUnsupported',
+  AGENT_GENERATE_FAILED: 'apiErrors.agentGenerateFailed',
   VSCODE_DISABLED: 'apiErrors.vscodeDisabled',
   VSCODE_WORKTREE_NOT_FOUND: 'apiErrors.vscodeWorktreeNotFound',
   VSCODE_START_FAILED: 'apiErrors.vscodeStartFailed',
@@ -105,6 +108,11 @@ export interface GitCommitResult {
   branch: string | null
 }
 
+export interface GitCommitMessageResult {
+  message: string
+  agent_id: string
+}
+
 export interface GitPullRequestResult {
   url: string
   branch: string
@@ -159,6 +167,10 @@ export interface AgentSettingItem {
   agent_id: string
   command: string
   args: string
+}
+
+export interface AgentSettingsInfo {
+  default_agent_id: string | null
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
@@ -387,6 +399,10 @@ export function commitChanges(projectId: number, message: string): Promise<GitCo
   return postJson(`/projects/${projectId}/git/commit`, { message })
 }
 
+export function generateCommitMessage(projectId: number): Promise<GitCommitMessageResult> {
+  return postJson(`/projects/${projectId}/git/commit-message`, {})
+}
+
 export function createPullRequest(
   projectId: number,
   branch: string,
@@ -478,6 +494,28 @@ export async function saveAgentSetting(
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as AgentSettingItem
+}
+
+export async function fetchAgentSettings(): Promise<AgentSettingsInfo> {
+  const response = await request('/agents/settings')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AgentSettingsInfo
+}
+
+export async function setDefaultAgent(agentId: string | null): Promise<AgentSettingsInfo> {
+  const response = await request('/agents/default', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_id: agentId }),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AgentSettingsInfo
 }
 
 export function projectTerminalUrl(

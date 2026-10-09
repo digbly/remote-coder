@@ -4,6 +4,8 @@ from app.core.deps import DbDep, SettingsDep
 from app.core.errors import ErrorCode, api_error, error_responses
 from app.modules.agents import service
 from app.modules.agents.schemas import (
+    AgentDefaultResponse,
+    AgentDefaultUpdate,
     AgentListResponse,
     AgentModelsResponse,
     AgentSettingItem,
@@ -44,8 +46,26 @@ def read_agent_settings(current_user: CurrentUser, db: DbDep) -> AgentSettingsRe
         settings=[
             AgentSettingItem(agent_id=setting.agent_id, command=setting.command, args=setting.args)
             for setting in settings
-        ]
+        ],
+        default_agent_id=service.get_default_agent_id(db, current_user),
     )
+
+
+@router.put(
+    "/agents/default",
+    responses=error_responses(401, 403, 404, 422),
+)
+def update_default_agent(
+    payload: AgentDefaultUpdate,
+    current_user: CurrentUser,
+    db: DbDep,
+    _csrf: CsrfDep,
+) -> AgentDefaultResponse:
+    if payload.agent_id is not None and not service.agent_exists(payload.agent_id):
+        raise api_error(ErrorCode.AGENT_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    default_agent_id = service.set_default_agent(db, current_user, payload.agent_id)
+    return AgentDefaultResponse(default_agent_id=default_agent_id)
 
 
 @router.put(
