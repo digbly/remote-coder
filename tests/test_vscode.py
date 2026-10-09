@@ -57,6 +57,16 @@ class _Upstream:
             Route("/", lambda request: PlainTextResponse("root-ok")),
             Route("/hello", lambda request: PlainTextResponse("upstream-ok")),
             Route("/go", lambda request: RedirectResponse(url="/hello")),
+            Route(
+                "/framed",
+                lambda request: PlainTextResponse(
+                    "framed",
+                    headers={
+                        "X-Frame-Options": "DENY",
+                        "Content-Security-Policy": "default-src 'self'",
+                    },
+                ),
+            ),
             WebSocketRoute("/ws", self._ws),
         ]
         config = uvicorn.Config(
@@ -193,6 +203,29 @@ def test_vscode_proxies_root_with_trailing_slash(
     assert without_slash.text == "root-ok"
     assert with_slash.status_code == 200
     assert with_slash.text == "root-ok"
+
+
+def test_vscode_strips_framing_headers_only_when_embedded(
+    client: TestClient, projects_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client)
+    project_id, repo = _register_repo_with_worktree(client, projects_root)
+
+    with _Upstream() as upstream:
+        monkeypatch.setattr(service, "manager", _StubManager(_session_for(upstream.port, repo)))
+        embedded = client.get(
+            _vscode_url(project_id, "wt-agent", "framed"),
+            headers={"Sec-Fetch-Dest": "iframe"},
+        )
+        top_level = client.get(
+            _vscode_url(project_id, "wt-agent", "framed"),
+            headers={"Sec-Fetch-Dest": "document"},
+        )
+
+    assert "x-frame-options" not in embedded.headers
+    assert "content-security-policy" not in embedded.headers
+    assert top_level.headers["x-frame-options"] == "DENY"
+    assert top_level.headers["content-security-policy"] == "default-src 'self'"
 
 
 def test_vscode_rewrites_redirect_to_proxy_prefix(

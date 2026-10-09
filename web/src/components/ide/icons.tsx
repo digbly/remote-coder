@@ -298,3 +298,13 @@ export function CodeIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M20 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5" />
+    </Svg>
+  )
+}

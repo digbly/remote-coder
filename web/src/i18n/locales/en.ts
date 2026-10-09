@@ -80,6 +80,7 @@ const en = {
     newTerminal: 'New terminal',
     openTerminal: 'Open terminal',
     openInVSCode: 'Open in VS Code',
+    openInNewTab: 'Open in VS Code new tab',
     agents: 'Agents',
     noAgents: 'No agents detected',
     agentsError: 'Could not detect agents',

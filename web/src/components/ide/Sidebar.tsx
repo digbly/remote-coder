@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   fetchProjects,
   fetchWorktrees,
+  vscodeUrl,
   type Project,
   type User,
   type Worktree,
@@ -16,6 +17,7 @@ import {
   CloseIcon,
   CodeIcon,
   CollapseIcon,
+  ExternalLinkIcon,
   FolderPlusIcon,
   HelpIcon,
   PlusIcon,
@@ -281,6 +283,10 @@ export function Sidebar({
     onOpenProject(project)
   }
 
+  function openVSCodeNewTab(project: Project, worktree: string) {
+    window.open(vscodeUrl(project.id, worktree), '_blank', 'noopener,noreferrer')
+  }
+
   function openWorktreeMenu(project: Project, worktree: string, x: number, y: number) {
     const maxX = Math.max(MENU_MARGIN, window.innerWidth - MENU_WIDTH - MENU_MARGIN)
     const maxY = Math.max(MENU_MARGIN, window.innerHeight - MENU_HEIGHT - MENU_MARGIN)
@@ -433,6 +439,15 @@ export function Sidebar({
           >
             <CodeIcon width={13} height={13} />
             {t('ide.openInVSCode')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runMenuAction(openVSCodeNewTab)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+          >
+            <ExternalLinkIcon width={13} height={13} />
+            {t('ide.openInNewTab')}
           </button>
         </div>
       )}

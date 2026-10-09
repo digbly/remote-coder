@@ -80,6 +80,7 @@ const vi = {
     newTerminal: 'Terminal mới',
     openTerminal: 'Mở terminal',
     openInVSCode: 'Mở trong VS Code',
+    openInNewTab: 'Mở VS Code trong tab mới',
     agents: 'Agent',
     noAgents: 'Không phát hiện agent nào',
     agentsError: 'Không thể phát hiện agent',

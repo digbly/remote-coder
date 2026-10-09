@@ -51,8 +51,8 @@ _DROP_REQUEST_HEADERS = frozenset(
     }
 )
 
-# ``x-frame-options``/CSP would stop the server from rendering in an iframe, and
-# the length/transfer headers no longer describe the streamed body.
+# Hop-by-hop headers are re-created on each side and content-length no longer
+# describes the streamed body.
 _DROP_RESPONSE_HEADERS = frozenset(
     {
         "connection",
@@ -64,6 +64,13 @@ _DROP_RESPONSE_HEADERS = frozenset(
         "transfer-encoding",
         "upgrade",
         "content-length",
+    }
+)
+
+# Framing/security headers are only dropped for embedded (iframe) requests so
+# the server can render in a workspace tab; top-level navigations keep them.
+_EMBED_DROP_HEADERS = frozenset(
+    {
         "x-frame-options",
         "content-security-policy",
         "content-security-policy-report-only",
@@ -232,8 +239,18 @@ async def _forward_http(
     return StreamingResponse(
         body(),
         status_code=upstream.status_code,
-        headers=_response_headers(upstream, prefix=prefix),
+        headers=_response_headers(upstream, prefix=prefix, embedded=_is_embedded(request)),
     )
+
+
+def _is_embedded(request: Request) -> bool:
+    """Whether the response is destined for an iframe rather than a top-level tab.
+
+    ``Sec-Fetch-Dest: document`` marks a top-level navigation; anything else
+    (including a missing header) is treated as embedded so the workspace iframe
+    keeps rendering.
+    """
+    return request.headers.get("sec-fetch-dest") != "document"
 
 
 def _has_request_body(request: Request) -> bool:
@@ -253,11 +270,12 @@ def _request_headers(request: Request) -> list[tuple[str, str]]:
     return headers
 
 
-def _response_headers(upstream: httpx.Response, *, prefix: str) -> Headers:
+def _response_headers(upstream: httpx.Response, *, prefix: str, embedded: bool) -> Headers:
+    drop = _DROP_RESPONSE_HEADERS | _EMBED_DROP_HEADERS if embedded else _DROP_RESPONSE_HEADERS
     raw: list[tuple[bytes, bytes]] = []
     for key, value in upstream.headers.multi_items():
         lower = key.lower()
-        if lower in _DROP_RESPONSE_HEADERS:
+        if lower in drop:
             continue
         if lower == "location":
             value = _rewrite_location(value, prefix)
