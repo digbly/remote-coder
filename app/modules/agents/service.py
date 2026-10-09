@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import time
+from pathlib import Path
 
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import user_settings
+from app.core.errors import ErrorCode, api_error
 from app.modules.agents.base import Agent
 from app.modules.agents.catalog import registry
 from app.modules.agents.models import AgentSetting
 from app.modules.agents.schemas import AgentDefinition
 from app.modules.auth.models import User
+
+DEFAULT_AGENT_KEY = "default_agent_id"
 
 # Agent commands are bare executable names resolved on the server's PATH; reject
 # anything that could escape the PATH lookup (slashes, whitespace, metacharacters).
@@ -124,6 +132,71 @@ def resolve_launch(db: Session, user: User, agent_id: str) -> str | None:
     if agent is None:
         return None
     return agent.build_launch(*effective_config(db, user, agent))
+
+
+def get_default_agent_id(db: Session, user: User) -> str | None:
+    """The agent the user selected as default, or ``None`` when unset."""
+    return user_settings.get_value(db, user.id, DEFAULT_AGENT_KEY)
+
+
+def set_default_agent(db: Session, user: User, agent_id: str | None) -> str | None:
+    """Persist the user's default agent (``None`` clears the selection)."""
+    if agent_id is None:
+        user_settings.delete_value(db, user.id, DEFAULT_AGENT_KEY)
+        return None
+    user_settings.set_value(db, user.id, DEFAULT_AGENT_KEY, agent_id)
+    return agent_id
+
+
+def run_agent_prompt(
+    db: Session,
+    user: User,
+    prompt: str,
+    cwd: Path,
+    timeout_seconds: int,
+) -> tuple[str, str]:
+    """Run the user's default agent once with ``prompt``.
+
+    Returns ``(agent_id, stdout)`` with the raw output; callers own any
+    formatting. Raises an API error when no default agent is selected, the
+    agent cannot run prompts, or the command fails.
+    """
+    agent_id = get_default_agent_id(db, user)
+    if not agent_id:
+        raise api_error(ErrorCode.AGENT_NOT_CONFIGURED, status_code=status.HTTP_400_BAD_REQUEST)
+
+    agent = registry.get(agent_id)
+    if agent is None:
+        raise api_error(ErrorCode.AGENT_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    command, args = effective_config(db, user, agent)
+    argv = agent.build_prompt_command(command, args, prompt)
+    if argv is None:
+        raise api_error(ErrorCode.AGENT_UNSUPPORTED, status_code=status.HTTP_400_BAD_REQUEST)
+
+    env = os.environ.copy()
+    env.update(agent.env_overrides())
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            env=env,
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise api_error(
+            ErrorCode.AGENT_GENERATE_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ) from exc
+
+    if result.returncode != 0:
+        raise api_error(
+            ErrorCode.AGENT_GENERATE_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return agent_id, result.stdout
 
 
 async def list_models(db: Session, user: User, agent_id: str, ttl_seconds: int) -> list[str] | None:

@@ -33,3 +33,12 @@ class AgentSettingItem(BaseModel):
 
 class AgentSettingsResponse(BaseModel):
     settings: list[AgentSettingItem]
+    default_agent_id: str | None = None
+
+
+class AgentDefaultUpdate(BaseModel):
+    agent_id: str | None = Field(default=None, max_length=64)
+
+
+class AgentDefaultResponse(BaseModel):
+    default_agent_id: str | None = None

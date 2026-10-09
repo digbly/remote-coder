@@ -8,6 +8,7 @@ import {
   discardPaths,
   fetchBranches,
   fetchGitStatus,
+  generateCommitMessage,
   pullBranch,
   pushBranch,
   stageAllPaths,
@@ -28,6 +29,7 @@ import {
   PlusIcon,
   PrIcon,
   RefreshIcon,
+  SparklesIcon,
   TrashIcon,
   UndoIcon,
 } from './icons'
@@ -156,7 +158,15 @@ function ToolbarButton({
   )
 }
 
-type BusyAction = 'stage' | 'commit' | 'pullRequest' | 'discard' | 'push' | 'pull' | 'branch'
+type BusyAction =
+  | 'stage'
+  | 'commit'
+  | 'generate'
+  | 'pullRequest'
+  | 'discard'
+  | 'push'
+  | 'pull'
+  | 'branch'
 
 interface SourceControlPanelProps {
   projectId: number
@@ -362,6 +372,17 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
         setMessage('')
       },
       t('ide.commitFailed'),
+    )
+  }
+
+  function handleGenerate() {
+    runAction(
+      'generate',
+      async () => {
+        const result = await generateCommitMessage(projectId)
+        setMessage(result.message)
+      },
+      t('ide.generateCommitMessageFailed'),
     )
   }
 
@@ -583,6 +604,19 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
       {!loading && !error && status && (
         <div className="border-t border-[#2c2e33]">
           <form onSubmit={handleCommit} className="space-y-2 p-2.5">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={disabled || clean}
+                className="flex items-center gap-1 rounded-md border border-[#3a3d43] bg-[#23252a] px-2 py-0.5 text-[11px] font-medium text-[#d7dae0] transition hover:bg-[#2a2c32] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <SparklesIcon width={12} height={12} />
+                {busy === 'generate'
+                  ? t('ide.generatingCommitMessage')
+                  : t('ide.generateCommitMessage')}
+              </button>
+            </div>
             <textarea
               value={message}
               onChange={(event) => setMessage(event.target.value)}
