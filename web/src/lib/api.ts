@@ -129,7 +129,6 @@ export interface FileNode {
   name: string
   path: string
   type: 'file' | 'directory'
-  children: FileNode[]
 }
 
 export interface FileTree {
@@ -403,8 +402,9 @@ export async function fetchCurrentPullRequest(projectId: number): Promise<GitPul
   return (await response.json()) as GitPullRequestStatus
 }
 
-export async function fetchFileTree(projectId: number): Promise<FileTree> {
-  const response = await request(`/projects/${projectId}/files`)
+export async function fetchFileTree(projectId: number, path?: string): Promise<FileTree> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ''
+  const response = await request(`/projects/${projectId}/files${query}`)
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))

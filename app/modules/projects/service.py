@@ -26,7 +26,6 @@ from app.modules.projects.schemas import (
 
 DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
-MAX_TREE_DEPTH = 12
 MAX_TREE_ENTRIES = 5000
 MAX_FILE_BYTES = 1_000_000
 _EXCLUDED_DIRECTORIES = {".git"}
@@ -81,20 +80,51 @@ def browse_directories(path: str | None) -> DirectoryListing:
     )
 
 
-def list_files(db: Session, owner: User, project_id: int) -> FileTreeRead:
-    """Return the project's files as a read-only tree.
+def list_files(
+    db: Session, owner: User, project_id: int, path: str | None = None
+) -> FileTreeRead:
+    """Return a single directory's immediate children as a read-only listing.
 
-    Symbolic links are reported as files (never traversed) and the ``.git``
-    directory is hidden, so the walk cannot loop or escape the project root.
+    The client loads the tree lazily, one folder at a time, so a large project
+    is never walked in full. Symbolic links are reported as files (never
+    traversed) and the ``.git`` directory is hidden, so a listing cannot loop or
+    escape the project root. ``path`` is a project-relative directory; ``None``
+    or an empty string lists the project root.
     """
     project = get_project(db, owner, project_id)
-    root = Path(project.path)
+    root = Path(project.path).resolve()
     if not root.is_dir():
         raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
-    state = _TreeLimits()
-    entries = _build_tree(root, root, depth=0, state=state)
-    return FileTreeRead(entries=entries, truncated=state.truncated)
+    directory = _resolve_project_dir(root, path)
+    if not directory.is_dir():
+        raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        with os.scandir(directory) as iterator:
+            children = sorted(
+                iterator,
+                key=lambda entry: (not entry.is_dir(follow_symlinks=False), entry.name.lower()),
+            )
+    except OSError as exc:
+        raise api_error(
+            ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND
+        ) from exc
+
+    entries: list[FileNode] = []
+    truncated = False
+    for entry in children:
+        if entry.name in _EXCLUDED_DIRECTORIES:
+            continue
+        if len(entries) >= MAX_TREE_ENTRIES:
+            truncated = True
+            break
+
+        relative = Path(entry.path).relative_to(root).as_posix()
+        node_type = "directory" if entry.is_dir(follow_symlinks=False) else "file"
+        entries.append(FileNode(name=entry.name, path=relative, type=node_type))
+
+    return FileTreeRead(entries=entries, truncated=truncated)
 
 
 def read_file(db: Session, owner: User, project_id: int, path: str) -> FileContentRead:
@@ -167,6 +197,21 @@ def _resolve_project_file(
     if not root.is_dir():
         raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
+    return root, _resolve_within_root(root, path)
+
+
+def _resolve_project_dir(root: Path, path: str | None) -> Path:
+    """Resolve a project-relative directory, rejecting escapes.
+
+    An empty or missing path resolves to the project root itself.
+    """
+    if path is None or not path.strip():
+        return root
+    return _resolve_within_root(root, path)
+
+
+def _resolve_within_root(root: Path, path: str) -> Path:
+    """Resolve a project-relative path, rejecting anything that escapes ``root``."""
     candidate = path.strip()
     parts = PurePosixPath(candidate).parts
     if not candidate or candidate.startswith(("/", "~", "-")) or ".." in parts:
@@ -177,7 +222,7 @@ def _resolve_project_file(
     target = (root / candidate).resolve()
     if not target.is_relative_to(root):
         raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
-    return root, target
+    return target
 
 
 def get_project(db: Session, owner: User, project_id: int) -> Project:
@@ -359,46 +404,4 @@ def _conflict_code(exc: IntegrityError) -> ErrorCode:
     return ErrorCode.PROJECT_NAME_EXISTS
 
 
-class _TreeLimits:
-    def __init__(self) -> None:
-        self.count = 0
-        self.truncated = False
 
-
-def _build_tree(root: Path, directory: Path, *, depth: int, state: _TreeLimits) -> list[FileNode]:
-    if depth >= MAX_TREE_DEPTH:
-        state.truncated = True
-        return []
-
-    try:
-        with os.scandir(directory) as iterator:
-            children = sorted(
-                iterator,
-                key=lambda entry: (not entry.is_dir(follow_symlinks=False), entry.name.lower()),
-            )
-    except OSError:
-        return []
-
-    nodes: list[FileNode] = []
-    for entry in children:
-        if state.count >= MAX_TREE_ENTRIES:
-            state.truncated = True
-            break
-        if entry.name in _EXCLUDED_DIRECTORIES:
-            continue
-
-        state.count += 1
-        relative = Path(entry.path).relative_to(root).as_posix()
-        if entry.is_dir(follow_symlinks=False):
-            nodes.append(
-                FileNode(
-                    name=entry.name,
-                    path=relative,
-                    type="directory",
-                    children=_build_tree(root, Path(entry.path), depth=depth + 1, state=state),
-                )
-            )
-        else:
-            nodes.append(FileNode(name=entry.name, path=relative, type="file"))
-
-    return nodes

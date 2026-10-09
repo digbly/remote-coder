@@ -381,7 +381,48 @@ def test_project_files_lists_tree(client: TestClient, projects_root) -> None:
     directory = body["entries"][0]
     assert directory["type"] == "directory"
     assert directory["path"] == "src"
-    assert [child["name"] for child in directory["children"]] == ["main.py"]
+    assert "children" not in directory
+
+
+def test_project_files_lists_subdirectory(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "main.py").write_text("x")
+    (repo / "src" / "sub").mkdir()
+    (repo / "src" / "sub" / "deep.py").write_text("x")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/files", params={"path": "src"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [entry["name"] for entry in body["entries"]] == ["sub", "main.py"]
+    assert "children" not in body["entries"][0]
+
+
+def test_project_files_rejects_path_escape(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/files", params={"path": "../"})
+
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_PATH_INVALID"
+
+
+def test_project_files_missing_directory(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/files", params={"path": "nope"})
+
+    assert response.status_code == 404
+    assert _error_code(response) == "FILE_NOT_FOUND"
 
 
 def test_project_files_requires_auth(client: TestClient) -> None:

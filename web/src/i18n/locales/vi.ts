@@ -109,7 +109,7 @@ const vi = {
     panel: 'Bảng',
     noFiles: 'Không có tệp',
     filesError: 'Không tải được danh sách tệp',
-    filesTruncated: 'Đang hiển thị một phần cây — dự án quá lớn.',
+    filesTruncated: 'Đang hiển thị một phần — thư mục này có quá nhiều tệp.',
     save: 'Lưu',
     saving: 'Đang lưu...',
     saveFailed: 'Không thể lưu tệp',

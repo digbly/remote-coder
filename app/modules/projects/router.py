@@ -85,8 +85,13 @@ def read_project(project_id: int, current_user: CurrentUser, db: DbDep) -> Proje
     response_model=FileTreeRead,
     responses=error_responses(400, 401, 403, 404),
 )
-def list_project_files(project_id: int, current_user: CurrentUser, db: DbDep) -> FileTreeRead:
-    return service.list_files(db, current_user, project_id)
+def list_project_files(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    path: str | None = Query(None, max_length=4096),
+) -> FileTreeRead:
+    return service.list_files(db, current_user, project_id, path)
 
 
 @router.get(

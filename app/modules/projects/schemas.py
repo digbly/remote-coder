@@ -59,7 +59,6 @@ class FileNode(BaseModel):
     name: str
     path: str
     type: Literal["file", "directory"]
-    children: list["FileNode"] = Field(default_factory=list)
 
 
 class FileTreeRead(BaseModel):

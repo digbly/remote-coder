@@ -109,7 +109,7 @@ const en = {
     panel: 'Panel',
     noFiles: 'No files',
     filesError: 'Failed to load files',
-    filesTruncated: 'Showing a partial tree — the project is too large.',
+    filesTruncated: 'Showing a partial listing — this folder has too many files.',
     save: 'Save',
     saving: 'Saving...',
     saveFailed: 'Could not save the file',
