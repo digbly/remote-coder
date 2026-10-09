@@ -1,11 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { refreshSession, workspaceUrl } from './api'
-import { emptySyncedState, parseSyncedState, type SyncedState } from './workspaceStore'
+import { LAYOUT_DEFAULTS } from './layoutStore'
+import {
+  emptySyncedState,
+  parseSyncedState,
+  type ProjectWorkspace,
+  type SyncedState,
+} from './workspaceStore'
 
 const SEND_DEBOUNCE_MS = 200
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
 const MAX_EXPIRED_RECONNECTS = 3
+
+// Sidebar widths and the active tab are per-client UI state: they must not be
+// shared across a user's clients, so they are stripped from outgoing state and
+// preserved locally when incoming state is applied.
+function stripLocalState(state: SyncedState): SyncedState {
+  const workspaces: Record<number, ProjectWorkspace> = {}
+  for (const [key, workspace] of Object.entries(state.workspaces)) {
+    workspaces[Number(key)] = { tabs: workspace.tabs, activeId: null }
+  }
+  return {
+    workspaces,
+    layout: {
+      ...state.layout,
+      leftWidth: LAYOUT_DEFAULTS.leftWidth,
+      rightWidth: LAYOUT_DEFAULTS.rightWidth,
+    },
+  }
+}
+
+function mergeLocalState(remote: SyncedState, local: SyncedState): SyncedState {
+  const workspaces: Record<number, ProjectWorkspace> = {}
+  for (const [key, workspace] of Object.entries(remote.workspaces)) {
+    const projectId = Number(key)
+    const localWorkspace = local.workspaces[projectId]
+    const activeId =
+      localWorkspace && workspace.tabs.some((tab) => tab.id === localWorkspace.activeId)
+        ? localWorkspace.activeId
+        : workspace.activeId
+    workspaces[projectId] = { tabs: workspace.tabs, activeId }
+  }
+  return {
+    workspaces,
+    layout: {
+      ...remote.layout,
+      leftWidth: local.layout.leftWidth,
+      rightWidth: local.layout.rightWidth,
+    },
+  }
+}
 
 function newClientId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -38,7 +83,9 @@ export function useWorkspaceSync(): WorkspaceSync {
 
     function sendState(socket: WebSocket, next: SyncedState) {
       if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'update', state: next, origin: clientId }))
+        socket.send(
+          JSON.stringify({ type: 'update', state: stripLocalState(next), origin: clientId }),
+        )
       }
     }
 
@@ -74,8 +121,9 @@ export function useWorkspaceSync(): WorkspaceSync {
             window.clearTimeout(sendTimerRef.current)
             sendTimerRef.current = null
           }
-          stateRef.current = parsed
-          setState(parsed)
+          const merged = mergeLocalState(parsed, stateRef.current)
+          stateRef.current = merged
+          setState(merged)
         }
       }
 
@@ -128,7 +176,9 @@ export function useWorkspaceSync(): WorkspaceSync {
         sendTimerRef.current = null
         const socket = socketRef.current
         if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'update', state: next, origin: clientId }))
+          socket.send(
+            JSON.stringify({ type: 'update', state: stripLocalState(next), origin: clientId }),
+          )
         }
       }, SEND_DEBOUNCE_MS)
     },
