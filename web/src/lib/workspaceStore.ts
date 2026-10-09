@@ -1,3 +1,5 @@
+import { normalizeLayout, type LayoutState } from './layoutStore'
+
 export type TabKind = 'terminal' | 'editor'
 
 export interface WorkspaceTab {
@@ -17,12 +19,11 @@ export interface ActiveProjectRef {
   name: string
 }
 
-export interface PersistedWorkspaces {
+export interface SyncedState {
   activeProject: ActiveProjectRef | null
   workspaces: Record<number, ProjectWorkspace>
+  layout: LayoutState
 }
-
-const STORAGE_KEY = 'remote-coder.workspaces'
 
 export function newTerminalId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -67,47 +68,25 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
   return { tabs: scoped, activeId }
 }
 
-function emptyState(): PersistedWorkspaces {
-  return { activeProject: null, workspaces: {} }
+export function emptySyncedState(): SyncedState {
+  return { activeProject: null, workspaces: {}, layout: normalizeLayout(undefined) }
 }
 
-export function loadPersistedWorkspaces(): PersistedWorkspaces {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return emptyState()
-    const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed) || !isRecord(parsed.workspaces)) return emptyState()
+export function parseSyncedState(value: unknown): SyncedState | null {
+  if (!isRecord(value) || !isRecord(value.workspaces)) return null
 
-    const workspaces: Record<number, ProjectWorkspace> = {}
-    for (const [key, value] of Object.entries(parsed.workspaces)) {
-      const projectId = Number(key)
-      if (!Number.isInteger(projectId)) continue
-      const workspace = parseWorkspace(value, projectId)
-      if (workspace === null) continue
-      workspaces[projectId] = workspace
-    }
-
-    return {
-      activeProject: isProjectRef(parsed.activeProject) ? parsed.activeProject : null,
-      workspaces,
-    }
-  } catch {
-    return emptyState()
+  const workspaces: Record<number, ProjectWorkspace> = {}
+  for (const [key, raw] of Object.entries(value.workspaces)) {
+    const projectId = Number(key)
+    if (!Number.isInteger(projectId)) continue
+    const workspace = parseWorkspace(raw, projectId)
+    if (workspace === null) continue
+    workspaces[projectId] = workspace
   }
-}
 
-export function savePersistedWorkspaces(state: PersistedWorkspaces): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    /* storage unavailable or full */
-  }
-}
-
-export function clearPersistedWorkspaces(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    /* storage unavailable */
+  return {
+    activeProject: isProjectRef(value.activeProject) ? value.activeProject : null,
+    workspaces,
+    layout: normalizeLayout(value.layout),
   }
 }

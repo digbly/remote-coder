@@ -14,13 +14,10 @@ from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
-import jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
 from app.modules.auth.models import User
-from app.modules.auth.security import decode_access_token
 from app.modules.projects.models import Project
 
 _TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
@@ -43,25 +40,6 @@ def _set_winsize(fd: int, cols: int, rows: int) -> None:
 def valid_terminal_id(terminal_id: str) -> bool:
     """Terminal ids come from the client and are used as session keys."""
     return _TERMINAL_ID_RE.fullmatch(terminal_id) is not None
-
-
-def resolve_user(db: Session, token: str | None, settings: Settings) -> User | None:
-    if not token:
-        return None
-
-    try:
-        payload = decode_access_token(token, settings)
-    except jwt.PyJWTError:
-        return None
-
-    username = payload.get("sub")
-    if not username:
-        return None
-
-    user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active:
-        return None
-    return user
 
 
 def get_project(db: Session, user: User, project_id: int) -> Project | None:

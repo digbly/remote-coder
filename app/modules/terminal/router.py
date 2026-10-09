@@ -2,15 +2,14 @@ import asyncio
 import json
 from contextlib import suppress
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from anyio import ClosedResourceError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
-from app.core.config import Settings
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
 from app.modules.auth.deps import CsrfDep, CurrentUser
+from app.modules.auth.websocket import same_origin, websocket_user
 from app.modules.projects import service as projects_service
 from app.modules.terminal import service
 
@@ -22,24 +21,6 @@ WS_NOT_FOUND = 4404
 WS_INTERNAL_ERROR = 4500
 
 
-def _same_origin(websocket: WebSocket) -> bool:
-    """Reject cross-site WebSocket handshakes (CSWSH)."""
-    origin = websocket.headers.get("origin")
-    if not origin:
-        return True
-
-    host = websocket.headers.get("host")
-    if not host:
-        return False
-
-    origin_host = urlsplit(origin).netloc
-    return origin_host == host
-
-
-def _token(websocket: WebSocket, settings: Settings) -> str | None:
-    return websocket.cookies.get(settings.access_token_cookie_name)
-
-
 @router.websocket("/{project_id}/terminal/{terminal_id}")
 async def project_terminal(
     websocket: WebSocket,
@@ -48,7 +29,7 @@ async def project_terminal(
     db: DbDep,
     settings: SettingsDep,
 ) -> None:
-    if not _same_origin(websocket):
+    if not same_origin(websocket):
         await websocket.close(code=WS_FORBIDDEN)
         return
 
@@ -56,7 +37,7 @@ async def project_terminal(
         await websocket.close(code=WS_NOT_FOUND)
         return
 
-    user = service.resolve_user(db, _token(websocket, settings), settings)
+    user = websocket_user(websocket, db, settings)
     if user is None:
         await websocket.close(code=WS_UNAUTHORIZED)
         return

@@ -15,6 +15,7 @@ from app.modules.health.router import router as health_router
 from app.modules.projects.router import router as projects_router
 from app.modules.terminal import service as terminal_service
 from app.modules.terminal.router import router as terminal_router
+from app.modules.workspace.router import router as workspace_router
 
 TERMINAL_REAP_INTERVAL_SECONDS = 300
 
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(projects_router, prefix=settings.api_prefix)
     app.include_router(git_router, prefix=settings.api_prefix)
     app.include_router(terminal_router, prefix=settings.api_prefix)
+    app.include_router(workspace_router, prefix=settings.api_prefix)
     return app
 
 

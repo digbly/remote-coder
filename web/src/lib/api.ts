@@ -294,6 +294,11 @@ export function projectTerminalUrl(projectId: number, terminalId: string): strin
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`
 }
 
+export function workspaceUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${API_PREFIX}/workspace/ws`
+}
+
 export async function killTerminal(projectId: number, terminalId: string): Promise<void> {
   await request(`/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`, {
     method: 'DELETE',

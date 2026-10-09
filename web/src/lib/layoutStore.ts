@@ -17,8 +17,6 @@ export const LAYOUT_DEFAULTS: LayoutState = {
   rightWidth: 320,
 }
 
-const STORAGE_KEY = 'remote-coder.layout'
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -31,38 +29,12 @@ function clampWidth(value: unknown, fallback: number, min: number, max: number):
   return typeof value === 'number' && Number.isFinite(value) ? clamp(value, min, max) : fallback
 }
 
-export function loadLayout(): LayoutState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...LAYOUT_DEFAULTS }
-    const parsed: unknown = JSON.parse(raw)
-    if (!isRecord(parsed)) return { ...LAYOUT_DEFAULTS }
-    return {
-      leftOpen: typeof parsed.leftOpen === 'boolean' ? parsed.leftOpen : LAYOUT_DEFAULTS.leftOpen,
-      leftWidth: clampWidth(
-        parsed.leftWidth,
-        LAYOUT_DEFAULTS.leftWidth,
-        LEFT_MIN,
-        LEFT_MAX,
-      ),
-      rightOpen:
-        typeof parsed.rightOpen === 'boolean' ? parsed.rightOpen : LAYOUT_DEFAULTS.rightOpen,
-      rightWidth: clampWidth(
-        parsed.rightWidth,
-        LAYOUT_DEFAULTS.rightWidth,
-        RIGHT_MIN,
-        RIGHT_MAX,
-      ),
-    }
-  } catch {
-    return { ...LAYOUT_DEFAULTS }
-  }
-}
-
-export function saveLayout(state: LayoutState): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    /* storage unavailable or full */
+export function normalizeLayout(value: unknown): LayoutState {
+  if (!isRecord(value)) return { ...LAYOUT_DEFAULTS }
+  return {
+    leftOpen: typeof value.leftOpen === 'boolean' ? value.leftOpen : LAYOUT_DEFAULTS.leftOpen,
+    leftWidth: clampWidth(value.leftWidth, LAYOUT_DEFAULTS.leftWidth, LEFT_MIN, LEFT_MAX),
+    rightOpen: typeof value.rightOpen === 'boolean' ? value.rightOpen : LAYOUT_DEFAULTS.rightOpen,
+    rightWidth: clampWidth(value.rightWidth, LAYOUT_DEFAULTS.rightWidth, RIGHT_MIN, RIGHT_MAX),
   }
 }

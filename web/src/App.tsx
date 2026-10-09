@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IdeShell } from './components/IdeShell'
 import { fetchMe, login, logout, type User } from './lib/api'
-import { clearPersistedWorkspaces } from './lib/workspaceStore'
 
 function LoginPage({ onSuccess }: { onSuccess: (user: User) => void }) {
   const { t } = useTranslation()
@@ -114,7 +113,6 @@ function App() {
     try {
       await logout()
     } finally {
-      clearPersistedWorkspaces()
       setUser(null)
     }
   }
