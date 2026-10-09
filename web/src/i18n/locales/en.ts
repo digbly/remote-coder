@@ -61,6 +61,9 @@ const en = {
     description: 'Configure the command and arguments used to launch each agent.',
     command: 'Command',
     args: 'Arguments',
+    commitMessageArgs: 'Commit message args',
+    commitMessageArgsHint:
+      'Extra arguments appended when generating a commit message with AI (for example --model or --auto).',
     save: 'Save',
     saving: 'Saving...',
     saved: 'Saved',

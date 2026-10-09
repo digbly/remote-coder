@@ -399,8 +399,21 @@ def generate_commit_message(
 
     changes = _commit_message_changes(path, repo_status, settings)
     prompt = f"{_COMMIT_MESSAGE_PROMPT}\n\n{changes}"
+    default_agent_id = agent_service.get_default_agent_id(db, owner)
+    args = (
+        agent_service.commit_message_args(
+            db, owner, default_agent_id, settings.agent_commit_message_args
+        )
+        if default_agent_id
+        else ""
+    )
     agent_id, output = agent_service.run_agent_prompt(
-        db, owner, prompt, path, settings.agent_commit_message_timeout_seconds
+        db,
+        owner,
+        prompt,
+        path,
+        settings.agent_commit_message_timeout_seconds,
+        args,
     )
 
     message = _clean_commit_message(output)

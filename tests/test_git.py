@@ -4,6 +4,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings, get_settings
+from app.main import app
 from app.modules.git.service import (
     _COMMIT_MESSAGE_MAX_CHARS,
     _clean_commit_message,
@@ -809,6 +811,122 @@ def test_commit_message_generates_with_default_agent(
     assert response.json() == {"message": "feat: update tracked", "agent_id": "claude"}
     assert captured["argv"][:2] == ["claude", "-p"]
     assert "hello" in captured["argv"][2]
+
+
+def test_commit_message_appends_configured_args(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    _set_default_agent(client, "opencode")
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        projects_root=str(projects_root),
+        agent_commit_message_args="--auto --model test-model",
+    )
+
+    captured: dict = {}
+    real_run = subprocess.run
+
+    def fake_run(argv, *args, **kwargs):
+        if argv and argv[0] == "opencode":
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(argv, 0, "feat: update tracked\n", "")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.agents.service.subprocess.run", fake_run)
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 200, response.json()
+    assert captured["argv"][:2] == ["opencode", "run"]
+    assert "hello" in captured["argv"][2]
+    assert captured["argv"][-3:] == ["--auto", "--model", "test-model"]
+
+
+def test_commit_message_uses_default_agent_args_setting(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    _set_default_agent(client, "opencode")
+    saved = client.put(
+        "/api/v1/agents/settings/opencode",
+        json={"command": "opencode", "args": "", "commit_args": "--auto --model user-model"},
+        headers=_csrf(client),
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["commit_args"] == "--auto --model user-model"
+
+    captured: dict = {}
+    real_run = subprocess.run
+
+    def fake_run(argv, *args, **kwargs):
+        if argv and argv[0] == "opencode":
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(argv, 0, "feat: update tracked\n", "")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.agents.service.subprocess.run", fake_run)
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 200, response.json()
+    assert captured["argv"][:2] == ["opencode", "run"]
+    assert captured["argv"][-3:] == ["--auto", "--model", "user-model"]
+
+
+def test_commit_message_args_are_scoped_to_the_default_agent(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    _set_default_agent(client, "opencode")
+    client.put(
+        "/api/v1/agents/settings/claude",
+        json={"command": "claude", "args": "", "commit_args": "--other-agent"},
+        headers=_csrf(client),
+    )
+
+    captured: dict = {}
+    real_run = subprocess.run
+
+    def fake_run(argv, *args, **kwargs):
+        if argv and argv[0] == "opencode":
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(argv, 0, "feat: update tracked\n", "")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.agents.service.subprocess.run", fake_run)
+
+    response = client.post(f"{PROJECTS_URL}/{project_id}/git/commit-message", headers=_csrf(client))
+
+    assert response.status_code == 200, response.json()
+    assert captured["argv"] == ["opencode", "run", captured["argv"][2]]
+    assert "--other-agent" not in captured["argv"]
 
 
 def test_commit_message_requires_staged_or_working_changes(

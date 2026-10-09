@@ -41,11 +41,17 @@ async def list_agent_models(
 
 @router.get("/agents/settings", responses=error_responses(401))
 def read_agent_settings(current_user: CurrentUser, db: DbDep) -> AgentSettingsResponse:
-    settings = service.get_agent_settings(db, current_user)
+    agent_settings = service.get_agent_settings(db, current_user)
+    commit_args = service.commit_message_args_map(db, current_user)
     return AgentSettingsResponse(
         settings=[
-            AgentSettingItem(agent_id=setting.agent_id, command=setting.command, args=setting.args)
-            for setting in settings
+            AgentSettingItem(
+                agent_id=setting.agent_id,
+                command=setting.command,
+                args=setting.args,
+                commit_args=commit_args.get(setting.agent_id, ""),
+            )
+            for setting in agent_settings
         ],
         default_agent_id=service.get_default_agent_id(db, current_user),
     )
@@ -85,6 +91,19 @@ def update_agent_setting(
         raise api_error(ErrorCode.VALIDATION_ERROR, status_code=_UNPROCESSABLE)
     if not service.valid_args(payload.args):
         raise api_error(ErrorCode.VALIDATION_ERROR, status_code=_UNPROCESSABLE)
+    if not service.valid_args(payload.commit_args):
+        raise api_error(ErrorCode.VALIDATION_ERROR, status_code=_UNPROCESSABLE)
 
-    setting = service.save_agent_setting(db, current_user, agent_id, payload.command, payload.args)
-    return AgentSettingItem(agent_id=setting.agent_id, command=setting.command, args=setting.args)
+    try:
+        setting = service.save_agent_setting(
+            db, current_user, agent_id, payload.command, payload.args, payload.commit_args
+        )
+    except ValueError as exc:
+        raise api_error(ErrorCode.VALIDATION_ERROR, status_code=_UNPROCESSABLE) from exc
+    commit_args = service.get_commit_message_args(db, current_user, agent_id) or ""
+    return AgentSettingItem(
+        agent_id=setting.agent_id,
+        command=setting.command,
+        args=setting.args,
+        commit_args=commit_args,
+    )

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -19,6 +21,9 @@ from app.modules.agents.schemas import AgentDefinition
 from app.modules.auth.models import User
 
 DEFAULT_AGENT_KEY = "default_agent_id"
+# Per-agent commit-message args live in a single JSON object keyed by agent id,
+# so the generic user-settings table needs no schema change for new agents.
+COMMIT_MESSAGE_ARGS_KEY = "commit_message_args"
 
 # Agent commands are bare executable names resolved on the server's PATH; reject
 # anything that could escape the PATH lookup (slashes, whitespace, metacharacters).
@@ -66,8 +71,11 @@ def _overrides(db: Session, user: User) -> dict[str, AgentSetting]:
 
 
 def save_agent_setting(
-    db: Session, user: User, agent_id: str, command: str, args: str
+    db: Session, user: User, agent_id: str, command: str, args: str, commit_args: str
 ) -> AgentSetting:
+    # Validate and persist the commit args first so a rejected value leaves the
+    # launch configuration untouched.
+    set_commit_message_args(db, user, agent_id, commit_args)
     setting = db.scalar(
         select(AgentSetting).where(
             AgentSetting.user_id == user.id, AgentSetting.agent_id == agent_id
@@ -87,6 +95,7 @@ def save_agent_setting(
 def list_agents(db: Session, user: User) -> list[AgentDefinition]:
     """Merge the registered catalog with the user's overrides and host detection."""
     overrides = _overrides(db, user)
+    commit_args = commit_message_args_map(db, user)
     definitions: list[AgentDefinition] = []
     for agent in registry.all():
         spec = agent.spec
@@ -100,6 +109,7 @@ def list_agents(db: Session, user: User) -> list[AgentDefinition]:
                 label=spec.label,
                 command=command,
                 args=args,
+                commit_args=commit_args.get(spec.id, ""),
                 description=spec.description,
                 homepage=spec.homepage,
                 installed=path is not None,
@@ -148,14 +158,64 @@ def set_default_agent(db: Session, user: User, agent_id: str | None) -> str | No
     return agent_id
 
 
+def commit_message_args_map(db: Session, user: User) -> dict[str, str]:
+    """Per-agent commit-message args the user has saved (agent id -> args)."""
+    raw = user_settings.get_value(db, user.id, COMMIT_MESSAGE_ARGS_KEY)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items()}
+
+
+def get_commit_message_args(db: Session, user: User, agent_id: str) -> str | None:
+    """The user's saved commit-message args for ``agent_id``, or ``None``."""
+    return commit_message_args_map(db, user).get(agent_id)
+
+
+def set_commit_message_args(db: Session, user: User, agent_id: str, args: str) -> str:
+    """Persist the args appended to ``agent_id``'s commit-message prompt command.
+
+    Raises ``ValueError`` when the combined per-agent values no longer fit the
+    generic user-settings value limit.
+    """
+    data = commit_message_args_map(db, user)
+    value = args.strip()
+    if value:
+        data[agent_id] = value
+    else:
+        data.pop(agent_id, None)
+    payload = json.dumps(data)
+    if len(payload) > user_settings.MAX_VALUE_LENGTH:
+        raise ValueError("commit-message args exceed the settings size limit")
+    user_settings.set_value(db, user.id, COMMIT_MESSAGE_ARGS_KEY, payload)
+    return value
+
+
+def commit_message_args(db: Session, user: User, agent_id: str, default: str) -> str:
+    """Effective commit-message args for ``agent_id``, else the ``default``."""
+    stored = get_commit_message_args(db, user, agent_id)
+    return default if stored is None else stored
+
+
 def run_agent_prompt(
     db: Session,
     user: User,
     prompt: str,
     cwd: Path,
     timeout_seconds: int,
+    extra_args: str = "",
 ) -> tuple[str, str]:
     """Run the user's default agent once with ``prompt``.
+
+    ``extra_args`` are command-line flags appended after the prompt (for
+    example ``--auto`` or ``--model ...``); they are used by one-shot callers
+    such as commit-message generation, where the agent's interactive launch
+    args may not fit the non-interactive prompt command.
 
     Returns ``(agent_id, stdout)`` with the raw output; callers own any
     formatting. Raises an API error when no default agent is selected, the
@@ -169,10 +229,17 @@ def run_agent_prompt(
     if agent is None:
         raise api_error(ErrorCode.AGENT_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
 
-    command, args = effective_config(db, user, agent)
-    argv = agent.build_prompt_command(command, args, prompt)
+    command, _ = effective_config(db, user, agent)
+    argv = agent.build_prompt_command(command, "", prompt)
     if argv is None:
         raise api_error(ErrorCode.AGENT_UNSUPPORTED, status_code=status.HTTP_400_BAD_REQUEST)
+    try:
+        trailing = shlex.split(extra_args)
+    except ValueError as exc:
+        raise api_error(
+            ErrorCode.AGENT_GENERATE_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ) from exc
+    argv = [*argv, *trailing]
 
     env = os.environ.copy()
     env.update(agent.env_overrides())

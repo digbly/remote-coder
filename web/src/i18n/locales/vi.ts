@@ -61,6 +61,9 @@ const vi = {
     description: 'Cấu hình command và tham số dùng để mở từng agent.',
     command: 'Command',
     args: 'Tham số',
+    commitMessageArgs: 'Tham số commit message',
+    commitMessageArgsHint:
+      'Tham số thêm vào cuối lệnh khi tạo commit message bằng AI (ví dụ --model hoặc --auto).',
     save: 'Lưu',
     saving: 'Đang lưu...',
     saved: 'Đã lưu',

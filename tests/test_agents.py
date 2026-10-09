@@ -39,7 +39,12 @@ def test_agent_setting_reflected_in_catalog(client: TestClient) -> None:
         headers=_csrf(client),
     )
     assert first.status_code == 200
-    assert first.json() == {"agent_id": "claude", "command": "echo", "args": "--verbose"}
+    assert first.json() == {
+        "agent_id": "claude",
+        "command": "echo",
+        "args": "--verbose",
+        "commit_args": "",
+    }
 
     agents = {agent["id"]: agent for agent in client.get(AGENTS_URL).json()["agents"]}
     assert agents["claude"]["command"] == "echo"
@@ -52,7 +57,9 @@ def test_agent_setting_reflected_in_catalog(client: TestClient) -> None:
     )
     assert second.status_code == 200
     assert client.get(SETTINGS_URL).json() == {
-        "settings": [{"agent_id": "claude", "command": "echo", "args": "--model opus"}],
+        "settings": [
+            {"agent_id": "claude", "command": "echo", "args": "--model opus", "commit_args": ""}
+        ],
         "default_agent_id": None,
     }
 

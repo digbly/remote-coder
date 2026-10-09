@@ -166,6 +166,7 @@ export interface AgentSettingItem {
   agent_id: string
   command: string
   args: string
+  commit_args: string
 }
 
 export interface AgentSettingsInfo {
@@ -483,11 +484,12 @@ export async function saveAgentSetting(
   agentId: string,
   command: string,
   args: string,
+  commitArgs: string,
 ): Promise<AgentSettingItem> {
   const response = await request(`/agents/settings/${encodeURIComponent(agentId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, args }),
+    body: JSON.stringify({ command, args, commit_args: commitArgs }),
   })
   if (!response.ok) {
     const data = await response.json().catch(() => null)

@@ -6,6 +6,7 @@ class AgentDefinition(BaseModel):
     label: str
     command: str
     args: str
+    commit_args: str = ""
     description: str = ""
     homepage: str | None = None
     installed: bool
@@ -23,12 +24,14 @@ class AgentModelsResponse(BaseModel):
 class AgentSettingUpdate(BaseModel):
     command: str = Field(min_length=1, max_length=256)
     args: str = Field(default="", max_length=1024)
+    commit_args: str = Field(default="", max_length=512)
 
 
 class AgentSettingItem(BaseModel):
     agent_id: str
     command: str
     args: str
+    commit_args: str = ""
 
 
 class AgentSettingsResponse(BaseModel):

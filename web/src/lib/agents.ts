@@ -3,6 +3,7 @@ export interface AgentDefinition {
   label: string
   command: string
   args: string
+  commit_args: string
   description: string
   homepage: string | null
   installed: boolean

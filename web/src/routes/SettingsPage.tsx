@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRightIcon } from '../components/ide/icons'
-import { fetchAgentSettings, fetchAgents, saveAgentSetting, setDefaultAgent } from '../lib/api'
+import {
+  fetchAgentSettings,
+  fetchAgents,
+  saveAgentSetting,
+  setDefaultAgent,
+} from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -18,12 +23,13 @@ function AgentSettingRow({
 }: {
   agent: AgentDefinition
   isDefault: boolean
-  onSaved: (agentId: string, command: string, args: string) => void
+  onSaved: (agentId: string, command: string, args: string, commitArgs: string) => void
   onSetDefault: (agentId: string) => void
 }) {
   const { t } = useTranslation()
   const [command, setCommand] = useState(agent.command)
   const [args, setArgs] = useState(agent.args)
+  const [commitArgs, setCommitArgs] = useState(agent.commit_args)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
   const canSave = command.trim().length > 0 && status !== 'saving'
@@ -31,8 +37,8 @@ function AgentSettingRow({
   async function save() {
     setStatus('saving')
     try {
-      await saveAgentSetting(agent.id, command.trim(), args)
-      onSaved(agent.id, command.trim(), args)
+      await saveAgentSetting(agent.id, command.trim(), args, commitArgs)
+      onSaved(agent.id, command.trim(), args, commitArgs)
       setStatus('saved')
     } catch {
       setStatus('error')
@@ -100,6 +106,20 @@ function AgentSettingRow({
           />
         </label>
       </div>
+      <label className="mt-3 block text-xs text-[#9aa0a8]">
+        {t('settings.commitMessageArgs')}
+        <input
+          value={commitArgs}
+          spellCheck={false}
+          onChange={(event) => {
+            setCommitArgs(event.target.value)
+            setStatus('idle')
+          }}
+          className={inputClass}
+          placeholder="--auto"
+        />
+      </label>
+      <p className="mt-1 text-xs text-[#7d828b]">{t('settings.commitMessageArgsHint')}</p>
       <p className="mt-2 h-4 text-xs">
         {status === 'saved' && <span className="text-emerald-400">{t('settings.saved')}</span>}
         {status === 'error' && <span className="text-[#f0a9b0]">{t('settings.saveFailed')}</span>}
@@ -137,9 +157,13 @@ export function SettingsPage() {
     }
   }, [])
 
-  function handleSaved(agentId: string, command: string, args: string) {
+  function handleSaved(agentId: string, command: string, args: string, commitArgs: string) {
     setAgents((prev) =>
-      prev ? prev.map((agent) => (agent.id === agentId ? { ...agent, command, args } : agent)) : prev,
+      prev
+        ? prev.map((agent) =>
+            agent.id === agentId ? { ...agent, command, args, commit_args: commitArgs } : agent,
+          )
+        : prev,
     )
   }
 
