@@ -47,10 +47,11 @@ async function loadWorktrees(projects: Project[]): Promise<Record<number, Worktr
   return Object.fromEntries(entries)
 }
 
-function NavItem({ icon, label }: { icon: ReactNode; label: string }) {
+function NavItem({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-[var(--fg-3)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
     >
       <span className="text-[var(--muted)]">{icon}</span>
@@ -213,6 +214,7 @@ interface SidebarProps {
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
+  onOpenSearch: () => void
   activeProjectId: number | null
   width: number
   onClose: () => void
@@ -224,6 +226,7 @@ export function Sidebar({
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
+  onOpenSearch,
   activeProjectId,
   width,
   onClose,
@@ -322,7 +325,7 @@ export function Sidebar({
       </div>
 
       <nav className="space-y-0.5 px-2">
-        <NavItem icon={<SearchIcon />} label={t('ide.search')} />
+        <NavItem icon={<SearchIcon />} label={t('ide.search')} onClick={onOpenSearch} />
         <NavItem icon={<TasksIcon />} label={t('ide.tasks')} />
         <NavItem icon={<AutomationsIcon />} label={t('ide.automations')} />
       </nav>

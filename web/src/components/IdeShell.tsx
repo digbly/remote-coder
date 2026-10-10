@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { killTerminal, type Project, type User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
@@ -16,6 +16,7 @@ import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { FileEditor } from './ide/FileEditor'
 import { TopTabs } from './ide/TopTabs'
+import { TabSearchModal } from './ide/TabSearchModal'
 import { VSCodePanel } from './ide/VSCodePanel'
 import { ResizeHandle } from './ide/ResizeHandle'
 import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
@@ -77,6 +78,7 @@ export function IdeShell({
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
+  const [searchOpen, setSearchOpen] = useState(false)
 
   function updateLayout(patch: Partial<LayoutState>) {
     update((prev) => ({ ...prev, layout: { ...prev.layout, ...patch } }))
@@ -139,6 +141,7 @@ export function IdeShell({
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
+            onOpenSearch={() => setSearchOpen(true)}
             activeProjectId={activeProjectId}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
@@ -162,7 +165,6 @@ export function IdeShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <TopTabs
           tabs={activeTabs}
-          allTabs={allTabs}
           activeId={activeTabId}
           onSelect={onSelectTab}
           onClose={closeTab}
@@ -238,6 +240,14 @@ export function IdeShell({
             ))}
         </div>
       </div>
+      {searchOpen && (
+        <TabSearchModal
+          tabs={allTabs}
+          activeId={activeTabId}
+          onSelect={onSelectTab}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   )
 }
