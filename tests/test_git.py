@@ -944,6 +944,89 @@ def test_commit_message_requires_staged_or_working_changes(
     assert _error_code(response) == "GIT_NOTHING_TO_COMMIT"
 
 
+def test_create_worktree_with_new_branch(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    worktree_path = projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature"
+    assert body["name"] == "myrepo-feature"
+    assert body["path"] == str(worktree_path)
+    assert body["branch"] == "feature/x"
+    assert body["is_primary"] is False
+    assert (worktree_path / "tracked.txt").read_text() == "hello\n"
+
+    listed = client.get(f"{PROJECTS_URL}/{project_id}/git/worktrees")
+    assert [worktree["name"] for worktree in listed.json()] == ["myrepo", "myrepo-feature"]
+
+
+def test_create_worktree_with_existing_branch(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "branch", "release")
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-release", "branch": "release", "create_branch": False},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["branch"] == "release"
+
+
+def test_create_worktree_rejects_invalid_name(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "../escape", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_WORKTREE_INVALID"
+
+
+def test_create_worktree_conflicts_when_name_taken(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature").mkdir(parents=True)
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 409
+    assert _error_code(response) == "GIT_WORKTREE_EXISTS"
+
+
+def test_create_worktree_requires_auth(client: TestClient) -> None:
+    response = client.post(
+        f"{PROJECTS_URL}/1/git/worktrees",
+        json={"name": "x", "branch": "y", "create_branch": True},
+    )
+    assert response.status_code == 401
+
+
 def test_clean_commit_message_strips_code_fences() -> None:
     assert _clean_commit_message("```\nfeat: add thing\n```\n") == "feat: add thing"
     assert _clean_commit_message("```text\nfix: bug\n\nbody\n```") == "fix: bug\n\nbody"
