@@ -47,12 +47,13 @@ docker run --rm --name remote-coder \
 Generate a Fernet key with the configured project Python environment:
 
 ```bash
-.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-Keep `AI_CREDENTIAL_ENCRYPTION_KEY` private and stable across restarts. Changing
-it makes previously stored AI provider credentials unreadable; those
-credentials must be entered again.
+Use the generated value for `AI_CREDENTIAL_ENCRYPTION_KEY` in `.env` or pass it
+to the container as shown above. Keep it private and stable across restarts
+and deployments. Changing it makes previously stored AI provider credentials
+unreadable; those credentials must be entered again.
 
 ## AI providers and workspace chat
 
