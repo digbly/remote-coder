@@ -1,11 +1,10 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { loadPanelTab, savePanelTab, type PanelTab } from '../../lib/panelStore'
 import { BranchIcon, CheckIcon, CloseIcon, FileIcon } from './icons'
 import { ExplorerPanel } from './ExplorerPanel'
 import { SourceControlPanel } from './SourceControlPanel'
 import { CheckPanel } from './CheckPanel'
-
-type PanelTab = 'explorer' | 'sourceControl' | 'check'
 
 const TABS = [
   { id: 'explorer', labelKey: 'ide.explorer', Icon: FileIcon },
@@ -26,8 +25,13 @@ interface RightPanelProps {
 
 export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanelProps) {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<PanelTab>('sourceControl')
+  const [tab, setTab] = useState<PanelTab>(() => loadPanelTab(projectId))
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  function selectTab(next: PanelTab) {
+    setTab(next)
+    savePanelTab(projectId, next)
+  }
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
@@ -35,7 +39,7 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
     const index = TABS.findIndex((entry) => entry.id === tab)
     const delta = event.key === 'ArrowRight' ? 1 : -1
     const next = (index + delta + TABS.length) % TABS.length
-    setTab(TABS[next].id)
+    selectTab(TABS[next].id)
     tabRefs.current[next]?.focus()
   }
 
@@ -67,7 +71,7 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
                 aria-label={t(labelKey)}
                 title={t(labelKey)}
                 tabIndex={active ? 0 : -1}
-                onClick={() => setTab(id)}
+                onClick={() => selectTab(id)}
                 className={`flex shrink-0 items-center justify-center border-b-2 px-2.5 py-1.5 transition ${
                   active
                     ? 'border-b-indigo-500 text-[var(--fg-strong)]'
