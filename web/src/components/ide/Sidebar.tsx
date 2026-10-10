@@ -11,7 +11,6 @@ import {
 } from '../../lib/api'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import {
-  AutomationsIcon,
   BellIcon,
   BranchIcon,
   CloseIcon,
@@ -20,10 +19,8 @@ import {
   ExternalLinkIcon,
   FolderPlusIcon,
   HelpIcon,
-  PlusIcon,
   SearchIcon,
   SettingsIcon,
-  TasksIcon,
   TerminalIcon,
 } from './icons'
 import { NewProjectDialog } from './NewProjectDialog'
