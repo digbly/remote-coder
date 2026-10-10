@@ -51,14 +51,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew, onNewChat }:
             </div>
           )
         })}
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="shrink-0 border-r border-[var(--border)] px-3 text-xs text-[var(--muted)] transition hover:bg-[var(--menu-hover)] hover:text-[var(--fg-strong)]"
-        >
-          {t('chat.tabTitle')}
-        </button>
-        <NewTabMenu onSelect={onNew} />
+        <NewTabMenu onSelect={onNew} onNewChat={onNewChat} />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 px-3">

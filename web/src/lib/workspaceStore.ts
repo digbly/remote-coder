@@ -121,12 +121,16 @@ export function withNewChat(
   project: ActiveProjectRef,
 ): Record<number, ProjectWorkspace> {
   const tabs = workspaces[project.id]?.tabs ?? []
-  const existing = tabs.find((tab) => tab.kind === 'chat')
-  if (existing) return { ...workspaces, [project.id]: { tabs, activeId: existing.id } }
   const id = newTerminalId()
+  let number = 1
+  let title = number === 1 ? 'Chat' : `Chat (${number})`
+  while (tabs.some((tab) => tab.kind === 'chat' && tab.title === title)) {
+    number += 1
+    title = `Chat (${number})`
+  }
   const tab: WorkspaceTab = {
     id,
-    title: 'Chat',
+    title,
     kind: 'chat',
     projectId: project.id,
   }
