@@ -155,6 +155,8 @@ def _contents(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
                 "args": call.arguments,
             }
             function_call["id"] = call.id
+            if call.thought_signature:
+                function_call["thoughtSignature"] = call.thought_signature
             parts.append({"functionCall": function_call})
         if parts:
             contents.append(
@@ -213,10 +215,16 @@ def _chunk_events(chunk: dict[str, object], api_key: str | None = None) -> list[
                         name = function_call.get("name")
                         arguments = function_call.get("args", {})
                         call_id = function_call.get("id")
+                        thought_signature = function_call.get("thoughtSignature")
                         if not isinstance(name, str) or not isinstance(arguments, dict):
                             raise ProviderAPIError(GeminiAdapter.kind)
                         call_id = call_id if isinstance(call_id, str) else uuid4().hex
-                        events.append(ToolCall(call_id, name, arguments))
+                        thought_signature = (
+                            thought_signature if isinstance(thought_signature, str) else None
+                        )
+                        events.append(
+                            ToolCall(call_id, name, arguments, thought_signature)
+                        )
 
             finish_reason = candidate.get("finishReason")
             if isinstance(finish_reason, str):
