@@ -19,6 +19,7 @@ import {
   ExternalLinkIcon,
   FolderPlusIcon,
   HelpIcon,
+  PlusIcon,
   SearchIcon,
   SettingsIcon,
   TerminalIcon,
