@@ -1,15 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchFileTree,
+  fetchGitStatus,
   searchProjectFiles,
   type FileNode,
   type FileSearchMode,
   type FileSearchResult,
   type FileTree,
+  type GitStatus,
 } from '../../lib/api'
 import { useAsyncData } from '../../lib/useAsyncData'
 import { SearchResultTree } from './SearchResultTree'
+import {
+  buildGitChangeMaps,
+  gitStatusColor,
+  gitStatusSignature,
+  GIT_STATUS_REFRESH_INTERVAL_MS,
+} from './gitStatus'
 import {
   ChevronRightIcon,
   FileIcon,
@@ -29,9 +37,19 @@ interface TreeItemProps {
   onOpenFile: (path: string) => void
   dirs: Record<string, DirState>
   onLoadDir: (path: string) => void
+  files: Map<string, string>
+  changedDirs: Map<string, string>
 }
 
-function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
+function TreeItem({
+  node,
+  depth,
+  onOpenFile,
+  dirs,
+  onLoadDir,
+  files,
+  changedDirs,
+}: TreeItemProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const indentation = { paddingLeft: `${depth * 12 + 8}px` }
@@ -39,6 +57,7 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
   if (node.type === 'directory') {
     const dir = dirs[node.path]
     const childIndentation = { paddingLeft: `${(depth + 1) * 12 + 8}px` }
+    const dirStatus = changedDirs.get(node.path)
 
     const toggle = () => {
       const next = !open
@@ -66,6 +85,11 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
           <span className="truncate" title={node.path}>
             {node.name}
           </span>
+          {dirStatus && (
+            <span className={`ml-auto shrink-0 font-mono text-[11px] ${gitStatusColor(dirStatus)}`}>
+              {dirStatus}
+            </span>
+          )}
         </button>
         {open && dir?.status === 'loading' && (
           <p style={childIndentation} className="py-1 text-[12px] text-[var(--muted-2)]">
@@ -87,6 +111,8 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
               onOpenFile={onOpenFile}
               dirs={dirs}
               onLoadDir={onLoadDir}
+              files={files}
+              changedDirs={changedDirs}
             />
           ))}
         {open && dir?.status === 'loaded' && dir.tree.truncated && (
@@ -97,6 +123,8 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
       </div>
     )
   }
+
+  const fileStatus = files.get(node.path)
 
   return (
     <button
@@ -109,6 +137,11 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
       <span className="w-3 shrink-0" aria-hidden="true" />
       <FileIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
       <span className="truncate">{node.name}</span>
+      {fileStatus && (
+        <span className={`ml-auto shrink-0 font-mono text-[11px] ${gitStatusColor(fileStatus)}`}>
+          {fileStatus}
+        </span>
+      )}
     </button>
   )
 }
@@ -158,6 +191,32 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({})
   const [version, setVersion] = useState(0)
+
+  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null)
+  const [statusToken, setStatusToken] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    fetchGitStatus(projectId)
+      .then((next) => {
+        if (!active) return
+        setGitStatus((prev) => (gitStatusSignature(prev) === gitStatusSignature(next) ? prev : next))
+      })
+      .catch(() => {})
+    const timer = window.setInterval(
+      () => setStatusToken((value) => value + 1),
+      GIT_STATUS_REFRESH_INTERVAL_MS,
+    )
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [projectId, statusToken])
+
+  const { files: fileChanges, dirs: changedDirs } = useMemo(
+    () => buildGitChangeMaps(gitStatus),
+    [gitStatus],
+  )
 
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<FileSearchMode>('names')
@@ -243,6 +302,7 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
   const handleRefresh = () => {
     setDirs({})
     setVersion((value) => value + 1)
+    setStatusToken((value) => value + 1)
     reload()
   }
 
@@ -406,6 +466,8 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
                   onOpenFile={onOpenFile}
                   dirs={dirs}
                   onLoadDir={loadDir}
+                  files={fileChanges}
+                  changedDirs={changedDirs}
                 />
               ))}
             {!loading && !error && tree?.truncated && (

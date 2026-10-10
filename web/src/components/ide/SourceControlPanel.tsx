@@ -34,21 +34,7 @@ import {
   UndoIcon,
 } from './icons'
 import { BranchMenu } from './BranchMenu'
-
-const REFRESH_INTERVAL_MS = 5000
-
-const STATUS_COLORS: Record<string, string> = {
-  A: 'text-[var(--success)]',
-  M: 'text-[var(--warn)]',
-  D: 'text-[var(--danger-2)]',
-  R: 'text-[var(--info)]',
-  C: 'text-[var(--info)]',
-  U: 'text-[var(--danger-2)]',
-}
-
-function statusColor(status: string): string {
-  return STATUS_COLORS[status] ?? 'text-[var(--muted)]'
-}
+import { gitStatusColor, GIT_STATUS_REFRESH_INTERVAL_MS } from './gitStatus'
 
 function PathRow({
   label,
@@ -67,7 +53,7 @@ function PathRow({
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {status && (
-          <span className={`font-mono text-[11px] ${statusColor(status)}`}>{status}</span>
+          <span className={`font-mono text-[11px] ${gitStatusColor(status)}`}>{status}</span>
         )}
         {action}
       </span>
@@ -203,7 +189,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
       .finally(() => {
         if (active) setLoading(false)
       })
-    const timer = window.setInterval(reload, REFRESH_INTERVAL_MS)
+    const timer = window.setInterval(reload, GIT_STATUS_REFRESH_INTERVAL_MS)
     return () => {
       active = false
       window.clearInterval(timer)
