@@ -221,19 +221,29 @@ def find_worktree(path: Path, name: str, settings: Settings) -> Path | None:
     registry instead of being treated as a filesystem path.
     """
     try:
-        result = _run_git(
-            path,
-            ["worktree", "list", "--porcelain"],
-            timeout=settings.git_status_timeout_seconds,
-        )
+        entry = _worktree_entry(path, name, settings)
     except HTTPException:
         return None
+    return Path(entry.path) if entry is not None else None
+
+
+def _worktree_entry(path: Path, name: str, settings: Settings) -> GitWorktreeRead | None:
+    """Return the registered worktree named ``name``, or ``None`` if absent."""
+    result = _run_git(
+        path,
+        ["worktree", "list", "--porcelain"],
+        timeout=settings.git_status_timeout_seconds,
+    )
     if result.returncode != 0:
         return None
-    for worktree in parse_worktrees(result.stdout, primary=path):
-        if worktree.name == name:
-            return Path(worktree.path)
-    return None
+    return next(
+        (
+            worktree
+            for worktree in parse_worktrees(result.stdout, primary=path)
+            if worktree.name == name
+        ),
+        None,
+    )
 
 
 def parse_worktrees(output: str, primary: Path) -> list[GitWorktreeRead]:
@@ -318,6 +328,34 @@ def create_worktree(
         raise api_error(ErrorCode.GIT_WORKTREE_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
 
     return GitWorktreeRead(name=target.name, path=str(target), branch=branch, is_primary=False)
+
+
+def delete_worktree(
+    db: Session, owner: User, project_id: int, name: str, settings: Settings
+) -> None:
+    """Remove a linked git worktree by name.
+
+    The name comes from the client, so it is matched against git's own worktree
+    registry instead of being treated as a filesystem path. The primary
+    worktree cannot be removed.
+    """
+    path = _project_repository(db, owner, project_id, settings)
+    target = _worktree_entry(path, name.strip(), settings)
+    if target is None:
+        raise api_error(ErrorCode.GIT_WORKTREE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+    if target.is_primary:
+        raise api_error(ErrorCode.GIT_WORKTREE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    removal = _run_git(
+        path,
+        ["worktree", "remove", target.path],
+        timeout=settings.git_commit_timeout_seconds,
+        error_code=ErrorCode.GIT_WORKTREE_DELETE_FAILED,
+    )
+    if removal.returncode != 0:
+        raise api_error(
+            ErrorCode.GIT_WORKTREE_DELETE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 
 def create_branch(

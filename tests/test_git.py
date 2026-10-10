@@ -1027,6 +1027,65 @@ def test_create_worktree_requires_auth(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_delete_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees/myrepo-feature",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 204
+    worktree_path = projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature"
+    assert not worktree_path.exists()
+
+    listed = client.get(f"{PROJECTS_URL}/{project_id}/git/worktrees")
+    assert [worktree["name"] for worktree in listed.json()] == ["myrepo"]
+
+
+def test_delete_worktree_not_found(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees/missing",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 404
+    assert _error_code(response) == "GIT_WORKTREE_NOT_FOUND"
+
+
+def test_delete_primary_worktree_rejected(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees/myrepo",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_WORKTREE_INVALID"
+    assert repo.exists()
+
+
+def test_delete_worktree_requires_auth(client: TestClient) -> None:
+    response = client.delete(f"{PROJECTS_URL}/1/git/worktrees/whatever")
+    assert response.status_code == 401
+
 def test_clean_commit_message_strips_code_fences() -> None:
     assert _clean_commit_message("```\nfeat: add thing\n```\n") == "feat: add thing"
     assert _clean_commit_message("```text\nfix: bug\n\nbody\n```") == "fix: bug\n\nbody"

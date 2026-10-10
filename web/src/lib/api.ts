@@ -38,6 +38,8 @@ const ERROR_CODE_KEYS = {
   GIT_WORKTREE_INVALID: 'apiErrors.gitWorktreeInvalid',
   GIT_WORKTREE_EXISTS: 'apiErrors.gitWorktreeExists',
   GIT_WORKTREE_FAILED: 'apiErrors.gitWorktreeFailed',
+  GIT_WORKTREE_NOT_FOUND: 'apiErrors.gitWorktreeNotFound',
+  GIT_WORKTREE_DELETE_FAILED: 'apiErrors.gitWorktreeDeleteFailed',
   AGENT_NOT_FOUND: 'apiErrors.agentNotFound',
   AGENT_NOT_CONFIGURED: 'apiErrors.agentNotConfigured',
   AGENT_UNSUPPORTED: 'apiErrors.agentUnsupported',
@@ -531,6 +533,17 @@ export function createWorktree(
   payload: WorktreeCreatePayload,
 ): Promise<Worktree> {
   return postJson(`/projects/${projectId}/git/worktrees`, payload)
+}
+
+export async function deleteWorktree(projectId: number, name: string): Promise<void> {
+  const response = await request(
+    `/projects/${projectId}/git/worktrees/${encodeURIComponent(name)}`,
+    { method: 'DELETE' },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
 }
 
 export async function fetchAgents(): Promise<AgentDefinition[]> {

@@ -49,6 +49,8 @@ const en = {
     gitWorktreeInvalid: 'Worktree name is invalid',
     gitWorktreeExists: 'A worktree with this name already exists',
     gitWorktreeFailed: 'Could not create the worktree',
+    gitWorktreeNotFound: 'Worktree not found',
+    gitWorktreeDeleteFailed: 'Could not delete the worktree',
     agentNotFound: 'Unknown agent',
     agentNotConfigured: 'Select a default agent first',
     agentUnsupported: 'The default agent cannot generate commit messages',
@@ -195,6 +197,9 @@ const en = {
     switchBranchFailed: 'Could not switch branch',
     createBranchFailed: 'Could not create branch',
     createWorktree: 'Create worktree',
+    deleteWorktree: 'Delete worktree',
+    deleteWorktreeConfirm: 'Delete worktree "{{name}}"? This cannot be undone.',
+    deleteWorktreeFailed: 'Could not delete the worktree',
     newWorktreeDialog: {
       title: 'New worktree',
       nameTab: 'New branch',

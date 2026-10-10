@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
@@ -172,6 +172,22 @@ def create_worktree(
     _csrf: CsrfDep,
 ) -> GitWorktreeRead:
     return service.create_worktree(db, current_user, project_id, payload, settings)
+
+
+@router.delete(
+    "/{project_id}/git/worktrees/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(400, 401, 403, 404, 422, 500),
+)
+def delete_worktree(
+    project_id: int,
+    name: str,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> None:
+    service.delete_worktree(db, current_user, project_id, name, settings)
 
 
 @router.get(

@@ -49,6 +49,8 @@ const vi = {
     gitWorktreeInvalid: 'Tên worktree không hợp lệ',
     gitWorktreeExists: 'Đã tồn tại worktree với tên này',
     gitWorktreeFailed: 'Không thể tạo worktree',
+    gitWorktreeNotFound: 'Không tìm thấy worktree',
+    gitWorktreeDeleteFailed: 'Không thể xoá worktree',
     agentNotFound: 'Agent không tồn tại',
     agentNotConfigured: 'Hãy chọn agent mặc định trước',
     agentUnsupported: 'Agent mặc định không hỗ trợ tạo nội dung commit',
@@ -195,6 +197,9 @@ const vi = {
     switchBranchFailed: 'Không thể chuyển nhánh',
     createBranchFailed: 'Không thể tạo nhánh',
     createWorktree: 'Tạo worktree',
+    deleteWorktree: 'Xoá worktree',
+    deleteWorktreeConfirm: 'Xoá worktree "{{name}}"? Không thể hoàn tác.',
+    deleteWorktreeFailed: 'Không thể xoá worktree',
     newWorktreeDialog: {
       title: 'Worktree mới',
       nameTab: 'Nhánh mới',
