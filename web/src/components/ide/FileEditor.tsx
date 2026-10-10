@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { useTranslation } from 'react-i18next'
 import { fetchFileContent, saveFileContent } from '../../lib/api'
+import { ensureMonaco } from '../../lib/monaco'
 import { useTheme } from '../../lib/themeContext'
 
 interface FileEditorProps {
@@ -16,6 +17,7 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
   const [content, setContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
   const [loading, setLoading] = useState(true)
+  const [ready, setReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -31,13 +33,14 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
 
   useEffect(() => {
     let disposed = false
-    fetchFileContent(projectId, path)
-      .then((file) => {
+    Promise.all([fetchFileContent(projectId, path), ensureMonaco()])
+      .then(([file]) => {
         if (disposed) return
         contentRef.current = file.content
         savedRef.current = file.content
         setContent(file.content)
         setSavedContent(file.content)
+        setReady(true)
       })
       .catch((err: unknown) => {
         if (!disposed) setLoadError(err instanceof Error ? err.message : t('ide.fileOpenFailed'))
@@ -118,7 +121,7 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
         {!loading && loadError && (
           <p className="px-3 py-2 text-[13px] text-[var(--danger)]">{loadError}</p>
         )}
-        {!loading && !loadError && (
+        {!loading && !loadError && ready && (
           <Editor
             path={`project-${projectId}/${path}`}
             value={content}
