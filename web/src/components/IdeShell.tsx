@@ -30,16 +30,16 @@ function SidebarRail({
 }) {
   return (
     <div
-      className={`flex w-9 shrink-0 flex-col items-center bg-[#1b1c1f] ${
+      className={`flex w-9 shrink-0 flex-col items-center bg-[var(--surface)] ${
         side === 'left' ? 'border-r' : 'border-l'
-      } border-[#2c2e33]`}
+      } border-[var(--border)]`}
     >
       <button
         type="button"
         aria-label={label}
         title={label}
         onClick={onClick}
-        className="mt-3 rounded-md p-1.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+        className="mt-3 rounded-md p-1.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
       >
         {side === 'left' ? (
           <PanelLeftIcon width={16} height={16} />
@@ -136,7 +136,7 @@ export function IdeShell({
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0f1012] text-[#e6e8ec]">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
       {layout.leftOpen ? (
         <>
           <Sidebar
@@ -177,8 +177,8 @@ export function IdeShell({
           <div className="relative min-h-0 min-w-0 flex-1">
             {activeProjectId == null && (
               <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
-                <p className="text-sm text-[#8b9099]">{t('ide.noProjectSelected')}</p>
-                <p className="text-xs text-[#5f646c]">{t('ide.openProjectHint')}</p>
+                <p className="text-sm text-[var(--muted)]">{t('ide.noProjectSelected')}</p>
+                <p className="text-xs text-[var(--muted-4)]">{t('ide.openProjectHint')}</p>
               </div>
             )}
             {allTabs.map((tab) => {

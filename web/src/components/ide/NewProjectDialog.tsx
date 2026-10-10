@@ -11,8 +11,8 @@ import { FolderBrowserDialog } from './FolderBrowserDialog'
 type Tab = 'local' | 'github'
 
 const inputClass =
-  'w-full rounded-lg border border-[#33363b] bg-[#141517] px-3 py-2 text-sm text-[#e6e8ec] outline-none transition placeholder:text-[#6b7078] focus:border-indigo-500'
-const labelClass = 'mb-1 block text-[12px] font-medium text-[#c2c6cc]'
+  'w-full rounded-lg border border-[var(--hover-strong)] bg-[var(--input)] px-3 py-2 text-sm text-[var(--fg)] outline-none transition placeholder:text-[var(--muted-3)] focus:border-indigo-500'
+const labelClass = 'mb-1 block text-[12px] font-medium text-[var(--fg-3)]'
 
 interface NewProjectDialogProps {
   onClose: () => void
@@ -84,11 +84,11 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-project-title"
-        className="w-full max-w-md rounded-xl border border-[#2c2e33] bg-[#1b1c1f] shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#2c2e33] px-4 py-3">
-          <h2 id="new-project-title" className="text-sm font-semibold text-white">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <h2 id="new-project-title" className="text-sm font-semibold text-[var(--fg-strong)]">
             {t('ide.newProjectDialog.title')}
           </h2>
           <button
@@ -96,7 +96,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
             aria-label={t('ide.newProjectDialog.cancel')}
             disabled={submitting}
             onClick={onClose}
-            className="rounded-md p-1 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white disabled:opacity-50"
+            className="rounded-md p-1 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:opacity-50"
           >
             <CloseIcon width={14} height={14} />
           </button>
@@ -110,8 +110,8 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
               onClick={() => switchTab(value)}
               className={`rounded-md px-3 py-1.5 text-[13px] transition ${
                 tab === value
-                  ? 'bg-[#2a2c30] text-white'
-                  : 'text-[#9aa0a8] hover:bg-[#24262a] hover:text-white'
+                  ? 'bg-[var(--hover)] text-[var(--fg-strong)]'
+                  : 'text-[var(--text-2)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
               }`}
             >
               {value === 'local' ? t('ide.newProjectDialog.tabLocal') : t('ide.newProjectDialog.tabGithub')}
@@ -123,7 +123,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
           {error && (
             <p
               role="alert"
-              className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-[#f0a9b0] ring-1 ring-red-500/30"
+              className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-[var(--danger)] ring-1 ring-red-500/30"
             >
               {error}
             </p>
@@ -148,7 +148,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
                 <button
                   type="button"
                   onClick={() => setShowBrowser(true)}
-                  className="shrink-0 rounded-lg border border-[#33363b] px-3 text-[13px] text-[#c2c6cc] transition hover:bg-[#2a2c30] hover:text-white"
+                  className="shrink-0 rounded-lg border border-[var(--hover-strong)] px-3 text-[13px] text-[var(--fg-3)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
                 >
                   {t('ide.newProjectDialog.browse')}
                 </button>
@@ -193,7 +193,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
           <div>
             <label htmlFor="project-name" className={labelClass}>
               {t('ide.newProjectDialog.name')}{' '}
-              <span className="text-[#6b7078]">({t('ide.newProjectDialog.optional')})</span>
+              <span className="text-[var(--muted-3)]">({t('ide.newProjectDialog.optional')})</span>
             </label>
             <input
               id="project-name"
@@ -210,7 +210,7 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
               type="button"
               disabled={submitting}
               onClick={onClose}
-              className="rounded-lg px-3 py-2 text-sm text-[#c2c6cc] transition hover:bg-[#2a2c30] hover:text-white disabled:opacity-50"
+              className="rounded-lg px-3 py-2 text-sm text-[var(--fg-3)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:opacity-50"
             >
               {t('ide.newProjectDialog.cancel')}
             </button>

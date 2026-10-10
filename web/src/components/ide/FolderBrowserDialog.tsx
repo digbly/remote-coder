@@ -79,24 +79,24 @@ export function FolderBrowserDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="folder-browser-title"
-        className="flex w-full max-w-lg flex-col rounded-xl border border-[#2c2e33] bg-[#1b1c1f] shadow-2xl"
+        className="flex w-full max-w-lg flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#2c2e33] px-4 py-3">
-          <h2 id="folder-browser-title" className="text-sm font-semibold text-white">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <h2 id="folder-browser-title" className="text-sm font-semibold text-[var(--fg-strong)]">
             {t('ide.folderBrowser.title')}
           </h2>
           <button
             type="button"
             aria-label={t('ide.folderBrowser.cancel')}
             onClick={onClose}
-            className="rounded-md p-1 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+            className="rounded-md p-1 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
           >
             <CloseIcon width={14} height={14} />
           </button>
         </div>
 
-        <div className="flex items-center gap-2 border-b border-[#2c2e33] px-4 py-2">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-2">
           <button
             type="button"
             aria-label={t('ide.folderBrowser.up')}
@@ -105,28 +105,28 @@ export function FolderBrowserDialog({
             onClick={() => {
               if (listing?.parent) void navigate(listing.parent)
             }}
-            className="rounded-md p-1.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white disabled:opacity-40 disabled:hover:bg-transparent"
+            className="rounded-md p-1.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <ArrowUpIcon width={15} height={15} />
           </button>
-          <span className="truncate font-mono text-[12px] text-[#9aa0a8]" title={listing?.path}>
+          <span className="truncate font-mono text-[12px] text-[var(--text-2)]" title={listing?.path}>
             {listing?.path ?? ''}
           </span>
         </div>
 
         <div className="h-72 overflow-y-auto px-2 py-2">
           {error != null && (
-            <p role="alert" className="px-2 py-1.5 text-[13px] text-[#f0a9b0]">
+            <p role="alert" className="px-2 py-1.5 text-[13px] text-[var(--danger)]">
               {error instanceof Error ? error.message : t('apiErrors.unknown')}
             </p>
           )}
           {loading && !error && (
-            <p className="px-2 py-1.5 text-[13px] text-[#7d828b]">
+            <p className="px-2 py-1.5 text-[13px] text-[var(--muted-2)]">
               {t('ide.folderBrowser.loading')}
             </p>
           )}
           {!loading && !error && listing?.directories.length === 0 && (
-            <p className="px-2 py-1.5 text-[13px] text-[#7d828b]">
+            <p className="px-2 py-1.5 text-[13px] text-[var(--muted-2)]">
               {t('ide.folderBrowser.empty')}
             </p>
           )}
@@ -138,24 +138,24 @@ export function FolderBrowserDialog({
                 disabled={loading}
                 onClick={() => void navigate(entry.path)}
                 title={entry.path}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-[#c2c6cc] transition hover:bg-[#24262a] hover:text-white disabled:opacity-60"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-[var(--fg-3)] transition hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)] disabled:opacity-60"
               >
-                <FolderIcon width={15} height={15} className="shrink-0 text-amber-400" />
+                <FolderIcon width={15} height={15} className="shrink-0 text-amber-500 dark:text-amber-400" />
                 <span className="truncate">{entry.name}</span>
                 <ChevronRightIcon
                   width={14}
                   height={14}
-                  className="ml-auto shrink-0 text-[#6b7078]"
+                  className="ml-auto shrink-0 text-[var(--muted-3)]"
                 />
               </button>
             ))}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[#2c2e33] px-4 py-3">
+        <div className="flex justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-[#c2c6cc] transition hover:bg-[#2a2c30] hover:text-white"
+            className="rounded-lg px-3 py-2 text-sm text-[var(--fg-3)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
           >
             {t('ide.folderBrowser.cancel')}
           </button>

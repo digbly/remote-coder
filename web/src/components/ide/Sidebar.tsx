@@ -51,9 +51,9 @@ function NavItem({ icon, label }: { icon: ReactNode; label: string }) {
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-[#c2c6cc] transition hover:bg-[#2a2c30] hover:text-white"
+      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm text-[var(--fg-3)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
     >
-      <span className="text-[#8b9099]">{icon}</span>
+      <span className="text-[var(--muted)]">{icon}</span>
       {label}
     </button>
   )
@@ -74,7 +74,7 @@ function IconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="rounded-md p-1 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+      className="rounded-md p-1 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
     >
       {children}
     </button>
@@ -100,7 +100,7 @@ function WorktreeItem({
         event.preventDefault()
         onContextMenu(event.clientX, event.clientY)
       }}
-      className="group flex w-full items-center rounded-md px-2 py-1.5 transition hover:bg-[#2a2c30]"
+      className="group flex w-full items-center rounded-md px-2 py-1.5 transition hover:bg-[var(--hover)]"
     >
       <button
         type="button"
@@ -111,23 +111,23 @@ function WorktreeItem({
           <span
             className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
               worktree.is_primary
-                ? 'border-emerald-400/70 text-emerald-400'
-                : 'border-amber-400/70 text-amber-400'
+                ? 'border-emerald-400/70 text-emerald-600 dark:text-emerald-400'
+                : 'border-amber-400/70 text-amber-600 dark:text-amber-400'
             }`}
           >
             <BranchIcon width={9} height={9} />
           </span>
-          <span className="truncate text-[13px] text-[#d7dae0] group-hover:text-white">
+          <span className="truncate text-[13px] text-[var(--fg-2)] group-hover:text-[var(--fg-strong)]">
             {worktree.branch ?? worktree.name}
           </span>
           {worktree.is_primary && (
-            <span className="shrink-0 rounded border border-[#3a3d42] px-1.5 py-px text-[10px] text-[#8b9099]">
+            <span className="shrink-0 rounded border border-[var(--border-strong-alt)] px-1.5 py-px text-[10px] text-[var(--muted)]">
               {t('ide.primary')}
             </span>
           )}
         </span>
-        <span className="flex min-w-0 items-center gap-1.5 pl-[22px] text-[11px] text-[#7d828b]">
-          <span className="shrink-0 rounded bg-[#2c2e33] px-1.5 py-px text-[#9aa0a8]">
+        <span className="flex min-w-0 items-center gap-1.5 pl-[22px] text-[11px] text-[var(--muted-2)]">
+          <span className="shrink-0 rounded bg-[var(--chip)] px-1.5 py-px text-[var(--text-2)]">
             {t('ide.localHost')}
           </span>
           <span className="truncate">{worktree.name}</span>
@@ -138,7 +138,7 @@ function WorktreeItem({
         aria-label={t('ide.openInVSCode')}
         title={t('ide.openInVSCode')}
         onClick={onOpenVSCode}
-        className="ml-1 shrink-0 rounded p-1 text-[#8b9099] opacity-0 transition hover:bg-[#33363b] hover:text-white group-hover:opacity-100 focus:opacity-100"
+        className="ml-1 shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:opacity-100 focus:opacity-100"
       >
         <CodeIcon width={14} height={14} />
       </button>
@@ -172,7 +172,7 @@ function ProjectItem({
         onClick={() => onOpenProject(project)}
         title={project.path}
         className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition ${
-          active ? 'bg-[#2a2c30] text-white' : 'text-[#d7dae0] hover:bg-[#24262a] hover:text-white'
+          active ? 'bg-[var(--hover)] text-[var(--fg-strong)]' : 'text-[var(--fg-2)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
         }`}
       >
         <span className={`h-3.5 w-3.5 shrink-0 rounded-sm ${accent}`} aria-hidden="true" />
@@ -180,7 +180,7 @@ function ProjectItem({
       </button>
 
       {worktrees && worktrees.length > 0 && (
-        <div className="mt-1 space-y-0.5 rounded-lg border border-[#2c2e33] bg-[#202124] p-1">
+        <div className="mt-1 space-y-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1">
           {worktrees.map((worktree) => (
             <WorktreeItem
               key={worktree.path}
@@ -308,10 +308,10 @@ export function Sidebar({
   return (
     <aside
       style={{ width }}
-      className="flex shrink-0 flex-col bg-[#1b1c1f] text-sm"
+      className="flex shrink-0 flex-col bg-[var(--surface)] text-sm"
     >
       <div className="flex items-center gap-2 px-3.5 py-3.5">
-        <span className="ml-1 min-w-0 truncate text-[13px] font-semibold tracking-wide text-white">
+        <span className="ml-1 min-w-0 truncate text-[13px] font-semibold tracking-wide text-[var(--fg-strong)]">
           {t('common.appName')}
         </span>
         <span className="ml-auto shrink-0">
@@ -328,7 +328,7 @@ export function Sidebar({
       </nav>
 
       <div className="mt-5 flex items-center justify-between px-3.5 pb-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#7d828b]">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-2)]">
           {t('ide.projects')}
         </span>
         <span className="flex items-center gap-0.5">
@@ -349,11 +349,11 @@ export function Sidebar({
 
       <div className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
         {projects === null && !error && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[#7d828b]">{t('common.loading')}</p>
+          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>
         )}
-        {error && <p className="px-2.5 py-1.5 text-[13px] text-[#f0a9b0]">{t('ide.projectsError')}</p>}
+        {error && <p className="px-2.5 py-1.5 text-[13px] text-[var(--danger)]">{t('ide.projectsError')}</p>}
         {projects?.length === 0 && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[#7d828b]">{t('ide.noProjects')}</p>
+          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('ide.noProjects')}</p>
         )}
         {projects?.map((project, index) => (
           <ProjectItem
@@ -372,16 +372,16 @@ export function Sidebar({
         ))}
       </div>
 
-      <div className="border-t border-[#2c2e33] px-2 py-2">
+      <div className="border-t border-[var(--border)] px-2 py-2">
         <div className="flex items-center gap-2 rounded-md px-2.5 py-1.5">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-[11px] font-semibold uppercase text-white">
             {user.username.slice(0, 1)}
           </span>
-          <span className="flex-1 truncate text-[13px] text-[#d7dae0]">{user.username}</span>
+          <span className="flex-1 truncate text-[13px] text-[var(--fg-2)]">{user.username}</span>
           <button
             type="button"
             onClick={onLogout}
-            className="rounded-md px-1.5 py-0.5 text-[11px] text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+            className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
           >
             {t('ide.signOut')}
           </button>
@@ -412,16 +412,16 @@ export function Sidebar({
           style={{ top: menu.y, left: menu.x }}
           onMouseDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
-          className="fixed z-30 w-52 overflow-hidden rounded-md border border-[#2c2e33] bg-[#1b1c1f] py-1 text-[12px] shadow-xl shadow-black/40"
+          className="fixed z-30 w-52 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
         >
-          <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wide text-[#6b7078]">
+          <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-3)]">
             {menu.worktree}
           </p>
           <button
             type="button"
             role="menuitem"
             onClick={() => runMenuAction(onOpenWorktree)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
           >
             <TerminalIcon width={13} height={13} />
             {t('ide.openTerminal')}
@@ -430,7 +430,7 @@ export function Sidebar({
             type="button"
             role="menuitem"
             onClick={() => runMenuAction(onOpenVSCode)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
           >
             <CodeIcon width={13} height={13} />
             {t('ide.openInVSCode')}
@@ -439,7 +439,7 @@ export function Sidebar({
             type="button"
             role="menuitem"
             onClick={() => runMenuAction(openVSCodeNewTab)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
           >
             <ExternalLinkIcon width={13} height={13} />
             {t('ide.openInNewTab')}

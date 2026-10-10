@@ -82,7 +82,7 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
-        className="flex w-9 shrink-0 items-center justify-center text-[#8b9099] transition hover:bg-[#222428] hover:text-white"
+        className="flex w-9 shrink-0 items-center justify-center text-[var(--muted)] transition hover:bg-[var(--menu-hover)] hover:text-[var(--fg-strong)]"
       >
         <PlusIcon />
       </button>
@@ -90,29 +90,29 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
         <div
           role="menu"
           style={{ top: anchor.top, left: anchor.left }}
-          className="fixed z-20 w-52 overflow-hidden rounded-md border border-[#2c2e33] bg-[#1b1c1f] py-1 text-[12px] shadow-xl shadow-black/40"
+          className="fixed z-20 w-52 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
         >
           <button
             type="button"
             role="menuitem"
             onClick={() => choose()}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
           >
             <TerminalIcon width={13} height={13} />
             {t('ide.newTerminal')}
           </button>
-          <div className="my-1 border-t border-[#2c2e33]" />
-          <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-[#6b7078]">
+          <div className="my-1 border-t border-[var(--border)]" />
+          <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-3)]">
             {t('ide.agents')}
           </p>
           {detection.status === 'loading' && (
-            <p className="px-3 py-1.5 text-[#6b7078]">{t('common.loading')}</p>
+            <p className="px-3 py-1.5 text-[var(--muted-3)]">{t('common.loading')}</p>
           )}
           {detection.status === 'error' && (
-            <p className="px-3 py-1.5 text-[#6b7078]">{t('ide.agentsError')}</p>
+            <p className="px-3 py-1.5 text-[var(--muted-3)]">{t('ide.agentsError')}</p>
           )}
           {detection.status === 'ready' && detection.agents.length === 0 && (
-            <p className="px-3 py-1.5 text-[#6b7078]">{t('ide.noAgents')}</p>
+            <p className="px-3 py-1.5 text-[var(--muted-3)]">{t('ide.noAgents')}</p>
           )}
           {detection.status === 'ready' &&
             detection.agents.map((agent) => (
@@ -121,7 +121,7 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
                 type="button"
                 role="menuitem"
                 onClick={() => choose(agent)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[#d7dae0] hover:bg-[#26282c]"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
               >
                 <CommandIcon width={13} height={13} />
                 {agent.label}

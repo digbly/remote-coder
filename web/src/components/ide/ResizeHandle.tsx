@@ -60,7 +60,7 @@ export function ResizeHandle({ side, width, min, max, onResize, label }: ResizeH
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
-      className="relative z-10 w-px shrink-0 cursor-col-resize touch-none bg-[#2c2e33] transition-colors hover:bg-[#4c8bf5] focus-visible:bg-[#4c8bf5] focus-visible:outline-none"
+      className="relative z-10 w-px shrink-0 cursor-col-resize touch-none bg-[var(--border)] transition-colors hover:bg-[var(--accent)] focus-visible:bg-[var(--accent)] focus-visible:outline-none"
     >
       <span className="absolute inset-y-0 -left-1 -right-1" />
     </div>
