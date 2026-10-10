@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     refresh_rate_limit_window_seconds: int = 60
 
     projects_root: str = "~/projects"
+    worktrees_root: str = "~/remote-coder/workspaces"
     github_clone_timeout_seconds: int = 120
     git_status_timeout_seconds: int = 30
     git_commit_timeout_seconds: int = 30

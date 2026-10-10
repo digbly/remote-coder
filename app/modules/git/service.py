@@ -20,6 +20,7 @@ from app.modules.git.schemas import (
     GitPullRequestStatusRead,
     GitPullRequestSummary,
     GitStatusRead,
+    GitWorktreeCreate,
     GitWorktreeRead,
 )
 from app.modules.projects.service import get_project, parse_github_repository
@@ -37,6 +38,7 @@ _UPSTREAM_PREFIX = "# branch.upstream "
 _AHEAD_BEHIND_PREFIX = "# branch.ab "
 
 _BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,255}$")
+_WORKTREE_NAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,255}$")
 _DEFAULT_BRANCHES = ("main", "master")
 _WORKTREE_BRANCH_PREFIX = "refs/heads/"
 
@@ -272,6 +274,50 @@ def _build_worktree(raw: dict[str, str], primary_resolved: Path) -> GitWorktreeR
     except OSError:
         is_primary = False
     return GitWorktreeRead(name=path.name, path=str(path), branch=branch, is_primary=is_primary)
+
+
+def create_worktree(
+    db: Session, owner: User, project_id: int, payload: GitWorktreeCreate, settings: Settings
+) -> GitWorktreeRead:
+    """Create a worktree under the configured root and return it.
+
+    A new branch is created from ``HEAD`` when ``payload.create_branch`` is set;
+    otherwise an existing branch is checked out into the new worktree.
+    """
+    path = _project_repository(db, owner, project_id, settings)
+
+    name = payload.name.strip()
+    branch = payload.branch.strip()
+    if not _WORKTREE_NAME_RE.fullmatch(name) or name in {".", ".."}:
+        raise api_error(ErrorCode.GIT_WORKTREE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    if not _valid_branch_name(branch):
+        raise api_error(ErrorCode.GIT_BRANCH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    root = _worktrees_root(settings)
+    target = (root / str(project_id) / name).resolve()
+    if not target.is_relative_to(root):
+        raise api_error(ErrorCode.GIT_WORKTREE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    if target.exists():
+        raise api_error(ErrorCode.GIT_WORKTREE_EXISTS, status_code=status.HTTP_409_CONFLICT)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    args = ["worktree", "add"]
+    if payload.create_branch:
+        args += ["-b", branch, str(target)]
+    else:
+        args += [str(target), branch]
+
+    result = _run_git(
+        path,
+        args,
+        timeout=settings.git_commit_timeout_seconds,
+        error_code=ErrorCode.GIT_WORKTREE_FAILED,
+    )
+    if result.returncode != 0:
+        raise api_error(ErrorCode.GIT_WORKTREE_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
+
+    return GitWorktreeRead(name=target.name, path=str(target), branch=branch, is_primary=False)
 
 
 def create_branch(
@@ -638,6 +684,10 @@ def _valid_branch_name(branch: str) -> bool:
     if not _BRANCH_RE.fullmatch(branch) or branch in {".", ".."}:
         return False
     return not (branch.startswith("/") or branch.endswith("/") or "//" in branch)
+
+
+def _worktrees_root(settings: Settings) -> Path:
+    return Path(settings.worktrees_root).expanduser().resolve()
 
 
 def _github_remote(path: Path, settings: Settings) -> str | None:

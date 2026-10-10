@@ -74,3 +74,9 @@ class GitWorktreeRead(BaseModel):
     path: str
     branch: str | None = None
     is_primary: bool = False
+
+
+class GitWorktreeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    branch: str = Field(min_length=1, max_length=255)
+    create_branch: bool = True

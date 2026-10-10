@@ -15,6 +15,7 @@ from app.modules.git.schemas import (
     GitPullRequestRead,
     GitPullRequestStatusRead,
     GitStatusRead,
+    GitWorktreeCreate,
     GitWorktreeRead,
 )
 
@@ -155,6 +156,22 @@ def list_worktrees(
     settings: SettingsDep,
 ) -> list[GitWorktreeRead]:
     return service.list_worktrees(db, current_user, project_id, settings)
+
+
+@router.post(
+    "/{project_id}/git/worktrees",
+    response_model=GitWorktreeRead,
+    responses=error_responses(400, 401, 403, 404, 409, 422, 500),
+)
+def create_worktree(
+    project_id: int,
+    payload: GitWorktreeCreate,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> GitWorktreeRead:
+    return service.create_worktree(db, current_user, project_id, payload, settings)
 
 
 @router.get(

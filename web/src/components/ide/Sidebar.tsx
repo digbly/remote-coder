@@ -27,6 +27,7 @@ import {
   TerminalIcon,
 } from './icons'
 import { NewProjectDialog } from './NewProjectDialog'
+import { NewWorktreeDialog } from './NewWorktreeDialog'
 
 const PROJECT_ACCENTS = ['bg-violet-400', 'bg-sky-400', 'bg-emerald-400', 'bg-amber-400']
 
@@ -155,6 +156,7 @@ function ProjectItem({
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
+  onOpenWorktreeDialog,
   onWorktreeContextMenu,
 }: {
   project: Project
@@ -164,21 +166,36 @@ function ProjectItem({
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
+  onOpenWorktreeDialog: (project: Project) => void
   onWorktreeContextMenu: (worktree: string, x: number, y: number) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="pb-1.5">
-      <button
-        type="button"
-        onClick={() => onOpenProject(project)}
-        title={project.path}
-        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition ${
+      <div
+        className={`group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition ${
           active ? 'bg-[var(--hover)] text-[var(--fg-strong)]' : 'text-[var(--fg-2)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
         }`}
       >
-        <span className={`h-3.5 w-3.5 shrink-0 rounded-sm ${accent}`} aria-hidden="true" />
-        <span className="truncate font-medium">{project.name}</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => onOpenProject(project)}
+          title={project.path}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className={`h-3.5 w-3.5 shrink-0 rounded-sm ${accent}`} aria-hidden="true" />
+          <span className="truncate font-medium">{project.name}</span>
+        </button>
+        <button
+          type="button"
+          aria-label={t('ide.createWorktree')}
+          title={t('ide.createWorktree')}
+          onClick={() => onOpenWorktreeDialog(project)}
+          className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:opacity-100 focus:opacity-100"
+        >
+          <PlusIcon width={13} height={13} />
+        </button>
+      </div>
 
       {worktrees && worktrees.length > 0 && (
         <div className="mt-1 space-y-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1">
@@ -237,6 +254,7 @@ export function Sidebar({
   const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
+  const [worktreeTarget, setWorktreeTarget] = useState<Project | null>(null)
   const [menu, setMenu] = useState<WorktreeMenu | null>(null)
 
   useEffect(() => {
@@ -284,6 +302,14 @@ export function Sidebar({
       .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
       .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: [] })))
     onOpenProject(project)
+  }
+
+  function handleWorktreeCreated(project: Project, worktree: Worktree) {
+    setWorktreeTarget(null)
+    fetchWorktrees(project.id)
+      .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
+      .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: prev[project.id] ?? [] })))
+    onOpenWorktree(project, worktree.name)
   }
 
   function openVSCodeNewTab(project: Project, worktree: string) {
@@ -367,6 +393,7 @@ export function Sidebar({
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
+            onOpenWorktreeDialog={setWorktreeTarget}
             onWorktreeContextMenu={(worktree, x, y) =>
               openWorktreeMenu(project, worktree, x, y)
             }
@@ -405,6 +432,14 @@ export function Sidebar({
         <NewProjectDialog
           onClose={() => setShowNewProject(false)}
           onCreated={handleCreated}
+        />
+      )}
+
+      {worktreeTarget && (
+        <NewWorktreeDialog
+          project={worktreeTarget}
+          onClose={() => setWorktreeTarget(null)}
+          onCreated={(worktree) => handleWorktreeCreated(worktreeTarget, worktree)}
         />
       )}
 

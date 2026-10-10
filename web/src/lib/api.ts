@@ -35,6 +35,9 @@ const ERROR_CODE_KEYS = {
   GIT_DISCARD_FAILED: 'apiErrors.gitDiscardFailed',
   GIT_PULL_FAILED: 'apiErrors.gitPullFailed',
   GIT_NO_UPSTREAM: 'apiErrors.gitNoUpstream',
+  GIT_WORKTREE_INVALID: 'apiErrors.gitWorktreeInvalid',
+  GIT_WORKTREE_EXISTS: 'apiErrors.gitWorktreeExists',
+  GIT_WORKTREE_FAILED: 'apiErrors.gitWorktreeFailed',
   AGENT_NOT_FOUND: 'apiErrors.agentNotFound',
   AGENT_NOT_CONFIGURED: 'apiErrors.agentNotConfigured',
   AGENT_UNSUPPORTED: 'apiErrors.agentUnsupported',
@@ -193,6 +196,12 @@ export interface Worktree {
   path: string
   branch: string | null
   is_primary: boolean
+}
+
+export interface WorktreeCreatePayload {
+  name: string
+  branch: string
+  create_branch: boolean
 }
 
 export interface AgentSettingItem {
@@ -515,6 +524,13 @@ export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as Worktree[]
+}
+
+export function createWorktree(
+  projectId: number,
+  payload: WorktreeCreatePayload,
+): Promise<Worktree> {
+  return postJson(`/projects/${projectId}/git/worktrees`, payload)
 }
 
 export async function fetchAgents(): Promise<AgentDefinition[]> {

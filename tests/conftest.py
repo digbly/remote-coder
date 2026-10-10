@@ -60,7 +60,10 @@ def client(projects_root) -> TestClient:
         finally:
             db.close()
 
-    settings = Settings(projects_root=str(projects_root))
+    settings = Settings(
+        projects_root=str(projects_root),
+        worktrees_root=str(projects_root.parent / "worktrees"),
+    )
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = lambda: settings
     try:
