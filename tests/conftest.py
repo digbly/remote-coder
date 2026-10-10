@@ -1,4 +1,5 @@
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -63,6 +64,9 @@ def client(projects_root) -> TestClient:
     settings = Settings(
         projects_root=str(projects_root),
         worktrees_root=str(projects_root.parent / "worktrees"),
+        admin_username=USERNAME,
+        admin_password=PASSWORD,
+        ai_credential_encryption_key=Fernet.generate_key().decode("ascii"),
     )
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = lambda: settings

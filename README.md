@@ -40,8 +40,35 @@ docker run --rm --name remote-coder \
   -v remote-coder-vscode:/home/remote-coder/.cache/remote-coder/vscode \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -e ADMIN_PASSWORD='replace-with-a-strong-password' \
+  -e AI_CREDENTIAL_ENCRYPTION_KEY='replace-with-a-generated-fernet-key' \
   remote-coder
 ```
+
+Generate a Fernet key with the configured project Python environment:
+
+```bash
+.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Keep `AI_CREDENTIAL_ENCRYPTION_KEY` private and stable across restarts. Changing
+it makes previously stored AI provider credentials unreadable; those
+credentials must be entered again.
+
+## AI providers and workspace chat
+
+Sign in and open **Settings → AI providers** to add a personal OpenAI,
+Anthropic, or Gemini API key. The configured bootstrap admin can also add shared
+provider credentials for signed-in users. Keys are encrypted by the server and
+are never returned to the browser after saving. The server must have a stable
+`AI_CREDENTIAL_ENCRYPTION_KEY` configured before provider credentials can be
+used.
+
+Open a project, then choose **Chat** in the workspace tab bar. Select a
+configured provider and a model returned by that provider, then start or resume
+a project-scoped conversation. Chat can list and read bounded, project-relative
+text files. It cannot run terminal commands. Proposed changes appear as diffs;
+files remain unchanged until you explicitly apply a proposal. Applying checks
+that the target file has not changed since the proposal was created.
 
 For local access, open the web app at `http://localhost:8000/`; the API docs
 are at `http://localhost:8000/docs`. Because production cookies are Secure,

@@ -7,7 +7,9 @@ import {
   CommandIcon,
   GlobeIcon,
   PaletteIcon,
+  SparklesIcon,
 } from '../components/ide/icons'
+import { ProviderSettings } from '../components/settings/ProviderSettings'
 import {
   fetchAgentSettings,
   fetchAgents,
@@ -302,6 +304,12 @@ export function SettingsPage() {
       icon: <PaletteIcon width={15} height={15} />,
       label: t('settings.appearance'),
       content: <ThemeSettingRow />,
+    },
+    {
+      id: 'providers',
+      icon: <SparklesIcon width={15} height={15} />,
+      label: t('settings.providers'),
+      content: <ProviderSettings />,
     },
     {
       id: 'agents',

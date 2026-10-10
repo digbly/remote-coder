@@ -42,6 +42,17 @@ const ERROR_CODE_KEYS = {
   AGENT_NOT_CONFIGURED: 'apiErrors.agentNotConfigured',
   AGENT_UNSUPPORTED: 'apiErrors.agentUnsupported',
   AGENT_GENERATE_FAILED: 'apiErrors.agentGenerateFailed',
+  AI_PROVIDER_NOT_FOUND: 'apiErrors.aiProviderNotFound',
+  AI_PROVIDER_ADMIN_REQUIRED: 'apiErrors.aiProviderAdminRequired',
+  AI_PROVIDER_NAME_EXISTS: 'apiErrors.aiProviderNameExists',
+  AI_PROVIDER_FAILED: 'apiErrors.aiProviderFailed',
+  AI_CREDENTIAL_ENCRYPTION_UNAVAILABLE: 'apiErrors.aiCredentialEncryptionUnavailable',
+  AI_CHAT_CONVERSATION_NOT_FOUND: 'apiErrors.aiChatConversationNotFound',
+  AI_CHAT_MODEL_UNAVAILABLE: 'apiErrors.aiChatModelUnavailable',
+  AI_CHAT_LIMIT_EXCEEDED: 'apiErrors.aiChatLimitExceeded',
+  AI_CHANGE_PROPOSAL_NOT_FOUND: 'apiErrors.aiChangeProposalNotFound',
+  AI_CHANGE_PROPOSAL_NOT_PENDING: 'apiErrors.aiChangeProposalNotPending',
+  AI_CHANGE_PROPOSAL_STALE: 'apiErrors.aiChangeProposalStale',
   VSCODE_DISABLED: 'apiErrors.vscodeDisabled',
   VSCODE_WORKTREE_NOT_FOUND: 'apiErrors.vscodeWorktreeNotFound',
   VSCODE_START_FAILED: 'apiErrors.vscodeStartFailed',
@@ -213,6 +224,71 @@ export interface AgentSettingItem {
 
 export interface AgentSettingsInfo {
   default_agent_id: string | null
+}
+
+export type AIProviderKind = 'openai' | 'anthropic' | 'gemini'
+
+export interface AIProvider {
+  id: number
+  name: string
+  kind: AIProviderKind
+  shared: boolean
+  credential_configured: boolean
+  created_at: string
+}
+
+export interface AIProviderList {
+  providers: AIProvider[]
+  can_manage_shared: boolean
+}
+
+export interface AIProviderModel {
+  id: string
+  display_name: string
+}
+
+export interface AIProviderPayload {
+  name: string
+  kind: AIProviderKind
+  api_key: string
+}
+
+export interface AIProviderUpdate {
+  name?: string
+  api_key?: string
+}
+
+export interface AIChatMessage {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  status: 'streaming' | 'completed' | 'failed' | 'interrupted'
+  created_at: string
+}
+
+export interface AIConversation {
+  id: string
+  project_id: number
+  provider_id: number | null
+  model_id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AIConversationDetail {
+  conversation: AIConversation
+  messages: AIChatMessage[]
+}
+
+export interface AIChangeProposal {
+  id: string
+  conversation_id: string
+  path: string
+  diff: string
+  status: 'pending' | 'applied' | 'rejected' | 'stale'
+  created_at: string
+  updated_at: string
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
@@ -573,6 +649,144 @@ export async function fetchAgentSettings(): Promise<AgentSettingsInfo> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as AgentSettingsInfo
+}
+
+export async function fetchAIProviders(): Promise<AIProviderList> {
+  const response = await request('/ai-providers')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AIProviderList
+}
+
+export async function createAIProvider(
+  payload: AIProviderPayload,
+  shared = false,
+): Promise<AIProvider> {
+  return postJson(`/ai-providers${shared ? '/shared' : ''}`, payload)
+}
+
+export async function updateAIProvider(
+  providerId: number,
+  payload: AIProviderUpdate,
+  shared = false,
+): Promise<AIProvider> {
+  const response = await request(
+    `/ai-providers${shared ? `/shared/${providerId}` : `/${providerId}`}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AIProvider
+}
+
+export async function deleteAIProvider(providerId: number, shared = false): Promise<void> {
+  const response = await request(
+    `/ai-providers${shared ? `/shared/${providerId}` : `/${providerId}`}`,
+    { method: 'DELETE' },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+}
+
+export async function fetchAIProviderModels(providerId: number): Promise<AIProviderModel[]> {
+  const response = await request(`/ai-providers/${providerId}/models`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { models: AIProviderModel[] }
+  return result.models
+}
+
+export async function fetchAIConversations(projectId: number): Promise<AIConversation[]> {
+  const response = await request(`/projects/${projectId}/ai-chat/conversations`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { conversations: AIConversation[] }
+  return result.conversations
+}
+
+export async function fetchAIConversation(
+  projectId: number,
+  conversationId: string,
+): Promise<AIConversationDetail> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/conversations/${encodeURIComponent(conversationId)}`,
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as AIConversationDetail
+}
+
+export async function fetchAIProposals(
+  projectId: number,
+  conversationId: string,
+): Promise<AIChangeProposal[]> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/conversations/${encodeURIComponent(conversationId)}/proposals`,
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { proposals: AIChangeProposal[] }
+  return result.proposals
+}
+
+export async function updateAIProposal(
+  projectId: number,
+  conversationId: string,
+  proposalId: string,
+  action: 'apply' | 'reject',
+): Promise<AIChangeProposal> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/conversations/${encodeURIComponent(conversationId)}/proposals/${encodeURIComponent(proposalId)}/${action}`,
+    { method: 'POST' },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { proposal: AIChangeProposal }
+  return result.proposal
+}
+
+export async function openAIChatStream(
+  projectId: number,
+  payload: {
+    conversation_id: string | null
+    provider_id: number
+    model_id: string
+    message: string
+  },
+  signal: AbortSignal,
+): Promise<Response> {
+  const response = await request(`/projects/${projectId}/ai-chat/messages/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  if (!response.body) throw new Error(i18n.t('apiErrors.unknown'))
+  return response
 }
 
 export async function setDefaultAgent(agentId: string | null): Promise<AgentSettingsInfo> {

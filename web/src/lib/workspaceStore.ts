@@ -1,7 +1,7 @@
 import type { AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
-export type TabKind = 'terminal' | 'editor' | 'vscode'
+export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat'
 
 export interface WorkspaceTab {
   id: string
@@ -13,6 +13,7 @@ export interface WorkspaceTab {
   agentLabel?: string
   filePath?: string
   line?: number
+  conversationId?: string
 }
 
 export interface ProjectWorkspace {
@@ -55,13 +56,17 @@ function isTab(value: unknown): value is WorkspaceTab {
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
-    (value.kind === 'terminal' || value.kind === 'editor' || value.kind === 'vscode') &&
+    (value.kind === 'terminal' ||
+      value.kind === 'editor' ||
+      value.kind === 'vscode' ||
+      value.kind === 'chat') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentId === undefined || typeof value.agentId === 'string') &&
     (value.agentLabel === undefined || typeof value.agentLabel === 'string') &&
     (value.filePath === undefined || typeof value.filePath === 'string') &&
-    (value.line === undefined || typeof value.line === 'number')
+    (value.line === undefined || typeof value.line === 'number') &&
+    (value.conversationId === undefined || typeof value.conversationId === 'string')
   )
 }
 
@@ -108,6 +113,52 @@ export function withNewTerminal(
   return {
     ...workspaces,
     [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
+}
+
+export function withNewChat(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const existing = tabs.find((tab) => tab.kind === 'chat')
+  if (existing) return { ...workspaces, [project.id]: { tabs, activeId: existing.id } }
+  const id = newTerminalId()
+  const tab: WorkspaceTab = {
+    id,
+    title: 'Chat',
+    kind: 'chat',
+    projectId: project.id,
+  }
+  return {
+    ...workspaces,
+    [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
+}
+
+export function withChatConversation(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  tabId: string,
+  conversationId: string | undefined,
+  title: string,
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  return {
+    ...workspaces,
+    [projectId]: {
+      ...workspace,
+      tabs: workspace.tabs.map((tab) =>
+        tab.id === tabId && tab.kind === 'chat'
+          ? {
+              ...tab,
+              ...(conversationId ? { conversationId } : { conversationId: undefined }),
+              title: title.slice(0, MAX_TAB_TITLE_LENGTH),
+            }
+          : tab,
+      ),
+    },
   }
 }
 

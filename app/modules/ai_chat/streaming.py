@@ -1,0 +1,192 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.core.errors import ErrorCode
+from app.core.i18n import translate
+from app.modules.ai_chat import service
+from app.modules.ai_chat.context import ProjectContext
+from app.modules.ai_chat.models import ChatMessage, MessageStatus
+from app.modules.ai_chat.tools import (
+    MAX_TOOL_CALLS_PER_TURN,
+    MAX_TOOL_RESULT_CHARS,
+    MAX_TOOL_ROUNDS_PER_TURN,
+    PROJECT_TOOLS,
+    execute_project_tool,
+)
+from app.modules.ai_providers.base import (
+    ChatMessage as ProviderMessage,
+)
+from app.modules.ai_providers.base import (
+    ProviderAdapter,
+    ProviderAPIError,
+    TextDelta,
+    ToolCall,
+    TurnComplete,
+)
+
+MAX_ASSISTANT_OUTPUT_CHARS = 48_000
+MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
+SYSTEM_INSTRUCTIONS = (
+    "You are a code assistant for the selected project. You may only inspect project files "
+    "using the provided project tools. You may create a proposed replacement for an existing "
+    "file using propose_file_change; this only creates a reviewable diff and does not change "
+    "the file. Never claim to have applied a change or run a command. Do not request or use "
+    "paths outside the project. Tell the user when a proposal is ready for review."
+)
+
+
+class ChatTurnLimitError(Exception):
+    pass
+
+
+async def stream_chat_turn(
+    db: Session,
+    adapter: ProviderAdapter,
+    api_key: str,
+    model_id: str,
+    context: ProjectContext,
+    conversation_id: str,
+    conversation_title: str,
+    user_message_id: int,
+    user_content: str,
+    assistant_message: ChatMessage,
+    history: list[ProviderMessage],
+) -> AsyncIterator[bytes]:
+    text_parts: list[str] = []
+    output_chars = 0
+    messages = [*history, ProviderMessage(role="user", content=user_content)]
+    yield _event(
+        {
+            "type": "message_start",
+            "conversation": {
+                "id": conversation_id,
+                "title": conversation_title,
+            },
+            "user_message_id": user_message_id,
+            "assistant_message_id": assistant_message.id,
+        }
+    )
+
+    try:
+        total_tool_calls = 0
+        total_tool_output = 0
+        async with httpx.AsyncClient() as client:
+            for round_index in range(MAX_TOOL_ROUNDS_PER_TURN):
+                round_text: list[str] = []
+                tool_calls: list[ToolCall] = []
+                completed = False
+                async for provider_event in adapter.stream(
+                    client,
+                    api_key,
+                    model_id,
+                    SYSTEM_INSTRUCTIONS,
+                    messages,
+                    PROJECT_TOOLS,
+                ):
+                    if isinstance(provider_event, TextDelta):
+                        if not provider_event.text:
+                            continue
+                        if output_chars + len(provider_event.text) > MAX_ASSISTANT_OUTPUT_CHARS:
+                            raise ChatTurnLimitError
+                        text_parts.append(provider_event.text)
+                        round_text.append(provider_event.text)
+                        output_chars += len(provider_event.text)
+                        yield _event({"type": "text_delta", "text": provider_event.text})
+                    elif isinstance(provider_event, ToolCall):
+                        tool_calls.append(provider_event)
+                    elif isinstance(provider_event, TurnComplete):
+                        completed = True
+
+                if not completed:
+                    raise ProviderAPIError(adapter.kind)
+                if not tool_calls:
+                    break
+                total_tool_calls += len(tool_calls)
+                if total_tool_calls > MAX_TOOL_CALLS_PER_TURN:
+                    raise ChatTurnLimitError
+                if round_index + 1 >= MAX_TOOL_ROUNDS_PER_TURN:
+                    raise ChatTurnLimitError
+
+                messages.append(
+                    ProviderMessage(
+                        role="assistant",
+                        content="".join(round_text),
+                        tool_calls=tuple(tool_calls),
+                    )
+                )
+                for call in tool_calls:
+                    result = execute_project_tool(context, call)
+                    if call.name == "propose_file_change":
+                        try:
+                            proposal_result = json.loads(result)
+                        except json.JSONDecodeError:
+                            proposal_result = None
+                        if isinstance(proposal_result, dict) and isinstance(
+                            proposal_result.get("proposal"), dict
+                        ):
+                            yield _event(
+                                {
+                                    "type": "proposal",
+                                    **proposal_result["proposal"],
+                                }
+                            )
+                    total_tool_output += len(result)
+                    if (
+                        len(result) > MAX_TOOL_RESULT_CHARS
+                        or total_tool_output > MAX_TOTAL_TOOL_OUTPUT_CHARS
+                    ):
+                        raise ChatTurnLimitError
+                    messages.append(
+                        ProviderMessage(
+                            role="tool",
+                            content=result,
+                            tool_call_id=call.id,
+                            tool_name=call.name,
+                        )
+                    )
+
+        content = "".join(text_parts)
+        service.finish_assistant(db, assistant_message, content, MessageStatus.COMPLETED)
+        yield _event(
+            {
+                "type": "complete",
+                "conversation_id": conversation_id,
+                "assistant_message_id": assistant_message.id,
+                "status": MessageStatus.COMPLETED.value,
+            }
+        )
+    except ChatTurnLimitError:
+        content = "".join(text_parts)
+        service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
+        yield _error_event(ErrorCode.AI_CHAT_LIMIT_EXCEEDED, assistant_message.id)
+    except ProviderAPIError:
+        content = "".join(text_parts)
+        service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
+        yield _error_event(ErrorCode.AI_PROVIDER_FAILED, assistant_message.id)
+    except asyncio.CancelledError:
+        service.finish_assistant(
+            db,
+            assistant_message,
+            "".join(text_parts),
+            MessageStatus.INTERRUPTED,
+        )
+        raise
+
+
+def _error_event(code: ErrorCode, message_id: int) -> bytes:
+    return _event(
+        {
+            "type": "error",
+            "code": code.value,
+            "message": translate(code.value),
+            "assistant_message_id": message_id,
+        }
+    )
+
+
+def _event(payload: dict[str, object]) -> bytes:
+    return (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
