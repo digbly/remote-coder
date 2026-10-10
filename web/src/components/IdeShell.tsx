@@ -5,7 +5,9 @@ import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
   withNewTerminal,
+  withNewChat,
   withOpenFile,
+  withChatConversation,
   withTabTitle,
   type ActiveProjectRef,
   type SyncedState,
@@ -14,6 +16,7 @@ import {
 import { Sidebar } from './ide/Sidebar'
 import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
+import { ChatTab } from './ide/ChatTab'
 import { FileEditor } from './ide/FileEditor'
 import { TopTabs } from './ide/TopTabs'
 import { TabSearchModal } from './ide/TabSearchModal'
@@ -94,6 +97,11 @@ export function IdeShell({
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
   }
 
+  function openChat() {
+    if (!activeProject) return
+    update((prev) => ({ ...prev, workspaces: withNewChat(prev.workspaces, activeProject) }))
+  }
+
   function openFile(path: string, line?: number) {
     if (!activeProject) return
     update((prev) => ({
@@ -169,6 +177,7 @@ export function IdeShell({
           onSelect={onSelectTab}
           onClose={closeTab}
           onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
+          onNewChat={openChat}
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1">
@@ -189,7 +198,26 @@ export function IdeShell({
                     active ? '' : 'pointer-events-none invisible'
                   }`}
                 >
-                  {tab.kind === 'editor' && tab.filePath ? (
+                  {tab.kind === 'chat' ? (
+                    <ChatTab
+                      projectId={projectId}
+                      tabId={tab.id}
+                      active={active}
+                      conversationId={tab.conversationId}
+                      onConversationChange={(conversationId, title) =>
+                        update((prev) => ({
+                          ...prev,
+                          workspaces: withChatConversation(
+                            prev.workspaces,
+                            projectId,
+                            tab.id,
+                            conversationId,
+                            title ?? t('chat.tabTitle'),
+                          ),
+                        }))
+                      }
+                    />
+                  ) : tab.kind === 'editor' && tab.filePath ? (
                     <FileEditor
                       projectId={projectId}
                       path={tab.filePath}

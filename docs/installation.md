@@ -77,7 +77,19 @@ npm install --prefix web
 cp .env.example .env
 ```
 
-Adjust values in `.env` as needed (admin credentials, etc.).
+Generate a Fernet key with the project's Python environment:
+
+```bash
+.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+```
+
+Copy the generated value into `.env` as `AI_CREDENTIAL_ENCRYPTION_KEY`. Keep
+this key secret, back it up securely, and reuse the same value across restarts
+and deployments. Do not generate a new key when restarting the app: changing
+it makes saved AI provider credentials unreadable, so they must be entered
+again.
+
+Then adjust the other values in `.env` as needed (admin credentials, etc.).
 
 Authenticate the GitHub CLI as the same operating-system user that runs the API.
 GitHub project cloning uses that login, including for private repositories:

@@ -1,8 +1,10 @@
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -67,6 +69,8 @@ _DEFAULT_IGNORED_DIRECTORIES = {
     "build",
     "target",
 }
+
+_FILE_WRITE_LOCK = threading.Lock()
 
 _GITHUB_URL_RE = re.compile(
     r"^(?:https?://|git@)?(?:www\.)?github\.com[/:]"
@@ -165,6 +169,62 @@ def list_files(
     return FileTreeRead(entries=entries, truncated=truncated)
 
 
+def list_tree(
+    db: Session, owner: User, project_id: int, path: str | None = None, *, limit: int = 400
+) -> FileTreeRead:
+    """Return a bounded, recursive listing of files and directories under ``path``.
+
+    Heavy dependency/cache folders and symlinks are skipped, so a single call
+    gives an agent the shape of the project without walking it folder by folder.
+    """
+    project = get_project(db, owner, project_id)
+    root = Path(project.path).resolve()
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    base = _resolve_project_dir(root, path)
+    if not base.is_dir():
+        raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    entries: list[FileNode] = []
+    truncated = False
+    stack = [base]
+    while stack and not truncated:
+        directory = stack.pop()
+        try:
+            with os.scandir(directory) as iterator:
+                children = sorted(
+                    iterator,
+                    key=lambda entry: (
+                        not entry.is_dir(follow_symlinks=False),
+                        entry.name.lower(),
+                    ),
+                )
+        except OSError:
+            continue
+        subdirectories: list[str] = []
+        for entry in children:
+            if entry.name in _EXCLUDED_DIRECTORIES or entry.is_symlink():
+                continue
+            is_directory = entry.is_dir(follow_symlinks=False)
+            if is_directory and entry.name in _DEFAULT_IGNORED_DIRECTORIES:
+                continue
+            entries.append(
+                FileNode(
+                    name=entry.name,
+                    path=Path(entry.path).relative_to(root).as_posix(),
+                    type="directory" if is_directory else "file",
+                )
+            )
+            if len(entries) >= limit:
+                truncated = True
+                break
+            if is_directory:
+                subdirectories.append(entry.path)
+        stack.extend(reversed(subdirectories))
+    return FileTreeRead(entries=entries, truncated=truncated)
+
+
 def read_file(db: Session, owner: User, project_id: int, path: str) -> FileContentRead:
     """Return a single text file's content for the editor.
 
@@ -173,6 +233,10 @@ def read_file(db: Session, owner: User, project_id: int, path: str) -> FileConte
     browser never has to render something it cannot handle.
     """
     root, target = _resolve_project_file(db, owner, project_id, path)
+    return _read_resolved_file(root, target)
+
+
+def _read_resolved_file(root: Path, target: Path) -> FileContentRead:
     if not target.is_file():
         raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
 
@@ -202,6 +266,185 @@ def write_file(
 ) -> FileContentRead:
     """Persist the editor's content to ``path`` using an atomic replace."""
     root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        return _write_resolved_file(root, target, content)
+
+
+def write_file_if_hash_matches(
+    db: Session,
+    owner: User,
+    project_id: int,
+    path: str,
+    expected_hash: str,
+    content: str,
+) -> bool:
+    """Replace an existing file only while its content hash still matches."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        try:
+            current = _read_resolved_file(root, target)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                return False
+            raise
+        if hashlib.sha256(current.content.encode("utf-8")).hexdigest() != expected_hash:
+            return False
+        _write_resolved_file(root, target, content)
+        return True
+
+
+def normalize_project_path(db: Session, owner: User, project_id: int, path: str) -> str:
+    """Return the canonical project-relative path, rejecting anything that escapes."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    return target.relative_to(root).as_posix()
+
+
+def file_exists(db: Session, owner: User, project_id: int, path: str) -> bool:
+    _, target = _resolve_project_file(db, owner, project_id, path)
+    return target.is_file()
+
+
+def create_file_if_absent(
+    db: Session, owner: User, project_id: int, path: str, content: str
+) -> bool:
+    """Create ``path`` only while it does not already exist."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        if target.exists():
+            return False
+        _write_resolved_file(root, target, content)
+        return True
+
+
+def path_exists(db: Session, owner: User, project_id: int, path: str) -> bool:
+    _, target = _resolve_project_file(db, owner, project_id, path)
+    return target.exists()
+
+
+def directory_exists(db: Session, owner: User, project_id: int, path: str) -> bool:
+    _, target = _resolve_project_file(db, owner, project_id, path)
+    return target.is_dir()
+
+
+def create_directory_if_absent(db: Session, owner: User, project_id: int, path: str) -> bool:
+    """Create an empty directory ``path`` only while it does not already exist."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    _reject_project_root(root, target)
+    with _FILE_WRITE_LOCK:
+        if target.exists():
+            return False
+        if not target.parent.is_dir():
+            raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            target.mkdir()
+        except OSError as exc:
+            raise api_error(
+                ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+            ) from exc
+        return True
+
+
+def delete_file_if_hash_matches(
+    db: Session, owner: User, project_id: int, path: str, expected_hash: str
+) -> bool:
+    """Delete ``path`` only while its content hash still matches."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        try:
+            current = _read_resolved_file(root, target)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                return False
+            raise
+        if hashlib.sha256(current.content.encode("utf-8")).hexdigest() != expected_hash:
+            return False
+        try:
+            target.unlink()
+        except OSError as exc:
+            raise api_error(
+                ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+            ) from exc
+        return True
+
+
+def delete_directory_if_exists(db: Session, owner: User, project_id: int, path: str) -> bool:
+    """Delete ``path`` and everything under it while it is still a directory."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    _reject_project_root(root, target)
+    with _FILE_WRITE_LOCK:
+        if not target.is_dir():
+            return False
+        try:
+            shutil.rmtree(target)
+        except OSError as exc:
+            raise api_error(
+                ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+            ) from exc
+        return True
+
+
+def move_entry_if_source_matches(
+    db: Session,
+    owner: User,
+    project_id: int,
+    source_path: str,
+    target_path: str,
+    expected_hash: str,
+    require_hash: bool,
+) -> bool:
+    """Move a file or directory only while the source still matches and the target is free."""
+    root, source = _resolve_project_file(db, owner, project_id, source_path)
+    _, target = _resolve_project_file(db, owner, project_id, target_path)
+    _reject_project_root(root, source)
+    _reject_project_root(root, target)
+    if source == target or (source.is_dir() and target.is_relative_to(source)):
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    with _FILE_WRITE_LOCK:
+        if not source.exists() or target.exists():
+            return False
+        if require_hash:
+            try:
+                current = _read_resolved_file(root, source)
+            except HTTPException as exc:
+                if exc.status_code == status.HTTP_404_NOT_FOUND:
+                    return False
+                raise
+            if hashlib.sha256(current.content.encode("utf-8")).hexdigest() != expected_hash:
+                return False
+        if not target.parent.is_dir():
+            raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            shutil.move(str(source), str(target))
+        except OSError as exc:
+            raise api_error(
+                ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+            ) from exc
+        return True
+
+
+def list_directory_paths(
+    db: Session, owner: User, project_id: int, path: str, *, limit: int = 200
+) -> list[str] | None:
+    """Return project-relative file paths under ``path`` (bounded) or None if not a directory."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    _reject_project_root(root, target)
+    if not target.is_dir():
+        return None
+    paths: list[str] = []
+    for directory, _, files in os.walk(target):
+        for name in sorted(files):
+            paths.append((Path(directory) / name).relative_to(root).as_posix())
+            if len(paths) >= limit:
+                return paths
+    return paths
+
+
+def _reject_project_root(root: Path, target: Path) -> None:
+    if target == root:
+        raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+
+def _write_resolved_file(root: Path, target: Path, content: str) -> FileContentRead:
     if not target.parent.is_dir():
         raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 

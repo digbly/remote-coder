@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from sqlalchemy import inspect, text
 
 from app.core.config import Settings, get_settings
 from app.core.db import Base, SessionLocal, engine
@@ -10,6 +11,9 @@ from app.core.errors import validation_exception_handler
 from app.core.i18n import resolve_language, set_language
 from app.core.logging import configure_logging
 from app.modules.agents.router import router as agents_router
+from app.modules.ai_chat.approvals import cancel_all as cancel_pending_approvals
+from app.modules.ai_chat.router import router as ai_chat_router
+from app.modules.ai_providers.router import router as ai_providers_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.service import ensure_admin_user
 from app.modules.git.router import router as git_router
@@ -24,8 +28,28 @@ from app.modules.workspace.router import router as workspace_router
 TERMINAL_REAP_INTERVAL_SECONDS = 300
 
 
+def _add_column_if_missing(table: str, column: str, definition: str) -> None:
+    columns = {item["name"] for item in inspect(engine).get_columns(table)}
+    if column in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+
+def _apply_lightweight_migrations() -> None:
+    tables = set(inspect(engine).get_table_names())
+    if "ai_chat_messages" in tables:
+        _add_column_if_missing("ai_chat_messages", "thinking", "TEXT NOT NULL DEFAULT ''")
+    if "ai_change_proposals" in tables:
+        _add_column_if_missing(
+            "ai_change_proposals", "change_type", "VARCHAR(16) NOT NULL DEFAULT 'modify'"
+        )
+        _add_column_if_missing("ai_change_proposals", "target_path", "VARCHAR(4096)")
+
+
 def init_db(settings: Settings) -> None:
     Base.metadata.create_all(bind=engine)
+    _apply_lightweight_migrations()
     with SessionLocal() as db:
         ensure_admin_user(db, settings)
 
@@ -52,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            cancel_pending_approvals()
             reaper.cancel()
             with suppress(asyncio.CancelledError):
                 await reaper
@@ -77,6 +102,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(terminal_router, prefix=settings.api_prefix)
     app.include_router(vscode_router, prefix=settings.api_prefix)
     app.include_router(agents_router, prefix=settings.api_prefix)
+    app.include_router(ai_providers_router, prefix=settings.api_prefix)
+    app.include_router(ai_chat_router, prefix=settings.api_prefix)
     app.include_router(workspace_router, prefix=settings.api_prefix)
     return app
 

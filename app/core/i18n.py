@@ -19,6 +19,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Could not clone the repository",
         "FILE_PATH_INVALID": "The file path is not allowed",
         "FILE_NOT_FOUND": "File not found",
+        "FILE_ALREADY_EXISTS": "A file already exists at this path",
         "FILE_TOO_LARGE": "The file is too large to open",
         "FILE_BINARY": "Binary files cannot be opened in the editor",
         "FILE_WRITE_FAILED": "Could not save the file",
@@ -41,6 +42,29 @@ MESSAGES: dict[str, dict[str, str]] = {
         "AGENT_NOT_CONFIGURED": "No default agent is selected",
         "AGENT_UNSUPPORTED": "The default agent cannot generate commit messages",
         "AGENT_GENERATE_FAILED": "Could not generate a commit message",
+        "AI_PROVIDER_NOT_FOUND": "AI provider not found",
+        "AI_PROVIDER_ADMIN_REQUIRED": "Admin access is required to manage shared AI providers",
+        "AI_PROVIDER_NAME_EXISTS": "An AI provider with this name already exists",
+        "AI_PROVIDER_FAILED": "AI provider request failed; check the configuration",
+        "AI_CREDENTIAL_ENCRYPTION_UNAVAILABLE": (
+            "Configure AI credential encryption to use providers"
+        ),
+        "AI_CHAT_CONVERSATION_NOT_FOUND": "Chat conversation not found",
+        "AI_CHAT_MODEL_UNAVAILABLE": "The selected model is not available for this provider",
+        "AI_CHAT_LIMIT_EXCEEDED": (
+            "The assistant reached a safety limit for this reply. Send another message to continue"
+        ),
+        "AI_CHAT_TOOL_LIMIT_REACHED": (
+            "The assistant reached the maximum number of steps for one reply, so this answer "
+            "may be incomplete. Send another message to continue"
+        ),
+        "AI_CHAT_EMPTY_RESPONSE": (
+            "The model returned an empty response. Send another message to retry"
+        ),
+        "AI_COMMAND_APPROVAL_NOT_FOUND": "Command approval expired or is no longer available",
+        "AI_CHANGE_PROPOSAL_NOT_FOUND": "Change proposal not found",
+        "AI_CHANGE_PROPOSAL_NOT_PENDING": "Change proposal is no longer pending",
+        "AI_CHANGE_PROPOSAL_STALE": "The file changed after the proposal was created",
         "VSCODE_DISABLED": "The VS Code server is disabled",
         "VSCODE_WORKTREE_NOT_FOUND": "Worktree not found",
         "VSCODE_START_FAILED": "Could not start the VS Code server",
@@ -62,6 +86,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Không thể clone repository",
         "FILE_PATH_INVALID": "Đường dẫn tệp không được phép",
         "FILE_NOT_FOUND": "Không tìm thấy tệp",
+        "FILE_ALREADY_EXISTS": "Đã tồn tại tệp ở đường dẫn này",
         "FILE_TOO_LARGE": "Tệp quá lớn để mở",
         "FILE_BINARY": "Không thể mở tệp nhị phân trong trình soạn thảo",
         "FILE_WRITE_FAILED": "Không thể lưu tệp",
@@ -84,6 +109,27 @@ MESSAGES: dict[str, dict[str, str]] = {
         "AGENT_NOT_CONFIGURED": "Chưa chọn agent mặc định",
         "AGENT_UNSUPPORTED": "Agent mặc định không hỗ trợ tạo nội dung commit",
         "AGENT_GENERATE_FAILED": "Không thể tạo nội dung commit",
+        "AI_PROVIDER_NOT_FOUND": "Không tìm thấy AI provider",
+        "AI_PROVIDER_ADMIN_REQUIRED": "Cần quyền quản trị viên để quản lý AI provider dùng chung",
+        "AI_PROVIDER_NAME_EXISTS": "Đã tồn tại AI provider với tên này",
+        "AI_PROVIDER_FAILED": "Yêu cầu tới AI provider thất bại; hãy kiểm tra cấu hình và thử lại",
+        "AI_CREDENTIAL_ENCRYPTION_UNAVAILABLE": (
+            "Hãy cấu hình khóa mã hóa trước khi dùng AI provider"
+        ),
+        "AI_CHAT_CONVERSATION_NOT_FOUND": "Không tìm thấy cuộc trò chuyện",
+        "AI_CHAT_MODEL_UNAVAILABLE": "Model đã chọn không khả dụng với provider này",
+        "AI_CHAT_LIMIT_EXCEEDED": (
+            "Trợ lý đã đạt giới hạn an toàn cho phản hồi này. Hãy gửi thêm tin nhắn để tiếp tục"
+        ),
+        "AI_CHAT_TOOL_LIMIT_REACHED": (
+            "Trợ lý đã đạt số bước tối đa cho một phản hồi nên câu trả lời có thể chưa đầy đủ. "
+            "Hãy gửi thêm tin nhắn để tiếp tục"
+        ),
+        "AI_CHAT_EMPTY_RESPONSE": ("Model trả về nội dung rỗng. Hãy gửi lại tin nhắn để thử lại"),
+        "AI_COMMAND_APPROVAL_NOT_FOUND": "Yêu cầu duyệt lệnh đã hết hạn hoặc không còn khả dụng",
+        "AI_CHANGE_PROPOSAL_NOT_FOUND": "Không tìm thấy đề xuất thay đổi",
+        "AI_CHANGE_PROPOSAL_NOT_PENDING": "Đề xuất thay đổi không còn ở trạng thái chờ duyệt",
+        "AI_CHANGE_PROPOSAL_STALE": "Tệp đã thay đổi sau khi đề xuất được tạo",
         "VSCODE_DISABLED": "VS Code server đang bị tắt",
         "VSCODE_WORKTREE_NOT_FOUND": "Không tìm thấy worktree",
         "VSCODE_START_FAILED": "Không thể khởi động VS Code server",
