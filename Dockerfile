@@ -22,6 +22,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        git-lfs \
         gh \
         nginx \
     && rm -rf /var/lib/apt/lists/*

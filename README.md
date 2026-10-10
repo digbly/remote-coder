@@ -15,8 +15,8 @@ npm install --prefix web
 ## GitHub Codespaces
 
 Create a Codespace for this repository. The dev container installs the project
-dependencies and `code-server` automatically. Once setup is complete, start the
-API and web dev servers with:
+dependencies, Git LFS, and `code-server` automatically. Once setup is complete,
+start the API and web dev servers with:
 
 ```bash
 ./scripts/dev.sh
@@ -28,7 +28,7 @@ Open the forwarded Web port to use the app.
 
 The production Docker image is based on Debian Bookworm. It builds the web UI
 and serves it with Nginx, which also proxies API and WebSocket requests to
-Uvicorn. Python 3.12, Git, GitHub CLI, and code-server are included.
+Uvicorn. Python 3.12, Git, Git LFS, GitHub CLI, and code-server are included.
 
 ```bash
 docker build -t remote-coder .
