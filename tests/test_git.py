@@ -1082,6 +1082,29 @@ def test_delete_primary_worktree_rejected(client: TestClient, projects_root) -> 
     assert repo.exists()
 
 
+def test_delete_worktree_with_local_changes_fails(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    linked = projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature"
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+    (linked / "tracked.txt").write_text("changed\n")
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees/myrepo-feature",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_WORKTREE_DELETE_FAILED"
+    assert linked.exists()
+
+
 def test_delete_worktree_requires_auth(client: TestClient) -> None:
     response = client.delete(f"{PROJECTS_URL}/1/git/worktrees/whatever")
     assert response.status_code == 401

@@ -4,6 +4,7 @@ import { killTerminal, type Project, type User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
+  withFilteredTabs,
   withNewTerminal,
   withOpenFile,
   withTabTitle,
@@ -121,14 +122,25 @@ export function IdeShell({
         /* the terminal may already be gone */
       })
     }
-    update((prev) => {
-      const workspace = prev.workspaces[projectId]
-      if (!workspace) return prev
-      const tabs = workspace.tabs.filter((tab) => tab.id !== id)
-      const activeId =
-        workspace.activeId === id ? (tabs[tabs.length - 1]?.id ?? null) : workspace.activeId
-      return { ...prev, workspaces: { ...prev.workspaces, [projectId]: { tabs, activeId } } }
-    })
+    update((prev) => ({
+      ...prev,
+      workspaces: withFilteredTabs(prev.workspaces, projectId, (tab) => tab.id !== id),
+    }))
+  }
+
+  function closeWorktreeTabs(projectId: number, worktree: string) {
+    const removed = (workspaces[projectId]?.tabs ?? []).filter((tab) => tab.worktree === worktree)
+    for (const tab of removed) {
+      if (tab.kind === 'terminal') {
+        void killTerminal(projectId, tab.id).catch(() => {
+          /* the terminal may already be gone */
+        })
+      }
+    }
+    update((prev) => ({
+      ...prev,
+      workspaces: withFilteredTabs(prev.workspaces, projectId, (tab) => tab.worktree !== worktree),
+    }))
   }
 
   return (
@@ -141,6 +153,7 @@ export function IdeShell({
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
+            onWorktreeDeleted={closeWorktreeTabs}
             onOpenSearch={() => setSearchOpen(true)}
             activeProjectId={activeProjectId}
             width={layout.leftWidth}

@@ -222,7 +222,7 @@ interface WorktreeMenu {
 }
 
 const MENU_WIDTH = 208
-const MENU_HEIGHT = 132
+const MENU_HEIGHT = 140
 const MENU_MARGIN = 8
 
 interface SidebarProps {
@@ -231,6 +231,7 @@ interface SidebarProps {
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
+  onWorktreeDeleted: (projectId: number, worktree: string) => void
   onOpenSearch: () => void
   activeProjectId: number | null
   width: number
@@ -243,6 +244,7 @@ export function Sidebar({
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
+  onWorktreeDeleted,
   onOpenSearch,
   activeProjectId,
   width,
@@ -350,8 +352,14 @@ export function Sidebar({
     }
     setMenuError(null)
     deleteWorktree(current.project.id, current.worktree.name)
-      .then(() => fetchWorktrees(current.project.id))
-      .then((list) => setWorktrees((prev) => ({ ...prev, [current.project.id]: list })))
+      .then(() => {
+        onWorktreeDeleted(current.project.id, current.worktree.name)
+        fetchWorktrees(current.project.id)
+          .then((list) => setWorktrees((prev) => ({ ...prev, [current.project.id]: list })))
+          .catch(() => {
+            /* the worktree is gone; keep the previous list if the refresh fails */
+          })
+      })
       .catch((err) => {
         setMenuError(err instanceof Error ? err.message : t('ide.deleteWorktreeFailed'))
       })

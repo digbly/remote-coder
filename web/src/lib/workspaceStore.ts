@@ -217,6 +217,22 @@ export function withVSCodeTab(
   }
 }
 
+export function withFilteredTabs(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  keep: (tab: WorkspaceTab) => boolean,
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  const tabs = workspace.tabs.filter(keep)
+  if (tabs.length === workspace.tabs.length) return workspaces
+  const activeId =
+    workspace.activeId != null && tabs.some((tab) => tab.id === workspace.activeId)
+      ? workspace.activeId
+      : (tabs[tabs.length - 1]?.id ?? null)
+  return { ...workspaces, [projectId]: { tabs, activeId } }
+}
+
 export function ensureWorkspace(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
