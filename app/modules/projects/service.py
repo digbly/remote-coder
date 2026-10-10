@@ -273,7 +273,7 @@ def create_github_project(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     staging = destination.with_name(f".{destination.name}.cloning-{uuid4().hex}")
-    _clone_repository(remote_url, staging, payload.branch, payload.token, settings)
+    _clone_repository(f"{repo_owner}/{repo_name}", staging, payload.branch, settings)
     _promote_clone(staging, destination)
 
     project = Project(
@@ -295,23 +295,17 @@ def _projects_root(settings: Settings) -> Path:
 
 
 def _clone_repository(
-    remote_url: str,
+    repository: str,
     destination: Path,
     branch: str | None,
-    token: str | None,
     settings: Settings,
 ) -> None:
-    command = ["git", "clone", "--depth", "1"]
+    command = ["gh", "repo", "clone", repository, str(destination), "--", "--depth", "1"]
     if branch:
         command += ["--branch", branch]
-    command += ["--", remote_url, str(destination)]
 
     env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    if token:
-        env["GIT_CONFIG_COUNT"] = "1"
-        env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-        env["GIT_CONFIG_VALUE_0"] = f"Authorization: Bearer {token}"
+    env["GH_PROMPT_DISABLED"] = "1"
 
     try:
         result = subprocess.run(
@@ -402,6 +396,3 @@ def _conflict_code(exc: IntegrityError) -> ErrorCode:
     if "path" in message:
         return ErrorCode.PROJECT_PATH_EXISTS
     return ErrorCode.PROJECT_NAME_EXISTS
-
-
-

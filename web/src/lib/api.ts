@@ -70,7 +70,6 @@ export interface LocalProjectPayload {
 export interface GithubProjectPayload {
   repo_url: string
   name?: string
-  token?: string
   branch?: string
 }
 

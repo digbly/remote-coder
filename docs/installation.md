@@ -10,7 +10,17 @@ This guide covers everything needed to run Remote Coder locally.
 | [uv](https://docs.astral.sh/uv/) | latest | Python environment and dependencies |
 | Node.js + npm | >= 18 | Web (Vite) frontend |
 | git | any | Project/worktree operations |
+| [Git LFS](https://git-lfs.com/) | latest | Large files in Git repositories |
+| [GitHub CLI](https://cli.github.com/) | latest | Authenticated GitHub clone and pull requests |
 | [code-server](https://github.com/coder/code-server) | latest | VS Code server (IDE panel) |
+
+Install Git LFS and initialize its Git hooks before pushing repositories that
+use LFS:
+
+```bash
+sudo apt-get install git-lfs
+git lfs install
+```
 
 ## 1. Install code-server
 
@@ -68,6 +78,18 @@ cp .env.example .env
 ```
 
 Adjust values in `.env` as needed (admin credentials, etc.).
+
+Authenticate the GitHub CLI as the same operating-system user that runs the API.
+GitHub project cloning uses that login, including for private repositories:
+
+```bash
+gh auth login
+gh auth status
+```
+
+The Dev Container installs GitHub CLI automatically. For other environments,
+install it using the [official installation instructions](https://github.com/cli/cli/blob/trunk/docs/install_linux.md),
+then verify it with `gh --version`.
 
 ## 5. Run
 

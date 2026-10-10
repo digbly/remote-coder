@@ -21,9 +21,10 @@ ProjectName = Annotated[
 
 
 class GithubProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     repo_url: str = Field(min_length=1, max_length=500)
     name: ProjectName | None = None
-    token: str | None = Field(default=None, min_length=1, max_length=255)
     branch: str | None = Field(default=None, min_length=1, max_length=255)
 
 
