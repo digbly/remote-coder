@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import httpx
 from sqlalchemy.orm import Session
@@ -31,6 +31,8 @@ from app.modules.ai_providers.base import (
 from app.modules.ai_providers.base import (
     ProviderAdapter,
     ProviderAPIError,
+    ProviderEvent,
+    ProviderTool,
     TextDelta,
     ThinkingComplete,
     ThinkingDelta,
@@ -44,14 +46,21 @@ MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
     "You are a code assistant for the selected project. Inspect files with the provided "
-    "project tools. File and directory changes use propose_file_change (edit an existing file), "
-    "create_project_file (new file), delete_project_file, create_project_directory, "
-    "delete_project_directory, and move_project_entry; each returns a reviewable change that "
-    "may be applied immediately or await the user's approval. Never claim a change, command, "
-    "or proposal outcome that the tool result did not report. You may run commands using "
-    "run_project_command; the user may need to approve them. Do not use paths outside the "
-    "project."
+    "project tools. Call list_project_files at most once to see the whole tree, use "
+    "search_project_files to locate relevant files, and read only the files you need. You have "
+    "a small tool budget: use at most 4 or 5 tool calls, then answer with the information you "
+    "have instead of exploring further. File and directory changes use propose_file_change "
+    "(edit an existing file), create_project_file (new file), delete_project_file, "
+    "create_project_directory, delete_project_directory, and move_project_entry; each returns "
+    "a reviewable change that may be applied immediately or await the user's approval. Never "
+    "claim a change, command, or proposal outcome that the tool result did not report. You may "
+    "run commands using run_project_command; the user may need to approve them. Do not use "
+    "paths outside the project."
 )
+
+TRANSIENT_PROVIDER_STATUSES = frozenset({429, 500, 502, 503, 504})
+MAX_PROVIDER_ATTEMPTS = 3
+PROVIDER_RETRY_BACKOFF_SECONDS = 1.5
 FINAL_ANSWER_INSTRUCTION = (
     "Tool use is now disabled for this turn. Provide your best final answer to the user's "
     "request using only the information already gathered. Do not request any further tools."
@@ -60,6 +69,45 @@ FINAL_ANSWER_INSTRUCTION = (
 
 class ChatTurnLimitError(Exception):
     pass
+
+
+async def _provider_events(
+    adapter: ProviderAdapter,
+    client: httpx.AsyncClient,
+    api_key: str,
+    model_id: str,
+    system: str,
+    messages: Sequence[ProviderMessage],
+    tools: Sequence[ProviderTool],
+    *,
+    conversation_id: str,
+) -> AsyncIterator[ProviderEvent]:
+    """Stream one provider round, retrying transient errors before any output is produced."""
+    for attempt in range(1, MAX_PROVIDER_ATTEMPTS + 1):
+        received = False
+        try:
+            async for provider_event in adapter.stream(
+                client, api_key, model_id, system, messages, tools
+            ):
+                received = True
+                yield provider_event
+            return
+        except ProviderAPIError as exc:
+            if (
+                received
+                or attempt >= MAX_PROVIDER_ATTEMPTS
+                or exc.status_code not in TRANSIENT_PROVIDER_STATUSES
+            ):
+                raise
+            logger.warning(
+                "AI chat retrying transient provider error conversation_id=%s provider=%s "
+                "status=%s attempt=%s",
+                conversation_id,
+                adapter.kind,
+                exc.status_code,
+                attempt,
+            )
+            await asyncio.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
 
 
 async def stream_chat_turn(
@@ -113,45 +161,59 @@ async def stream_chat_turn(
                 round_redacted_thinking: str | None = None
                 tool_calls: list[ToolCall] = []
                 completed = False
-                async for provider_event in adapter.stream(
-                    client,
-                    api_key,
-                    model_id,
-                    round_system,
-                    messages,
-                    round_tools,
-                ):
-                    if isinstance(provider_event, TextDelta):
-                        if not provider_event.text:
-                            continue
-                        if output_chars + len(provider_event.text) > MAX_ASSISTANT_OUTPUT_CHARS:
-                            raise ChatTurnLimitError
-                        text_parts.append(provider_event.text)
-                        round_text.append(provider_event.text)
-                        output_chars += len(provider_event.text)
-                        yield _event({"type": "text_delta", "text": provider_event.text})
-                    elif isinstance(provider_event, ThinkingDelta):
-                        if not provider_event.text:
-                            continue
-                        if thinking_chars + len(provider_event.text) > MAX_THINKING_OUTPUT_CHARS:
-                            raise ChatTurnLimitError
-                        thinking_parts.append(provider_event.text)
-                        round_thinking.append(provider_event.text)
-                        thinking_chars += len(provider_event.text)
-                        yield _event({"type": "thinking_delta", "text": provider_event.text})
-                    elif isinstance(provider_event, ThinkingComplete):
-                        round_thinking_signature = provider_event.signature
-                        round_redacted_thinking = provider_event.redacted
-                    elif isinstance(provider_event, ToolCall):
-                        tool_calls.append(provider_event)
-                    elif isinstance(provider_event, TurnComplete):
-                        completed = True
+                for _attempt in range(MAX_PROVIDER_ATTEMPTS):
+                    round_text.clear()
+                    round_thinking.clear()
+                    tool_calls.clear()
+                    round_thinking_signature = None
+                    round_redacted_thinking = None
+                    completed = False
+                    async for provider_event in _provider_events(
+                        adapter,
+                        client,
+                        api_key,
+                        model_id,
+                        round_system,
+                        messages,
+                        round_tools,
+                        conversation_id=conversation_id,
+                    ):
+                        if isinstance(provider_event, TextDelta):
+                            if not provider_event.text:
+                                continue
+                            if output_chars + len(provider_event.text) > MAX_ASSISTANT_OUTPUT_CHARS:
+                                raise ChatTurnLimitError
+                            text_parts.append(provider_event.text)
+                            round_text.append(provider_event.text)
+                            output_chars += len(provider_event.text)
+                            yield _event({"type": "text_delta", "text": provider_event.text})
+                        elif isinstance(provider_event, ThinkingDelta):
+                            if not provider_event.text:
+                                continue
+                            if (
+                                thinking_chars + len(provider_event.text)
+                                > MAX_THINKING_OUTPUT_CHARS
+                            ):
+                                raise ChatTurnLimitError
+                            thinking_parts.append(provider_event.text)
+                            round_thinking.append(provider_event.text)
+                            thinking_chars += len(provider_event.text)
+                            yield _event({"type": "thinking_delta", "text": provider_event.text})
+                        elif isinstance(provider_event, ThinkingComplete):
+                            round_thinking_signature = provider_event.signature
+                            round_redacted_thinking = provider_event.redacted
+                        elif isinstance(provider_event, ToolCall):
+                            tool_calls.append(provider_event)
+                        elif isinstance(provider_event, TurnComplete):
+                            completed = True
 
-                if not completed:
-                    raise ProviderAPIError(
-                        adapter.kind,
-                        diagnostic="Stream ended without a completion event",
-                    )
+                    if not completed:
+                        raise ProviderAPIError(
+                            adapter.kind,
+                            diagnostic="Stream ended without a completion event",
+                        )
+                    if round_text or round_thinking or tool_calls:
+                        break
                 if not tool_calls or final_round:
                     break
                 total_tool_calls += len(tool_calls)

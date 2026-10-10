@@ -8,8 +8,8 @@ from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_providers.base import ProviderTool, ToolCall
 
 MAX_TOOL_RESULT_CHARS = 32_000
-MAX_TOOL_CALLS_PER_TURN = 12
-MAX_TOOL_ROUNDS_PER_TURN = 6
+MAX_TOOL_CALLS_PER_TURN = 16
+MAX_TOOL_ROUNDS_PER_TURN = 8
 MAX_PATH_CHARS = 4096
 MAX_SEARCH_QUERY_CHARS = 500
 
@@ -32,7 +32,10 @@ _PATH_AND_CONTENT_ARGUMENTS = {
 PROJECT_TOOLS = (
     ProviderTool(
         name="list_project_files",
-        description="List files and directories in a project-relative directory.",
+        description=(
+            "List files and directories under a project-relative directory (recursively, "
+            "one call returns the whole subtree). Call this at most once before reading files."
+        ),
         parameters={
             "type": "object",
             "properties": {"path": {"type": "string"}},

@@ -9,7 +9,7 @@ from app.modules.ai_chat.schemas import CommandPermission
 from app.modules.auth.models import User
 from app.modules.projects import service as project_service
 
-MAX_PROJECT_FILES = 100
+MAX_PROJECT_FILES = 400
 MAX_CONTEXT_FILE_CHARS = 24_000
 
 
@@ -23,14 +23,11 @@ class ProjectContext:
     permission: CommandPermission = CommandPermission.MANUAL
 
     def list_files(self, path: str | None = None) -> dict[str, object]:
-        tree = project_service.list_files(self.db, self.user, self.project_id, path)
-        entries = [
-            {"path": entry.path, "type": entry.type} for entry in tree.entries[:MAX_PROJECT_FILES]
-        ]
-        return {
-            "entries": entries,
-            "truncated": tree.truncated or len(tree.entries) > MAX_PROJECT_FILES,
-        }
+        tree = project_service.list_tree(
+            self.db, self.user, self.project_id, path, limit=MAX_PROJECT_FILES
+        )
+        entries = [{"path": entry.path, "type": entry.type} for entry in tree.entries]
+        return {"entries": entries, "truncated": tree.truncated}
 
     def read_file(self, path: str) -> dict[str, object]:
         file = project_service.read_file(self.db, self.user, self.project_id, path)

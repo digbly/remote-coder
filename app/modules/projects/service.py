@@ -169,6 +169,62 @@ def list_files(
     return FileTreeRead(entries=entries, truncated=truncated)
 
 
+def list_tree(
+    db: Session, owner: User, project_id: int, path: str | None = None, *, limit: int = 400
+) -> FileTreeRead:
+    """Return a bounded, recursive listing of files and directories under ``path``.
+
+    Heavy dependency/cache folders and symlinks are skipped, so a single call
+    gives an agent the shape of the project without walking it folder by folder.
+    """
+    project = get_project(db, owner, project_id)
+    root = Path(project.path).resolve()
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    base = _resolve_project_dir(root, path)
+    if not base.is_dir():
+        raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+
+    entries: list[FileNode] = []
+    truncated = False
+    stack = [base]
+    while stack and not truncated:
+        directory = stack.pop()
+        try:
+            with os.scandir(directory) as iterator:
+                children = sorted(
+                    iterator,
+                    key=lambda entry: (
+                        not entry.is_dir(follow_symlinks=False),
+                        entry.name.lower(),
+                    ),
+                )
+        except OSError:
+            continue
+        subdirectories: list[str] = []
+        for entry in children:
+            if entry.name in _EXCLUDED_DIRECTORIES or entry.is_symlink():
+                continue
+            is_directory = entry.is_dir(follow_symlinks=False)
+            if is_directory and entry.name in _DEFAULT_IGNORED_DIRECTORIES:
+                continue
+            entries.append(
+                FileNode(
+                    name=entry.name,
+                    path=Path(entry.path).relative_to(root).as_posix(),
+                    type="directory" if is_directory else "file",
+                )
+            )
+            if len(entries) >= limit:
+                truncated = True
+                break
+            if is_directory:
+                subdirectories.append(entry.path)
+        stack.extend(reversed(subdirectories))
+    return FileTreeRead(entries=entries, truncated=truncated)
+
+
 def read_file(db: Session, owner: User, project_id: int, path: str) -> FileContentRead:
     """Return a single text file's content for the editor.
 

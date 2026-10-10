@@ -442,6 +442,40 @@ def test_chat_provider_failure_is_streamed_and_persisted(
     assert "provider=openai status=400 detail=model is not available" in caplog.text
 
 
+def test_chat_retries_transient_provider_error(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    calls = {"n": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, *_args, **_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ProviderAPIError("openai", 503, "temporarily overloaded")
+        yield TextDelta("Recovered")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    monkeypatch.setattr("app.modules.ai_chat.streaming.PROVIDER_RETRY_BACKOFF_SECONDS", 0.0)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Question"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert calls["n"] == 2
+    assert events[-1]["type"] == "complete"
+    assert any(event["type"] == "text_delta" and event["text"] == "Recovered" for event in events)
+
+
 def test_readonly_context_tool_refuses_traversal_and_never_writes(
     client: TestClient, projects_root, monkeypatch
 ) -> None:

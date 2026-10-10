@@ -535,6 +535,26 @@ def test_risky_permission_reviews_delete_but_applies_create(
     assert (path / "added.py").exists()
 
 
+def test_list_project_files_tool_is_recursive(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    (path / "root.py").write_text("x", encoding="utf-8")
+    package = path / "pkg"
+    package.mkdir()
+    (package / "nested.py").write_text("y", encoding="utf-8")
+
+    captured: list[str] = []
+    _run_tool_flow(
+        client, project_id, provider_id, monkeypatch, "list_project_files", {}, captured=captured
+    )
+
+    assert captured and "pkg/nested.py" in captured[0]
+
+
 def test_search_tool_reports_matching_lines(client: TestClient, projects_root, monkeypatch) -> None:
     _login(client)
     path = projects_root / "project"
