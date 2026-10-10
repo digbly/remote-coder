@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -31,6 +33,7 @@ ADAPTERS: dict[ProviderKind, ProviderAdapter] = {
 }
 _SHARED_SCOPE_KEY = "shared"
 _NAME_CONSTRAINT = "uq_ai_providers_scope_kind_name"
+logger = logging.getLogger(__name__)
 
 
 def can_manage_shared(user: User, settings: Settings) -> bool:
@@ -153,7 +156,13 @@ async def list_models(
     try:
         async with httpx.AsyncClient() as client:
             return await ADAPTERS[provider.kind].list_models(client, api_key)
-    except ProviderAPIError:
+    except ProviderAPIError as exc:
+        logger.warning(
+            "AI provider model request failed provider=%s status=%s detail=%s",
+            provider.kind.value,
+            exc.status_code,
+            exc.diagnostic or str(exc),
+        )
         raise api_error(ErrorCode.AI_PROVIDER_FAILED, status_code=502) from None
 
 

@@ -18,7 +18,9 @@ from app.modules.ai_providers.base import (
     TurnComplete,
     _safe_request_error,
     iter_sse_payloads,
+    provider_error_detail,
     response_json,
+    streaming_response_error,
     validate_model_items,
 )
 
@@ -35,10 +37,10 @@ class OpenAIAdapter(ProviderAdapterBase):
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=20,
             )
-        except httpx.HTTPError:
-            raise _safe_request_error(self.kind) from None
+        except httpx.HTTPError as exc:
+            raise _safe_request_error(self.kind, exc) from None
 
-        payload = response_json(response, self.kind)
+        payload = response_json(response, self.kind, api_key)
         items = validate_model_items(payload, self.kind, "data")
         models: list[ProviderModel] = []
         for item in items[:MAX_PROVIDER_MODELS]:
@@ -83,7 +85,7 @@ class OpenAIAdapter(ProviderAdapterBase):
                 timeout=120,
             ) as response:
                 if not response.is_success:
-                    raise ProviderAPIError(self.kind, response.status_code)
+                    raise await streaming_response_error(response, self.kind, api_key)
                 async for event in iter_sse_payloads(response, self.kind):
                     event_type = event.get("type")
                     if event_type == "response.output_text.delta":
@@ -97,9 +99,12 @@ class OpenAIAdapter(ProviderAdapterBase):
                     elif event_type == "response.completed":
                         yield _completion(event)
                     elif event_type in {"error", "response.failed"}:
-                        raise ProviderAPIError(self.kind)
-        except httpx.HTTPError:
-            raise _safe_request_error(self.kind) from None
+                        raise ProviderAPIError(
+                            self.kind,
+                            diagnostic=provider_error_detail(event, api_key),
+                        )
+        except httpx.HTTPError as exc:
+            raise _safe_request_error(self.kind, exc) from None
 
 
 def _input_items(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:

@@ -209,7 +209,7 @@ def test_chat_conversation_is_scoped_to_owner_and_project(
 
 
 def test_chat_provider_failure_is_streamed_and_persisted(
-    client: TestClient, projects_root, monkeypatch
+    client: TestClient, projects_root, monkeypatch, caplog
 ) -> None:
     _login(client)
     project_id = _create_project(client, projects_root / "project")
@@ -219,7 +219,7 @@ def test_chat_provider_failure_is_streamed_and_persisted(
         return [ProviderModel("gpt-test", "GPT Test")]
 
     async def fail_stream(self, *_args, **_kwargs):
-        raise ProviderAPIError("openai")
+        raise ProviderAPIError("openai", 400, "model is not available")
         yield
 
     monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
@@ -244,6 +244,7 @@ def test_chat_provider_failure_is_streamed_and_persisted(
     assert events[-1]["code"] == "AI_PROVIDER_FAILED"
     assert messages[-1]["status"] == "failed"
     assert "provider-secret" not in str(events)
+    assert "provider=openai status=400 detail=model is not available" in caplog.text
 
 
 def test_readonly_context_tool_refuses_traversal_and_never_writes(

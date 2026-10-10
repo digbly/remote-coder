@@ -19,7 +19,10 @@ from app.modules.ai_providers.base import (
     TurnComplete,
     _safe_request_error,
     iter_sse_payloads,
+    provider_error_detail,
     response_json,
+    sanitize_provider_detail,
+    streaming_response_error,
     validate_model_items,
 )
 
@@ -47,7 +50,7 @@ class GeminiAdapter(ProviderAdapterBase):
                     params=params,
                     timeout=20,
                 )
-                payload = response_json(response, self.kind)
+                payload = response_json(response, self.kind, api_key)
                 items = validate_model_items(payload, self.kind, "models")
                 for item in items:
                     if not isinstance(item, dict):
@@ -77,8 +80,8 @@ class GeminiAdapter(ProviderAdapterBase):
                 if not isinstance(next_token, str) or next_token == page_token:
                     raise ProviderAPIError(self.kind, response.status_code)
                 page_token = next_token
-        except httpx.HTTPError:
-            raise _safe_request_error(self.kind) from None
+        except httpx.HTTPError as exc:
+            raise _safe_request_error(self.kind, exc) from None
         return models
 
     async def stream(
@@ -102,7 +105,7 @@ class GeminiAdapter(ProviderAdapterBase):
                         {
                             "name": tool.name,
                             "description": tool.description,
-                            "parameters": tool.parameters,
+                            "parameters": _gemini_schema(tool.parameters),
                         }
                         for tool in tools
                     ]
@@ -119,12 +122,12 @@ class GeminiAdapter(ProviderAdapterBase):
                 timeout=120,
             ) as response:
                 if not response.is_success:
-                    raise ProviderAPIError(self.kind, response.status_code)
+                    raise await streaming_response_error(response, self.kind, api_key)
                 async for chunk in iter_sse_payloads(response, self.kind):
-                    for event in _chunk_events(chunk):
+                    for event in _chunk_events(chunk, api_key):
                         yield event
-        except httpx.HTTPError:
-            raise _safe_request_error(self.kind) from None
+        except httpx.HTTPError as exc:
+            raise _safe_request_error(self.kind, exc) from None
 
 
 def _contents(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
@@ -160,8 +163,37 @@ def _contents(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
     return contents
 
 
-def _chunk_events(chunk: dict[str, object]) -> list[ProviderEvent]:
+def _gemini_schema(schema: dict[str, object]) -> dict[str, object]:
+    return {
+        key: _convert_schema_value(value)
+        for key, value in schema.items()
+        if key != "additionalProperties"
+    }
+
+
+def _convert_schema_value(value: object) -> object:
+    if isinstance(value, dict):
+        return _gemini_schema(value)
+    if isinstance(value, list):
+        return [_convert_schema_value(item) for item in value]
+    return value
+
+
+def _chunk_events(chunk: dict[str, object], api_key: str | None = None) -> list[ProviderEvent]:
     events: list[ProviderEvent] = []
+    if "error" in chunk:
+        raise ProviderAPIError(
+            GeminiAdapter.kind,
+            diagnostic=provider_error_detail(chunk, api_key),
+        )
+    prompt_feedback = chunk.get("promptFeedback")
+    if isinstance(prompt_feedback, dict) and isinstance(prompt_feedback.get("blockReason"), str):
+        raise ProviderAPIError(
+            GeminiAdapter.kind,
+            diagnostic=sanitize_provider_detail(
+                f"Prompt blocked: {prompt_feedback['blockReason']}", api_key
+            ),
+        )
     candidates = chunk.get("candidates")
     if isinstance(candidates, list):
         for candidate in candidates:

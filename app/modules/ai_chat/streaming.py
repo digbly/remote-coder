@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 
 import httpx
@@ -30,6 +31,7 @@ from app.modules.ai_providers.base import (
 
 MAX_ASSISTANT_OUTPUT_CHARS = 48_000
 MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
+logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
     "You are a code assistant for the selected project. You may only inspect project files "
     "using the provided project tools. You may create a proposed replacement for an existing "
@@ -101,7 +103,10 @@ async def stream_chat_turn(
                         completed = True
 
                 if not completed:
-                    raise ProviderAPIError(adapter.kind)
+                    raise ProviderAPIError(
+                        adapter.kind,
+                        diagnostic="Stream ended without a completion event",
+                    )
                 if not tool_calls:
                     break
                 total_tool_calls += len(tool_calls)
@@ -162,7 +167,14 @@ async def stream_chat_turn(
         content = "".join(text_parts)
         service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
         yield _error_event(ErrorCode.AI_CHAT_LIMIT_EXCEEDED, assistant_message.id)
-    except ProviderAPIError:
+    except ProviderAPIError as exc:
+        logger.warning(
+            "AI chat provider request failed conversation_id=%s provider=%s status=%s detail=%s",
+            conversation_id,
+            adapter.kind,
+            exc.status_code,
+            exc.diagnostic or str(exc),
+        )
         content = "".join(text_parts)
         service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
         yield _error_event(ErrorCode.AI_PROVIDER_FAILED, assistant_message.id)
@@ -175,6 +187,11 @@ async def stream_chat_turn(
         )
         raise
     except Exception:
+        logger.exception(
+            "Unexpected AI chat stream failure conversation_id=%s provider=%s",
+            conversation_id,
+            adapter.kind,
+        )
         service.finish_assistant(db, assistant_message, "".join(text_parts), MessageStatus.FAILED)
         raise
 

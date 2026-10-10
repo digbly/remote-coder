@@ -203,6 +203,23 @@ async def test_gemini_lists_only_text_generation_models_and_paginates() -> None:
 
 @pytest.mark.asyncio
 async def test_gemini_streams_text_tool_call_and_completion() -> None:
+    gemini_tools = [
+        ProviderTool(
+            name="read_file",
+            description="Read a file",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "options": {
+                        "type": "object",
+                        "properties": {"path": {"type": "string"}},
+                        "additionalProperties": False,
+                    }
+                },
+                "additionalProperties": False,
+            },
+        )
+    ]
     chunk = {
         "candidates": [
             {
@@ -223,7 +240,10 @@ async def test_gemini_streams_text_tool_call_and_completion() -> None:
         assert request.url.params["alt"] == "sse"
         assert request.headers["x-goog-api-key"] == API_KEY
         payload = json.loads(request.content)
-        assert payload["tools"][0]["functionDeclarations"][0]["name"] == "read_file"
+        declaration = payload["tools"][0]["functionDeclarations"][0]
+        assert declaration["name"] == "read_file"
+        assert "additionalProperties" not in declaration["parameters"]
+        assert "additionalProperties" not in declaration["parameters"]["properties"]["options"]
         body = f"data: {json.dumps(chunk)}\n\n"
         return Response(200, headers={"content-type": "text/event-stream"}, text=body)
 
@@ -231,7 +251,7 @@ async def test_gemini_streams_text_tool_call_and_completion() -> None:
         actual = [
             event
             async for event in GeminiAdapter().stream(
-                client, API_KEY, "gemini-text", "system", MESSAGES, TOOLS
+                client, API_KEY, "gemini-text", "system", MESSAGES, gemini_tools
             )
         ]
 
@@ -253,3 +273,68 @@ async def test_provider_errors_do_not_expose_api_key() -> None:
             await OpenAIAdapter().list_models(client, API_KEY)
 
     assert API_KEY not in str(exc_info.value)
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.diagnostic == "invalid key: [REDACTED]"
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_error_includes_sanitized_provider_detail() -> None:
+    chunk = {
+        "error": {
+            "code": 400,
+            "message": f"Invalid API key: {API_KEY}",
+            "status": "INVALID_ARGUMENT",
+        }
+    }
+
+    def handler(_request: Request) -> Response:
+        body = f"data: {json.dumps(chunk)}\n\n"
+        return Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+    async with await _client(handler) as client:
+        with pytest.raises(ProviderAPIError) as exc_info:
+            async for _event in GeminiAdapter().stream(
+                client, API_KEY, "gemini-test", "system", MESSAGES, TOOLS
+            ):
+                pass
+
+    assert exc_info.value.diagnostic == "Invalid API key: [REDACTED]"
+    assert API_KEY not in (exc_info.value.diagnostic or "")
+
+
+@pytest.mark.asyncio
+async def test_gemini_http_error_includes_sanitized_provider_detail() -> None:
+    def handler(_request: Request) -> Response:
+        return Response(
+            400,
+            json={"error": {"message": f"Invalid key {API_KEY}\nrequest rejected"}},
+        )
+
+    async with await _client(handler) as client:
+        with pytest.raises(ProviderAPIError) as exc_info:
+            async for _event in GeminiAdapter().stream(
+                client, API_KEY, "gemini-test", "system", MESSAGES, TOOLS
+            ):
+                pass
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.diagnostic == "Invalid key [REDACTED] request rejected"
+    assert API_KEY not in (exc_info.value.diagnostic or "")
+
+
+@pytest.mark.asyncio
+async def test_gemini_blocked_prompt_includes_reason() -> None:
+    chunk = {"promptFeedback": {"blockReason": "SAFETY"}}
+
+    def handler(_request: Request) -> Response:
+        body = f"data: {json.dumps(chunk)}\n\n"
+        return Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+    async with await _client(handler) as client:
+        with pytest.raises(ProviderAPIError) as exc_info:
+            async for _event in GeminiAdapter().stream(
+                client, API_KEY, "gemini-test", "system", MESSAGES, TOOLS
+            ):
+                pass
+
+    assert exc_info.value.diagnostic == "Prompt blocked: SAFETY"

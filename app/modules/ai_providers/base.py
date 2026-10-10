@@ -8,14 +8,21 @@ from typing import Literal, Protocol
 import httpx
 
 MAX_PROVIDER_MODELS = 500
+MAX_PROVIDER_ERROR_DETAIL_CHARS = 500
 
 
 class ProviderAPIError(Exception):
     """A sanitized provider request or response error."""
 
-    def __init__(self, provider: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        provider: str,
+        status_code: int | None = None,
+        diagnostic: str | None = None,
+    ) -> None:
         self.provider = provider
         self.status_code = status_code
+        self.diagnostic = diagnostic
         message = (
             f"{provider} API returned status {status_code}"
             if status_code is not None
@@ -123,9 +130,15 @@ def _decode_sse_data(data: str, provider: str) -> dict[str, object] | None:
     return payload
 
 
-def response_json(response: httpx.Response, provider: str) -> dict[str, object]:
+def response_json(
+    response: httpx.Response, provider: str, api_key: str | None = None
+) -> dict[str, object]:
     if not response.is_success:
-        raise ProviderAPIError(provider, response.status_code)
+        raise ProviderAPIError(
+            provider,
+            response.status_code,
+            provider_error_detail(_response_payload(response), api_key),
+        )
     try:
         payload = response.json()
     except ValueError as exc:
@@ -144,5 +157,51 @@ def validate_model_items(
     return items
 
 
-def _safe_request_error(provider: str) -> ProviderAPIError:
-    return ProviderAPIError(provider)
+def _safe_request_error(provider: str, error: httpx.HTTPError | None = None) -> ProviderAPIError:
+    diagnostic = f"HTTP request failed: {type(error).__name__}" if error is not None else None
+    return ProviderAPIError(provider, diagnostic=diagnostic)
+
+
+def _response_payload(response: httpx.Response) -> dict[str, object] | None:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def provider_error_detail(payload: dict[str, object] | None, api_key: str | None) -> str | None:
+    if payload is None:
+        return None
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        response = payload.get("response")
+        error = response.get("error") if isinstance(response, dict) else None
+    value = error.get("message") if isinstance(error, dict) else None
+    if not isinstance(value, str):
+        value = payload.get("message")
+    if not isinstance(value, str):
+        return None
+    return sanitize_provider_detail(value, api_key)
+
+
+def sanitize_provider_detail(value: str, api_key: str | None = None) -> str:
+    if api_key:
+        value = value.replace(api_key, "[REDACTED]")
+    normalized = " ".join(value.split())
+    return normalized[:MAX_PROVIDER_ERROR_DETAIL_CHARS]
+
+
+async def streaming_response_error(
+    response: httpx.Response, provider: str, api_key: str
+) -> ProviderAPIError:
+    try:
+        await response.aread()
+        payload = response.json()
+    except (ValueError, httpx.HTTPError):
+        payload = None
+    return ProviderAPIError(
+        provider,
+        response.status_code,
+        provider_error_detail(payload if isinstance(payload, dict) else None, api_key),
+    )
