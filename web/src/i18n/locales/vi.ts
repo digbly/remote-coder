@@ -312,7 +312,7 @@ const vi = {
     stop: 'Dừng',
     commandPermission: 'Quyền chạy lệnh',
     permissionManual: 'Hỏi mỗi lần',
-    permissionRisky: 'Tự chạy lệnh chỉ đọc',
+    permissionRisky: 'Tự chạy; hỏi lệnh nguy hiểm',
     permissionAllowAll: 'Cho phép tất cả',
     permissionSaveFailed: 'Không thể lưu quyền chạy lệnh',
     commandApprovalTitle: 'Cần duyệt lệnh',

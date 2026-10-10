@@ -312,7 +312,7 @@ const en = {
     stop: 'Stop',
     commandPermission: 'Command access',
     permissionManual: 'Ask every time',
-    permissionRisky: 'Auto-run read-only',
+    permissionRisky: 'Auto-run; ask for risky commands',
     permissionAllowAll: 'Allow all',
     permissionSaveFailed: 'Could not save command permission',
     commandApprovalTitle: 'Command approval required',

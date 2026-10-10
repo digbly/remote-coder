@@ -66,10 +66,9 @@ used.
 
 Open a project, then choose **Chat** in the workspace tab bar. Select a
 configured provider and a model returned by that provider, then start or resume
-a project-scoped conversation. Chat can list and read bounded, project-relative
-text files. It cannot run terminal commands. Proposed changes appear as diffs;
-files remain unchanged until you explicitly apply a proposal. Applying checks
-that the target file has not changed since the proposal was created.
+a project-scoped conversation. Chat can list and read bounded project-relative
+text files, propose file changes for review, and run commands in the project
+directory.
 
 For local access, open the web app at `http://localhost:8000/`; the API docs
 are at `http://localhost:8000/docs`. Because production cookies are Secure,
