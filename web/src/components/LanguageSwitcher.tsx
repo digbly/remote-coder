@@ -6,7 +6,7 @@ export function LanguageSwitcher({ variant = 'light' }: { variant?: 'light' | 'd
 
   const tone =
     variant === 'dark'
-      ? 'border-[#33363b] bg-[#232529] text-[#c2c6cc] hover:bg-[#2a2c30] focus:border-indigo-500'
+      ? 'border-[var(--hover-strong)] bg-[var(--btn-alt)] text-[var(--fg-3)] hover:bg-[var(--hover)] focus:border-indigo-500'
       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
 
   return (

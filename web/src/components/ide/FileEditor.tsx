@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { useTranslation } from 'react-i18next'
 import { fetchFileContent, saveFileContent } from '../../lib/api'
+import { useTheme } from '../../lib/themeContext'
 
 interface FileEditorProps {
   projectId: number
@@ -11,6 +12,7 @@ interface FileEditorProps {
 
 export function FileEditor({ projectId, path, active }: FileEditorProps) {
   const { t } = useTranslation()
+  const { resolved } = useTheme()
   const [content, setContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
   const [loading, setLoading] = useState(true)
@@ -90,21 +92,21 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#1e1e1e]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[#2c2e33] bg-[#252526] px-3 py-1.5">
-        <span className="truncate text-[12px] text-[#d7dae0]" title={path}>
+    <div className="flex h-full w-full flex-col bg-[var(--editor)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--editor-header)] px-3 py-1.5">
+        <span className="truncate text-[12px] text-[var(--fg-2)]" title={path}>
           {path}
         </span>
         {dirty && <span className="h-2 w-2 shrink-0 rounded-full bg-indigo-400" />}
         <div className="ml-auto flex items-center gap-2">
           {saveError && (
-            <span className="max-w-[40%] truncate text-[11px] text-[#f0a9b0]">{saveError}</span>
+            <span className="max-w-[40%] truncate text-[11px] text-[var(--danger)]">{saveError}</span>
           )}
           <button
             type="button"
             onClick={() => void save()}
             disabled={!dirty || saving}
-            className="rounded bg-[#2a2c30] px-2 py-0.5 text-[11px] text-[#d7dae0] transition hover:bg-[#33363b] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded bg-[var(--hover)] px-2 py-0.5 text-[11px] text-[var(--fg-2)] transition hover:bg-[var(--hover-strong)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? t('ide.saving') : t('ide.save')}
           </button>
@@ -112,22 +114,22 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
       </div>
 
       <div ref={containerRef} className="relative min-h-0 flex-1">
-        {loading && <p className="px-3 py-2 text-[13px] text-[#7d828b]">{t('common.loading')}</p>}
+        {loading && <p className="px-3 py-2 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>}
         {!loading && loadError && (
-          <p className="px-3 py-2 text-[13px] text-[#f0a9b0]">{loadError}</p>
+          <p className="px-3 py-2 text-[13px] text-[var(--danger)]">{loadError}</p>
         )}
         {!loading && !loadError && (
           <Editor
             path={`project-${projectId}/${path}`}
             value={content}
-            theme="vs-dark"
+            theme={resolved === 'dark' ? 'vs-dark' : 'vs'}
             onChange={(value) => {
               const next = value ?? ''
               contentRef.current = next
               setContent(next)
             }}
             onMount={handleMount}
-            loading={<p className="px-3 py-2 text-[13px] text-[#7d828b]">{t('common.loading')}</p>}
+            loading={<p className="px-3 py-2 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>}
             options={{
               fontSize: 13,
               minimap: { enabled: false },

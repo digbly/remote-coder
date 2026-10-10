@@ -14,7 +14,7 @@ export const VSCodePanel = memo(function VSCodePanel({
     <iframe
       title={title}
       src={vscodeUrl(projectId, worktree)}
-      className="h-full w-full border-0 bg-[#0f1012]"
+      className="h-full w-full border-0 bg-[var(--bg)]"
       allow="clipboard-read; clipboard-write; fullscreen"
     />
   )

@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { projectTerminalUrl, refreshSession } from '../../lib/api'
+import { useTheme, type ResolvedTheme } from '../../lib/themeContext'
 
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
@@ -11,6 +12,14 @@ const MAX_EXPIRED_RECONNECTS = 3
 // A connection that stayed open at least this long is treated as healthy, so
 // the backoff counter resets (e.g. after a dev-server reload).
 const STABLE_CONNECTION_MS = 3000
+
+const TERMINAL_THEMES: Record<
+  ResolvedTheme,
+  { background: string; foreground: string; cursor: string }
+> = {
+  light: { background: '#ffffff', foreground: '#1c1e21', cursor: '#1c1e21' },
+  dark: { background: '#0f1012', foreground: '#e6e8ec', cursor: '#e6e8ec' },
+}
 
 interface TerminalMessage {
   type: 'input' | 'resize'
@@ -36,12 +45,21 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const terminalRef = useRef<Terminal | null>(null)
   const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
   const onTitleRef = useRef(onTitle)
+  const { resolved } = useTheme()
+  const resolvedRef = useRef(resolved)
 
   useEffect(() => {
     onTitleRef.current = onTitle
   }, [onTitle])
+
+  useEffect(() => {
+    resolvedRef.current = resolved
+    const terminal = terminalRef.current
+    if (terminal) terminal.options.theme = TERMINAL_THEMES[resolved]
+  }, [resolved])
 
   useEffect(() => {
     const container = containerRef.current
@@ -51,12 +69,9 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       cursorBlink: true,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fontSize: 12.5,
-      theme: {
-        background: '#0f1012',
-        foreground: '#e6e8ec',
-        cursor: '#e6e8ec',
-      },
+      theme: TERMINAL_THEMES[resolvedRef.current],
     })
+    terminalRef.current = terminal
     const fit = new FitAddon()
     fitRef.current = fit
     terminal.loadAddon(fit)
@@ -206,6 +221,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       }
       terminal.dispose()
       fitRef.current = null
+      terminalRef.current = null
     }
   }, [projectId, terminalId, worktree, agentId])
 
@@ -218,5 +234,5 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     }
   }, [active])
 
-  return <div ref={containerRef} className="h-full w-full bg-[#0f1012] px-2 py-1" />
+  return <div ref={containerRef} className="h-full w-full bg-[var(--bg)] px-2 py-1" />
 })

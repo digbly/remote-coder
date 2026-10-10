@@ -38,16 +38,16 @@ import { BranchMenu } from './BranchMenu'
 const REFRESH_INTERVAL_MS = 5000
 
 const STATUS_COLORS: Record<string, string> = {
-  A: 'text-[#6fbf8b]',
-  M: 'text-[#c9a24a]',
-  D: 'text-[#d98b94]',
-  R: 'text-[#8ab4f8]',
-  C: 'text-[#8ab4f8]',
-  U: 'text-[#d98b94]',
+  A: 'text-[var(--success)]',
+  M: 'text-[var(--warn)]',
+  D: 'text-[var(--danger-2)]',
+  R: 'text-[var(--info)]',
+  C: 'text-[var(--info)]',
+  U: 'text-[var(--danger-2)]',
 }
 
 function statusColor(status: string): string {
-  return STATUS_COLORS[status] ?? 'text-[#8b9099]'
+  return STATUS_COLORS[status] ?? 'text-[var(--muted)]'
 }
 
 function PathRow({
@@ -60,9 +60,9 @@ function PathRow({
   action?: ReactNode
 }) {
   return (
-    <div className="group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition hover:bg-[#24262a]">
-      <FileIcon width={14} height={14} className="shrink-0 text-[#7d828b]" />
-      <span className="truncate text-[#c8ccd4]" title={label}>
+    <div className="group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition hover:bg-[var(--hover-subtle)]">
+      <FileIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
+      <span className="truncate text-[var(--fg-3-alt)]" title={label}>
         {label}
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -97,7 +97,7 @@ function Section({
 }) {
   return (
     <div className="mt-3">
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b9099]">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
         <ChevronDownIcon width={12} height={12} />
         <span>
           {title} {count}
@@ -127,7 +127,7 @@ function RowAction({
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+      className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
@@ -150,7 +150,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 rounded-md border border-[#3a3d43] bg-[#23252a] px-2.5 py-1 text-[12px] font-medium text-[#d7dae0] transition hover:bg-[#2a2c32] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-2.5 py-1 text-[12px] font-medium text-[var(--fg-2)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
       {label}
@@ -410,15 +410,15 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
           onClick={handleToggleBranchMenu}
           aria-expanded={branchMenuOpen}
           title={t('ide.branches')}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-[13px] text-[#d7dae0] transition hover:bg-[#24262a]"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-[13px] text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)]"
         >
-          <BranchIcon width={14} height={14} className="shrink-0 text-[#7d828b]" />
+          <BranchIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
           <span className="truncate">{status?.branch ?? t('ide.sourceControl')}</span>
-          <ChevronDownIcon width={12} height={12} className="shrink-0 text-[#7d828b]" />
+          <ChevronDownIcon width={12} height={12} className="shrink-0 text-[var(--muted-2)]" />
         </button>
         <span className="flex shrink-0 items-center gap-1">
           {status?.upstream && (status.ahead > 0 || status.behind > 0) && (
-            <span className="flex items-center gap-1 pr-0.5 text-[11px] text-[#6b7078]">
+            <span className="flex items-center gap-1 pr-0.5 text-[11px] text-[var(--muted-3)]">
               {status.ahead > 0 && <span>↑{status.ahead}</span>}
               {status.behind > 0 && <span>↓{status.behind}</span>}
             </span>
@@ -429,7 +429,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
             title={t('ide.pull')}
             onClick={handlePull}
             disabled={disabled || !canPull}
-            className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CloudDownloadIcon width={14} height={14} />
           </button>
@@ -439,7 +439,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
             title={t('ide.push')}
             onClick={handlePush}
             disabled={disabled || status === null}
-            className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CloudUploadIcon width={14} height={14} />
           </button>
@@ -448,7 +448,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
             aria-label={t('ide.refresh')}
             title={t('ide.refresh')}
             onClick={reload}
-            className="rounded p-0.5 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
           >
             <RefreshIcon width={14} height={14} />
           </button>
@@ -467,13 +467,13 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
 
       <div className="flex-1 overflow-y-auto px-1.5 pb-3">
         {loading && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[#7d828b]">{t('common.loading')}</p>
+          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>
         )}
         {!loading && error && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[#f0a9b0]">{error}</p>
+          <p className="px-2.5 py-1.5 text-[13px] text-[var(--danger)]">{error}</p>
         )}
         {!loading && !error && clean && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[#7d828b]">{t('ide.noChanges')}</p>
+          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('ide.noChanges')}</p>
         )}
         {!loading && !error && status && !clean && (
           <>
@@ -602,14 +602,14 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
       </div>
 
       {!loading && !error && status && (
-        <div className="border-t border-[#2c2e33]">
+        <div className="border-t border-[var(--border)]">
           <form onSubmit={handleCommit} className="space-y-2 p-2.5">
             <div className="flex justify-end">
               <button
                 type="button"
                 onClick={handleGenerate}
                 disabled={disabled || clean}
-                className="flex items-center gap-1 rounded-md border border-[#3a3d43] bg-[#23252a] px-2 py-0.5 text-[11px] font-medium text-[#d7dae0] transition hover:bg-[#2a2c32] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-2)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <SparklesIcon width={12} height={12} />
                 {busy === 'generate'
@@ -623,22 +623,22 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
               placeholder={t('ide.commitMessagePlaceholder')}
               aria-label={t('ide.commitMessagePlaceholder')}
               rows={2}
-              className="w-full resize-none rounded-md border border-[#33363c] bg-[#141517] px-2.5 py-2 text-[12.5px] text-[#e6e8ec] placeholder:text-[#6b7078] focus:border-[#4c8bf5] focus:outline-none"
+              className="w-full resize-none rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-2 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
             />
             <button
               type="submit"
               disabled={disabled || !canCommit}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[#4c8bf5] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[#3f7ae0] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CommitIcon width={14} height={14} />
               {busy === 'commit' ? t('ide.committing') : t('ide.commit')}
             </button>
           </form>
 
-          <form onSubmit={handleCreatePullRequest} className="space-y-2 border-t border-[#2c2e33] p-2.5">
+          <form onSubmit={handleCreatePullRequest} className="space-y-2 border-t border-[var(--border)] p-2.5">
             <label
               htmlFor="git-pr-branch"
-              className="block text-[11px] font-semibold uppercase tracking-wider text-[#8b9099]"
+              className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]"
             >
               {t('ide.branchName')}
             </label>
@@ -647,13 +647,13 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
               value={branch}
               onChange={(event) => setBranch(event.target.value)}
               placeholder={t('ide.branchNamePlaceholder')}
-              className="w-full rounded-md border border-[#33363c] bg-[#141517] px-2.5 py-1.5 text-[12.5px] text-[#e6e8ec] placeholder:text-[#6b7078] focus:border-[#4c8bf5] focus:outline-none"
+              className="w-full rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-1.5 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
             />
-            <p className="text-[11px] leading-snug text-[#6b7078]">{t('ide.prHint')}</p>
+            <p className="text-[11px] leading-snug text-[var(--muted-3)]">{t('ide.prHint')}</p>
             <button
               type="submit"
               disabled={disabled || !canOpenPullRequest}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[#3a3d43] bg-[#23252a] px-3 py-1.5 text-[12.5px] font-medium text-[#e6e8ec] transition hover:bg-[#2a2c32] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--fg)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <PrIcon width={14} height={14} />
               {busy === 'pullRequest' ? t('ide.creatingPr') : t('ide.createPr')}
@@ -661,14 +661,14 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
           </form>
 
           {actionError && (
-            <p className="px-2.5 pb-2.5 text-[12px] text-[#f0a9b0]">{actionError}</p>
+            <p className="px-2.5 pb-2.5 text-[12px] text-[var(--danger)]">{actionError}</p>
           )}
           {pullRequestUrl && (
             <a
               href={pullRequestUrl}
               target="_blank"
               rel="noreferrer"
-              className="mx-2.5 mb-2.5 block truncate text-[12px] text-[#6fbf8b] hover:underline"
+              className="mx-2.5 mb-2.5 block truncate text-[12px] text-[var(--success)] hover:underline"
             >
               {t('ide.prCreated')} — {pullRequestUrl}
             </a>

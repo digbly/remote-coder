@@ -43,9 +43,9 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
     <aside
       aria-label={t('ide.panel')}
       style={{ width }}
-      className="flex shrink-0 flex-col bg-[#1b1c1f] text-sm"
+      className="flex shrink-0 flex-col bg-[var(--surface)] text-sm"
     >
-      <div className="flex shrink-0 items-stretch border-b border-[#2c2e33]">
+      <div className="flex shrink-0 items-stretch border-b border-[var(--border)]">
         <div
           role="tablist"
           aria-label={t('ide.panel')}
@@ -70,8 +70,8 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
                 onClick={() => setTab(id)}
                 className={`flex min-w-0 flex-1 items-center justify-center border-t-2 px-2 py-2 transition ${
                   active
-                    ? 'border-t-indigo-500 bg-[#26282c] text-white'
-                    : 'border-t-transparent text-[#9aa0a8] hover:bg-[#222428] hover:text-[#d7dae0]'
+                    ? 'border-t-indigo-500 bg-[var(--active)] text-[var(--fg-strong)]'
+                    : 'border-t-transparent text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'
                 }`}
               >
                 <Icon width={15} height={15} className="shrink-0" />
@@ -84,7 +84,7 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
           aria-label={t('ide.hidePanel')}
           title={t('ide.hidePanel')}
           onClick={onClose}
-          className="flex shrink-0 items-center px-2 text-[#8b9099] transition hover:bg-[#2a2c30] hover:text-white"
+          className="flex shrink-0 items-center px-2 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
         >
           <CloseIcon width={14} height={14} />
         </button>
