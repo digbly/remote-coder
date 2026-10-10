@@ -14,8 +14,10 @@ from app.modules.auth.websocket import reject, same_origin, websocket_user
 from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.terminal import service
+from app.modules.terminal.schemas import RunningTerminalsRead
 
 router = APIRouter(prefix="/projects", tags=["terminal"])
+global_router = APIRouter(prefix="/terminals", tags=["terminal"])
 
 WS_UNAUTHORIZED = 4401
 WS_FORBIDDEN = 4403
@@ -83,6 +85,7 @@ async def project_terminal(
             cwd=cwd,
             shell=settings.terminal_shell,
             env=agent_env,
+            worktree=worktree,
             read_chunk_bytes=settings.terminal_read_chunk_bytes,
             replay_bytes=settings.terminal_replay_bytes,
             queue_chunks=settings.terminal_subscriber_queue_chunks,
@@ -129,6 +132,17 @@ def kill_project_terminal(
     projects_service.get_project(db, current_user, project_id)
     if service.valid_terminal_id(terminal_id):
         service.manager.kill((current_user.id, project_id, terminal_id))
+
+
+@global_router.get(
+    "/running",
+    response_model=RunningTerminalsRead,
+    responses=error_responses(401),
+)
+def list_running_terminals(current_user: CurrentUser) -> RunningTerminalsRead:
+    return RunningTerminalsRead(
+        projects=service.manager.running_worktrees_by_project(current_user.id)
+    )
 
 
 async def _pump_output(queue: asyncio.Queue[bytes | None], websocket: WebSocket) -> None:

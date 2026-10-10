@@ -906,3 +906,17 @@ export async function killTerminal(projectId: number, terminalId: string): Promi
     method: 'DELETE',
   })
 }
+
+export async function fetchRunningTerminals(): Promise<Record<number, string[]>> {
+  const response = await request('/terminals/running')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const data = (await response.json()) as { projects?: Record<string, string[]> }
+  const result: Record<number, string[]> = {}
+  for (const [key, value] of Object.entries(data.projects ?? {})) {
+    result[Number(key)] = value
+  }
+  return result
+}

@@ -74,10 +74,12 @@ class TerminalSession:
         replay_bytes: int,
         queue_chunks: int,
         env: dict[str, str] | None = None,
+        worktree: str | None = None,
     ) -> None:
         self._cwd = cwd
         self._shell = shell
         self._env = env or {}
+        self.worktree = worktree
         self._chunk = read_chunk_bytes
         self._replay_bytes = replay_bytes
         self._queue_chunks = max(1, queue_chunks)
@@ -275,6 +277,7 @@ class TerminalManager:
         replay_bytes: int,
         queue_chunks: int,
         env: dict[str, str] | None = None,
+        worktree: str | None = None,
     ) -> tuple[TerminalSession, bool]:
         """Return the live session for ``key`` and whether it was just created."""
         with self._lock:
@@ -282,11 +285,23 @@ class TerminalManager:
             if session is not None and not session.exited:
                 return session, False
 
-            session = TerminalSession(cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks, env)
+            session = TerminalSession(
+                cwd, shell, read_chunk_bytes, replay_bytes, queue_chunks, env, worktree
+            )
             session.on_exit = lambda ended, key=key: self._discard(key, ended)
             session.start()
             self._sessions[key] = session
             return session, True
+
+    def running_worktrees_by_project(self, user_id: int) -> dict[int, list[str]]:
+        """Return, per project, the worktrees that have a live terminal session."""
+        with self._lock:
+            grouped: dict[int, set[str]] = {}
+            for (uid, pid, _), session in self._sessions.items():
+                if uid != user_id or session.worktree is None or session.exited:
+                    continue
+                grouped.setdefault(pid, set()).add(session.worktree)
+        return {pid: sorted(names) for pid, names in grouped.items()}
 
     def _discard(self, key: TerminalKey, session: TerminalSession) -> None:
         with self._lock:

@@ -135,6 +135,7 @@ const en = {
     noProjects: 'No projects yet',
     primary: 'primary',
     localHost: 'local',
+    worktreeRunning: 'CLI/chat running',
     createPr: 'Create PR',
     message: 'Message',
     commit: 'Commit',

@@ -83,6 +83,7 @@ export function IdeShell({
   const { t } = useTranslation()
   const { workspaces, layout } = state
   const [searchOpen, setSearchOpen] = useState(false)
+  const [streamingChatTabs, setStreamingChatTabs] = useState<Record<string, boolean>>({})
 
   function updateLayout(patch: Partial<LayoutState>) {
     update((prev) => ({ ...prev, layout: { ...prev.layout, ...patch } }))
@@ -94,13 +95,41 @@ export function IdeShell({
   const activeTabId = activeWorkspace?.activeId ?? null
   const allTabs = Object.values(workspaces).flatMap((workspace) => workspace.tabs)
 
+  const chatWorktrees: Record<number, string[]> = {}
+  for (const workspace of Object.values(workspaces)) {
+    for (const tab of workspace.tabs) {
+      if (tab.kind !== 'chat' || !tab.worktree || !streamingChatTabs[tab.id]) continue
+      if (tab.projectId == null) continue
+      const list = chatWorktrees[tab.projectId] ?? []
+      if (!list.includes(tab.worktree)) list.push(tab.worktree)
+      chatWorktrees[tab.projectId] = list
+    }
+  }
+
+  const setChatStreaming = useCallback((tabId: string, streaming: boolean) => {
+    setStreamingChatTabs((prev) => {
+      if (streaming) {
+        if (prev[tabId]) return prev
+        return { ...prev, [tabId]: true }
+      }
+      if (!prev[tabId]) return prev
+      const next = { ...prev }
+      delete next[tabId]
+      return next
+    })
+  }, [])
+
   function openTerminal(project: ActiveProjectRef, agent?: AgentDefinition) {
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
   }
 
   function openChat() {
     if (!activeProject) return
-    update((prev) => ({ ...prev, workspaces: withNewChat(prev.workspaces, activeProject) }))
+    const activeTab = activeTabs.find((tab) => tab.id === activeTabId)
+    update((prev) => ({
+      ...prev,
+      workspaces: withNewChat(prev.workspaces, activeProject, activeTab?.worktree),
+    }))
   }
 
   function openFile(path: string, line?: number) {
@@ -164,6 +193,7 @@ export function IdeShell({
             onWorktreeDeleted={closeWorktreeTabs}
             onOpenSearch={() => setSearchOpen(true)}
             activeProjectId={activeProjectId}
+            chatWorktrees={chatWorktrees}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
           />
@@ -217,6 +247,7 @@ export function IdeShell({
                       tabId={tab.id}
                       active={active}
                       conversationId={tab.conversationId}
+                      onStreamingChange={(streaming) => setChatStreaming(tab.id, streaming)}
                       onConversationChange={(conversationId, title) =>
                         update((prev) => ({
                           ...prev,

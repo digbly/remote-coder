@@ -6,12 +6,14 @@ export function ChatTab({
   active,
   conversationId,
   onConversationChange,
+  onStreamingChange,
 }: {
   projectId: number
   tabId: string
   active: boolean
   conversationId?: string
   onConversationChange: (id: string | undefined, title?: string) => void
+  onStreamingChange?: (streaming: boolean) => void
 }) {
   return (
     <ChatPanel
@@ -20,6 +22,7 @@ export function ChatTab({
       active={active}
       conversationId={conversationId}
       onConversationChange={onConversationChange}
+      onStreamingChange={onStreamingChange}
     />
   )
 }

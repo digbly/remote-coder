@@ -345,3 +345,12 @@ export function SpinnerIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function SpinnerCircleIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" />
+    </Svg>
+  )
+}

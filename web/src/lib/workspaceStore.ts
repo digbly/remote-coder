@@ -119,6 +119,7 @@ export function withNewTerminal(
 export function withNewChat(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
+  worktree?: string,
 ): Record<number, ProjectWorkspace> {
   const tabs = workspaces[project.id]?.tabs ?? []
   const id = newTerminalId()
@@ -133,6 +134,7 @@ export function withNewChat(
     title,
     kind: 'chat',
     projectId: project.id,
+    ...(worktree ? { worktree } : {}),
   }
   return {
     ...workspaces,

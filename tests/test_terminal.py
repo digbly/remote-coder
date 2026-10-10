@@ -271,6 +271,30 @@ def test_terminal_rejects_unknown_worktree(client: TestClient, projects_root: Pa
     assert_ws_close(client, url, 4404)
 
 
+def test_running_terminals_requires_authentication(client: TestClient) -> None:
+    assert client.get("/api/v1/terminals/running").status_code == 401
+
+
+def test_running_terminals_reports_worktree(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    repo = projects_root / "wt-main"
+    _init_repo(repo)
+    _git(repo, "worktree", "add", "-b", "agent", str(projects_root / "wt-agent"))
+    response = client.post(LOCAL_URL, json={"path": str(repo)}, headers=_csrf(client))
+    project_id = response.json()["id"]
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=wt-agent"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        websocket.send_text(json.dumps({"type": "input", "data": "pwd\n"}))
+        _read_until(websocket, "wt-agent")
+
+    # Detaching keeps the shell alive, so the worktree is still reported as running.
+    running = client.get("/api/v1/terminals/running")
+    assert running.status_code == 200, running.text
+    assert "wt-agent" in running.json()["projects"].get(str(project_id), [])
+
+
 def test_subscriber_queue_drops_oldest_when_full() -> None:
     queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=2)
     TerminalSession._deliver(queue, b"a")

@@ -107,12 +107,14 @@ export function ChatPanel({
   active,
   conversationId,
   onConversationChange,
+  onStreamingChange,
 }: {
   projectId: number
   tabId: string
   active: boolean
   conversationId?: string
   onConversationChange: (id: string | undefined, title?: string) => void
+  onStreamingChange?: (streaming: boolean) => void
 }) {
   const { t } = useTranslation()
   const [providers, setProviders] = useState<AIProvider[]>([])
@@ -138,6 +140,19 @@ export function ChatPanel({
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const optimisticIdRef = useRef(0)
+  const onStreamingChangeRef = useRef(onStreamingChange)
+
+  useEffect(() => {
+    onStreamingChangeRef.current = onStreamingChange
+  }, [onStreamingChange])
+
+  useEffect(() => {
+    onStreamingChangeRef.current?.(streaming)
+  }, [streaming])
+
+  useEffect(() => {
+    return () => onStreamingChangeRef.current?.(false)
+  }, [])
 
   useEffect(() => {
     let alive = true

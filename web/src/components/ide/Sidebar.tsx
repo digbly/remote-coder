@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   deleteWorktree,
   fetchProjects,
+  fetchRunningTerminals,
   fetchWorktrees,
   vscodeUrl,
   type Project,
@@ -23,6 +24,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SpinnerCircleIcon,
   TerminalIcon,
   TrashIcon,
 } from './icons'
@@ -85,11 +87,13 @@ function IconButton({
 
 function WorktreeItem({
   worktree,
+  busy,
   onOpen,
   onOpenVSCode,
   onContextMenu,
 }: {
   worktree: Worktree
+  busy: boolean
   onOpen: () => void
   onOpenVSCode: () => void
   onContextMenu: (x: number, y: number) => void
@@ -110,6 +114,16 @@ function WorktreeItem({
         className="flex min-w-0 flex-1 flex-col gap-1 text-left"
       >
         <span className="flex min-w-0 items-center gap-2">
+          {busy && (
+            <SpinnerCircleIcon
+              width={11}
+              height={11}
+              role="img"
+              aria-hidden={false}
+              aria-label={t('ide.worktreeRunning')}
+              className="shrink-0 animate-spin text-amber-500"
+            />
+          )}
           <span
             className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
               worktree.is_primary
@@ -153,6 +167,7 @@ function ProjectItem({
   accent,
   active,
   worktrees,
+  busyWorktrees,
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
@@ -163,6 +178,7 @@ function ProjectItem({
   accent: string
   active: boolean
   worktrees: Worktree[] | undefined
+  busyWorktrees: Set<string>
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
@@ -203,6 +219,7 @@ function ProjectItem({
             <WorktreeItem
               key={worktree.path}
               worktree={worktree}
+              busy={busyWorktrees.has(worktree.name)}
               onOpen={() => onOpenWorktree(project, worktree.name)}
               onOpenVSCode={() => onOpenVSCode(project, worktree.name)}
               onContextMenu={(x, y) => onWorktreeContextMenu(worktree, x, y)}
@@ -234,9 +251,12 @@ interface SidebarProps {
   onWorktreeDeleted: (projectId: number, worktree: string) => void
   onOpenSearch: () => void
   activeProjectId: number | null
+  chatWorktrees: Record<number, string[]>
   width: number
   onClose: () => void
 }
+
+const RUNNING_POLL_MS = 5000
 
 export function Sidebar({
   user,
@@ -247,6 +267,7 @@ export function Sidebar({
   onWorktreeDeleted,
   onOpenSearch,
   activeProjectId,
+  chatWorktrees,
   width,
   onClose,
 }: SidebarProps) {
@@ -254,6 +275,7 @@ export function Sidebar({
   const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
+  const [runningTerminals, setRunningTerminals] = useState<Record<number, string[]>>({})
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [worktreeTarget, setWorktreeTarget] = useState<Project | null>(null)
@@ -294,6 +316,26 @@ export function Sidebar({
       })
     return () => {
       active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function refresh() {
+      try {
+        const result = await fetchRunningTerminals()
+        if (active) setRunningTerminals(result)
+      } catch {
+        /* keep the previous snapshot if the request fails */
+      }
+    }
+
+    void refresh()
+    const timer = window.setInterval(refresh, RUNNING_POLL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
     }
   }, [])
 
@@ -421,6 +463,12 @@ export function Sidebar({
             accent={projectAccent(index)}
             active={project.id === activeProjectId}
             worktrees={worktrees[project.id]}
+            busyWorktrees={
+              new Set([
+                ...(runningTerminals[project.id] ?? []),
+                ...(chatWorktrees[project.id] ?? []),
+              ])
+            }
             onOpenProject={onOpenProject}
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}

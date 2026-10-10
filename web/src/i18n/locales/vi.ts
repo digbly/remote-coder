@@ -135,6 +135,7 @@ const vi = {
     noProjects: 'Chưa có dự án nào',
     primary: 'chính',
     localHost: 'local',
+    worktreeRunning: 'CLI/chat đang chạy',
     createPr: 'Tạo PR',
     message: 'Nội dung',
     commit: 'Commit',
