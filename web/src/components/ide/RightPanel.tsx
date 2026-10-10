@@ -50,7 +50,7 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
           role="tablist"
           aria-label={t('ide.panel')}
           onKeyDown={handleTabKeyDown}
-          className="flex min-w-0 flex-1 items-stretch"
+          className="flex min-w-0 flex-1 items-stretch gap-0.5"
         >
           {TABS.map(({ id, labelKey, Icon }, index) => {
             const active = id === tab
@@ -68,13 +68,13 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
                 title={t(labelKey)}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setTab(id)}
-                className={`flex min-w-0 flex-1 items-center justify-center border-t-2 px-2 py-2 transition ${
+                className={`flex shrink-0 items-center justify-center border-b-2 px-2.5 py-1.5 transition ${
                   active
-                    ? 'border-t-indigo-500 bg-[var(--active)] text-[var(--fg-strong)]'
-                    : 'border-t-transparent text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'
+                    ? 'border-b-indigo-500 text-[var(--fg-strong)]'
+                    : 'border-b-transparent text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'
                 }`}
               >
-                <Icon width={15} height={15} className="shrink-0" />
+                <Icon width={14} height={14} className="shrink-0" />
               </button>
             )
           })}
