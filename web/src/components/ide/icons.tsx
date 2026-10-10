@@ -312,6 +312,15 @@ export function ExternalLinkIcon(props: IconProps) {
 export function SparklesIcon(props: IconProps) {
   return (
     <Svg {...props}>
+      <path d="M11.5 3.5c.45 3.4 2.15 5.1 5.55 5.55-3.4.45-5.1 2.15-5.55 5.55-.45-3.4-2.15-5.1-5.55-5.55 3.4-.45 5.1-2.15 5.55-5.55Z" />
+      <path d="M17.75 13.75c.24 1.8 1.14 2.7 2.94 2.94-1.8.24-2.7 1.14-2.94 2.94-.24-1.8-1.14-2.7-2.94-2.94 1.8-.24 2.7-1.14 2.94-2.94Z" />
+    </Svg>
+  )
+}
+
+export function SpinnerIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
       <path d="M12 3v4M12 17v4M5.5 5.5l2.8 2.8M15.7 15.7l2.8 2.8M3 12h4M17 12h4M5.5 18.5l2.8-2.8M15.7 8.3l2.8-2.8" />
     </Svg>
   )

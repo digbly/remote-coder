@@ -30,6 +30,7 @@ import {
   PrIcon,
   RefreshIcon,
   SparklesIcon,
+  SpinnerIcon,
   TrashIcon,
   UndoIcon,
 } from './icons'
@@ -451,6 +452,50 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
         />
       )}
 
+      {!loading && !error && status && (
+        <div className="border-b border-[var(--border)]">
+          <form onSubmit={handleCommit} className="space-y-2 p-2.5">
+            <div className="relative">
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder={t('ide.commitMessagePlaceholder')}
+                aria-label={t('ide.commitMessagePlaceholder')}
+                rows={2}
+                className="w-full resize-none rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-2 pr-8 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={disabled || clean}
+                aria-label={t('ide.generateCommitMessage')}
+                aria-busy={busy === 'generate'}
+                title={
+                  busy === 'generate'
+                    ? t('ide.generatingCommitMessage')
+                    : t('ide.generateCommitMessage')
+                }
+                className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy === 'generate' ? (
+                  <SpinnerIcon width={14} height={14} className="animate-spin" />
+                ) : (
+                  <SparklesIcon width={14} height={14} />
+                )}
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={disabled || !canCommit}
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CommitIcon width={14} height={14} />
+              {busy === 'commit' ? t('ide.committing') : t('ide.commit')}
+            </button>
+          </form>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto px-1.5 pb-3">
         {loading && (
           <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>
@@ -589,39 +634,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
 
       {!loading && !error && status && (
         <div className="border-t border-[var(--border)]">
-          <form onSubmit={handleCommit} className="space-y-2 p-2.5">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={disabled || clean}
-                className="flex items-center gap-1 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-2)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <SparklesIcon width={12} height={12} />
-                {busy === 'generate'
-                  ? t('ide.generatingCommitMessage')
-                  : t('ide.generateCommitMessage')}
-              </button>
-            </div>
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder={t('ide.commitMessagePlaceholder')}
-              aria-label={t('ide.commitMessagePlaceholder')}
-              rows={2}
-              className="w-full resize-none rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-2 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={disabled || !canCommit}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CommitIcon width={14} height={14} />
-              {busy === 'commit' ? t('ide.committing') : t('ide.commit')}
-            </button>
-          </form>
-
-          <form onSubmit={handleCreatePullRequest} className="space-y-2 border-t border-[var(--border)] p-2.5">
+          <form onSubmit={handleCreatePullRequest} className="space-y-2 p-2.5">
             <label
               htmlFor="git-pr-branch"
               className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]"
