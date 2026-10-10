@@ -11,7 +11,8 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <WorkspaceLayout /> },
       { path: '/projects/:projectId', element: <WorkspaceLayout /> },
-      { path: '/settings', element: <SettingsPage /> },
+      { path: '/settings', element: <Navigate to="/settings/appearance" replace /> },
+      { path: '/settings/:section', element: <SettingsPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

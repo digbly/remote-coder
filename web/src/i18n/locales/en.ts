@@ -65,6 +65,7 @@ const en = {
     themeLight: 'Light',
     themeDark: 'Dark',
     themeSystem: 'System',
+    languageHint: 'Choose the language used across the interface.',
     agents: 'Agents',
     command: 'Command',
     args: 'Arguments',

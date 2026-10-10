@@ -65,6 +65,7 @@ const vi = {
     themeLight: 'Sáng',
     themeDark: 'Tối',
     themeSystem: 'Theo hệ thống',
+    languageHint: 'Chọn ngôn ngữ hiển thị cho toàn bộ giao diện.',
     agents: 'Agent',
     command: 'Command',
     args: 'Tham số',

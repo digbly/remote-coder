@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
-import { ChevronRightIcon } from '../components/ide/icons'
+import { NavLink, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import {
+  ChevronRightIcon,
+  CommandIcon,
+  GlobeIcon,
+  PaletteIcon,
+} from '../components/ide/icons'
 import {
   fetchAgentSettings,
   fetchAgents,
@@ -14,6 +20,32 @@ import { useTheme, type ThemeMode } from '../lib/themeContext'
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system']
+
+function SectionNavItem({
+  to,
+  icon,
+  label,
+}: {
+  to: string
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition ${
+          isActive
+            ? 'bg-[var(--hover)] text-[var(--fg-strong)]'
+            : 'text-[var(--fg-3)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
+        }`
+      }
+    >
+      <span className="text-[var(--muted)]">{icon}</span>
+      {label}
+    </NavLink>
+  )
+}
 
 function ThemeSettingRow() {
   const { t } = useTranslation()
@@ -48,6 +80,20 @@ function ThemeSettingRow() {
             {labels[option]}
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function LanguageSettingRow() {
+  const { t } = useTranslation()
+  const { resolved } = useTheme()
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+      <p className="text-sm font-medium text-[var(--fg-strong)]">{t('language.label')}</p>
+      <p className="mt-0.5 text-xs text-[var(--muted-2)]">{t('settings.languageHint')}</p>
+      <div className="mt-3">
+        <LanguageSwitcher variant={resolved === 'dark' ? 'dark' : 'light'} />
       </div>
     </div>
   )
@@ -169,9 +215,8 @@ function AgentSettingRow({
   )
 }
 
-export function SettingsPage() {
+function AgentsSection() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const [agents, setAgents] = useState<AgentDefinition[] | null>(null)
   const [defaultAgentId, setDefaultAgentId] = useState<string | null>(null)
   const [defaultError, setDefaultError] = useState(false)
@@ -219,6 +264,63 @@ export function SettingsPage() {
   }
 
   return (
+    <>
+      <h2 className="mb-1 text-sm font-semibold text-[var(--fg-strong)]">{t('settings.agents')}</h2>
+      <p className="mb-5 text-sm text-[var(--text-2)]">{t('settings.description')}</p>
+      {error && <p className="text-sm text-[var(--danger)]">{t('settings.loadFailed')}</p>}
+      {defaultError && (
+        <p className="mb-3 text-sm text-[var(--danger)]">{t('settings.defaultFailed')}</p>
+      )}
+      {agents === null && !error && (
+        <p className="text-sm text-[var(--muted-2)]">{t('common.loading')}</p>
+      )}
+      {agents && (
+        <div className="space-y-3">
+          {agents.map((agent) => (
+            <AgentSettingRow
+              key={agent.id}
+              agent={agent}
+              isDefault={agent.id === defaultAgentId}
+              onSaved={handleSaved}
+              onSetDefault={handleSetDefault}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+export function SettingsPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { section } = useParams<{ section: string }>()
+
+  const sections = [
+    {
+      id: 'appearance',
+      icon: <PaletteIcon width={15} height={15} />,
+      label: t('settings.appearance'),
+      content: <ThemeSettingRow />,
+    },
+    {
+      id: 'agents',
+      icon: <CommandIcon width={15} height={15} />,
+      label: t('settings.agents'),
+      content: <AgentsSection />,
+    },
+    {
+      id: 'language',
+      icon: <GlobeIcon width={15} height={15} />,
+      label: t('language.label'),
+      content: <LanguageSettingRow />,
+    },
+  ]
+
+  const active = sections.find((item) => item.id === section)
+  if (!active) return <Navigate to="/settings/appearance" replace />
+
+  return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
       <header className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-6 py-4">
         <button
@@ -231,33 +333,21 @@ export function SettingsPage() {
         </button>
         <h1 className="text-base font-semibold text-[var(--fg-strong)]">{t('settings.title')}</h1>
       </header>
-      <main className="mx-auto max-w-3xl px-6 py-6">
-        <div className="mb-6">
-          <ThemeSettingRow />
-        </div>
-        <h2 className="mb-1 text-sm font-semibold text-[var(--fg-strong)]">{t('settings.agents')}</h2>
-        <p className="mb-5 text-sm text-[var(--text-2)]">{t('settings.description')}</p>
-        {error && <p className="text-sm text-[var(--danger)]">{t('settings.loadFailed')}</p>}
-        {defaultError && (
-          <p className="mb-3 text-sm text-[var(--danger)]">{t('settings.defaultFailed')}</p>
-        )}
-        {agents === null && !error && (
-          <p className="text-sm text-[var(--muted-2)]">{t('common.loading')}</p>
-        )}
-        {agents && (
-          <div className="space-y-3">
-            {agents.map((agent) => (
-              <AgentSettingRow
-                key={agent.id}
-                agent={agent}
-                isDefault={agent.id === defaultAgentId}
-                onSaved={handleSaved}
-                onSetDefault={handleSetDefault}
+      <div className="mx-auto flex max-w-5xl gap-8 px-6 py-6">
+        <aside className="w-48 shrink-0">
+          <nav className="space-y-0.5">
+            {sections.map((item) => (
+              <SectionNavItem
+                key={item.id}
+                to={`/settings/${item.id}`}
+                icon={item.icon}
+                label={item.label}
               />
             ))}
-          </div>
-        )}
-      </main>
+          </nav>
+        </aside>
+        <main className="min-w-0 flex-1">{active.content}</main>
+      </div>
     </div>
   )
 }
