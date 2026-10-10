@@ -26,25 +26,29 @@ Open the forwarded Web port to use the app.
 
 ## Run with Docker
 
-The Docker image is based on Debian Bookworm and includes Python 3.12, Node.js
-22, Git, GitHub CLI, and code-server.
+The production Docker image is based on Debian Bookworm. It builds the web UI
+and serves it with Nginx, which also proxies API and WebSocket requests to
+Uvicorn. Python 3.12, Git, GitHub CLI, and code-server are included.
 
 ```bash
 docker build -t remote-coder .
 docker run --rm --name remote-coder \
-  -p 8000:8000 -p 5173:5173 \
+  -p 8000:8000 \
   -v remote-coder-projects:/home/remote-coder/projects \
   -v remote-coder-database:/app/database \
   -v remote-coder-logs:/app/storage/logs \
-  -e ADMIN_PASSWORD=change-this-password \
+  -v remote-coder-vscode:/home/remote-coder/.cache/remote-coder/vscode \
+  -e SECRET_KEY="$(openssl rand -hex 32)" \
+  -e ADMIN_PASSWORD='replace-with-a-strong-password' \
   remote-coder
 ```
 
-Open http://localhost:5173 for the web app or http://localhost:8000/docs for
-the API. The named volumes preserve projects, the SQLite database, and logs
-when the container is removed. This configuration runs the development
-servers; configure a unique `SECRET_KEY` and production deployment settings
-before exposing the app publicly.
+Open the web app at `https://your-domain/`; the API docs are at
+`https://your-domain/docs`. Put the container behind a TLS-terminating reverse
+proxy and forward HTTPS traffic to port 8000: production cookies are Secure and
+will not work over plain HTTP. Keep the generated `SECRET_KEY` stable and
+provide a strong `ADMIN_PASSWORD`. Named volumes preserve projects, the SQLite
+database, logs, and code-server data when the container is removed.
 
 ## Run
 
