@@ -27,6 +27,38 @@ if [[ ! -f "$ROOT_DIR/.env" && -f "$ROOT_DIR/.env.example" ]]; then
   echo "Created .env from .env.example"
 fi
 
+find_free_port() {
+  local host="$1" start_port="$2"
+  python3 - "$host" "$start_port" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+while port < 65535:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+        except OSError:
+            port += 1
+            continue
+        print(port)
+        break
+else:
+    sys.exit(1)
+PY
+}
+
+if ! free_port="$(find_free_port "$API_HOST" "$API_PORT")"; then
+  echo "No free port found for API starting at $API_PORT" >&2
+  exit 1
+fi
+if [[ "$free_port" != "$API_PORT" ]]; then
+  echo "Port $API_PORT is in use, switching API to port $free_port"
+  API_PORT="$free_port"
+fi
+
 pids=()
 
 cleanup() {

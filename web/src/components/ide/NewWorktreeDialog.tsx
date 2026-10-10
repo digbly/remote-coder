@@ -9,6 +9,8 @@ import {
 } from '../../lib/api'
 import { CloseIcon } from './icons'
 
+type Tab = 'name' | 'branch'
+
 const inputClass =
   'w-full rounded-lg border border-[var(--hover-strong)] bg-[var(--input)] px-3 py-2 text-sm text-[var(--fg)] outline-none transition placeholder:text-[var(--muted-3)] focus:border-indigo-500'
 const labelClass = 'mb-1 block text-[12px] font-medium text-[var(--fg-3)]'
@@ -21,18 +23,20 @@ interface NewWorktreeDialogProps {
 
 export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDialogProps) {
   const { t } = useTranslation()
+  const [tab, setTab] = useState<Tab>('name')
   const [name, setName] = useState('')
   const [branch, setBranch] = useState('')
-  const [createBranch, setCreateBranch] = useState(true)
   const [branches, setBranches] = useState<GitBranches | null>(null)
   const [branchesError, setBranchesError] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const firstFieldRef = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const branchRef = useRef<HTMLSelectElement>(null)
 
   useEffect(() => {
-    firstFieldRef.current?.focus()
-  }, [])
+    if (tab === 'name') nameRef.current?.focus()
+    else branchRef.current?.focus()
+  }, [tab])
 
   useEffect(() => {
     let active = true
@@ -56,17 +60,26 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose, submitting])
 
+  function switchTab(next: Tab) {
+    setTab(next)
+    setError(null)
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting) return
     setError(null)
     setSubmitting(true)
     try {
-      const worktree = await createWorktree(project.id, {
-        name: name.trim(),
-        branch: branch.trim(),
-        create_branch: createBranch,
-      })
+      const payload =
+        tab === 'name'
+          ? { name: name.trim(), branch: name.trim(), create_branch: true }
+          : {
+              name: branch.trim().replaceAll('/', '-'),
+              branch: branch.trim(),
+              create_branch: false,
+            }
+      const worktree = await createWorktree(project.id, payload)
       onCreated(worktree)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('apiErrors.unknown'))
@@ -74,7 +87,8 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
     }
   }
 
-  const canSubmit = name.trim().length > 0 && branch.trim().length > 0 && !submitting
+  const canSubmit =
+    (tab === 'name' ? name.trim().length > 0 : branch.trim().length > 0) && !submitting
 
   return (
     <div
@@ -105,6 +119,25 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
           </button>
         </div>
 
+        <div className="flex gap-1 px-4 pt-3">
+          {(['name', 'branch'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => switchTab(value)}
+              className={`rounded-md px-3 py-1.5 text-[13px] transition ${
+                tab === value
+                  ? 'bg-[var(--hover)] text-[var(--fg-strong)]'
+                  : 'text-[var(--text-2)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
+              }`}
+            >
+              {value === 'name'
+                ? t('ide.newWorktreeDialog.nameTab')
+                : t('ide.newWorktreeDialog.branchTab')}
+            </button>
+          ))}
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4 px-4 py-4">
           {error && (
             <p
@@ -115,64 +148,40 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
             </p>
           )}
 
-          <div>
-            <label htmlFor="worktree-name" className={labelClass}>
-              {t('ide.newWorktreeDialog.name')}
-            </label>
-            <input
-              id="worktree-name"
-              ref={firstFieldRef}
-              type="text"
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t('ide.newWorktreeDialog.namePlaceholder')}
-              className={inputClass}
-            />
-          </div>
-
-          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--fg-3)]">
-            <input
-              type="checkbox"
-              checked={createBranch}
-              onChange={(event) => {
-                setCreateBranch(event.target.checked)
-                setBranch('')
-              }}
-              className="h-3.5 w-3.5 accent-indigo-600"
-            />
-            {t('ide.newWorktreeDialog.createBranch')}
-          </label>
-
-          {createBranch ? (
+          {tab === 'name' ? (
+            <div>
+              <label htmlFor="worktree-name" className={labelClass}>
+                {t('ide.newWorktreeDialog.name')}
+              </label>
+              <input
+                id="worktree-name"
+                ref={nameRef}
+                type="text"
+                required
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={t('ide.newWorktreeDialog.namePlaceholder')}
+                className={inputClass}
+              />
+              <p className="mt-1 text-xs text-[var(--muted-3)]">
+                {t('ide.newWorktreeDialog.nameHint')}
+              </p>
+            </div>
+          ) : (
             <div>
               <label htmlFor="worktree-branch" className={labelClass}>
                 {t('ide.newWorktreeDialog.branch')}
               </label>
-              <input
-                id="worktree-branch"
-                type="text"
-                required
-                value={branch}
-                onChange={(event) => setBranch(event.target.value)}
-                placeholder={t('ide.newWorktreeDialog.branchPlaceholder')}
-                className={inputClass}
-              />
-            </div>
-          ) : (
-            <div>
-              <label htmlFor="worktree-existing-branch" className={labelClass}>
-                {t('ide.newWorktreeDialog.existingBranch')}
-              </label>
               <select
-                id="worktree-existing-branch"
+                id="worktree-branch"
+                ref={branchRef}
                 required
                 value={branch}
                 onChange={(event) => setBranch(event.target.value)}
                 className={inputClass}
               >
                 <option value="" disabled>
-                  {t('ide.newWorktreeDialog.branch')}
+                  {t('ide.newWorktreeDialog.branchPlaceholder')}
                 </option>
                 {(branches?.branches ?? []).map((value) => (
                   <option key={value} value={value}>
