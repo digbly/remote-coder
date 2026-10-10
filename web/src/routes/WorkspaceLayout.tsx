@@ -9,6 +9,7 @@ import {
   withVSCodeTab,
   withWorktreeTerminal,
   type ActiveProjectRef,
+  type WorkspaceTab,
 } from '../lib/workspaceStore'
 
 function parseProjectId(projectId: string | undefined): number | null {
@@ -75,6 +76,20 @@ export function WorkspaceLayout() {
     update((prev) => ({ ...prev, workspaces: withVSCodeTab(prev.workspaces, ref, worktree) }))
   }
 
+  function selectTab(tab: WorkspaceTab) {
+    const projectId = tab.projectId
+    if (projectId == null) return
+    update((prev) => {
+      const workspace = prev.workspaces[projectId]
+      if (!workspace || !workspace.tabs.some((item) => item.id === tab.id)) return prev
+      return {
+        ...prev,
+        workspaces: { ...prev.workspaces, [projectId]: { ...workspace, activeId: tab.id } },
+      }
+    })
+    if (projectId !== urlProjectId) navigate(`/projects/${projectId}`)
+  }
+
   return (
     <IdeShell
       user={user}
@@ -85,6 +100,7 @@ export function WorkspaceLayout() {
       onOpenProject={openProject}
       onOpenWorktree={openWorktree}
       onOpenVSCode={openVSCode}
+      onSelectTab={selectTab}
     />
   )
 }

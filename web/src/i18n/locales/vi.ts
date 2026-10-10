@@ -139,6 +139,8 @@ const vi = {
     searchMatchWholeWord: 'Khớp toàn bộ từ',
     searchUseRegex: 'Dùng biểu thức chính quy',
     searchFailed: 'Tìm kiếm thất bại',
+    searchOpenTabs: 'Tìm tab đang mở',
+    searchCurrentTab: 'Hiện tại',
     save: 'Lưu',
     saving: 'Đang lưu...',
     saveFailed: 'Không thể lưu tệp',

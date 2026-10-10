@@ -139,6 +139,8 @@ const en = {
     searchMatchWholeWord: 'Match whole word',
     searchUseRegex: 'Use regular expression',
     searchFailed: 'Search failed',
+    searchOpenTabs: 'Search open tabs',
+    searchCurrentTab: 'Current',
     save: 'Save',
     saving: 'Saving...',
     saveFailed: 'Could not save the file',

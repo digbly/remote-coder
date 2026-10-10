@@ -1,24 +1,28 @@
 import { useTranslation } from 'react-i18next'
 import type { AgentDefinition } from '../../lib/agents'
-import type { TabKind, WorkspaceTab } from '../../lib/workspaceStore'
+import type { WorkspaceTab } from '../../lib/workspaceStore'
 import { CloseIcon, CommandIcon } from './icons'
+import { GlobalTabSearch } from './GlobalTabSearch'
 import { NewTabMenu } from './NewTabMenu'
-
-const TAB_DOT_COLORS: Record<TabKind, string> = {
-  terminal: 'bg-sky-400',
-  editor: 'bg-indigo-400',
-  vscode: 'bg-blue-400',
-}
+import { TAB_DOT_COLORS } from './tabDisplay'
 
 interface TopTabsProps {
   tabs: WorkspaceTab[]
+  allTabs: WorkspaceTab[]
   activeId: string | null
-  onSelect: (id: string) => void
+  onSelect: (tab: WorkspaceTab) => void
   onClose: (id: string) => void
   onNew: (agent?: AgentDefinition) => void
 }
 
-export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsProps) {
+export function TopTabs({
+  tabs,
+  allTabs,
+  activeId,
+  onSelect,
+  onClose,
+  onNew,
+}: TopTabsProps) {
   const { t } = useTranslation()
 
   return (
@@ -37,7 +41,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
             >
               <button
                 type="button"
-                onClick={() => onSelect(tab.id)}
+                onClick={() => onSelect(tab)}
                 className="flex min-w-0 items-center gap-2"
               >
                 <span className={`h-2 w-2 shrink-0 rounded-sm ${TAB_DOT_COLORS[tab.kind]}`} />
@@ -58,6 +62,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
       </div>
 
       <div className="flex shrink-0 items-center gap-2 px-3">
+        <GlobalTabSearch tabs={allTabs} activeId={activeId} onSelect={onSelect} />
         <button
           type="button"
           className="flex items-center gap-1.5 rounded-md bg-[var(--hover)] px-2.5 py-1 text-[12px] text-[var(--fg-2)] transition hover:bg-[var(--hover-strong)]"

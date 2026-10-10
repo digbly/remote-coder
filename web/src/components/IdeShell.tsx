@@ -9,6 +9,7 @@ import {
   withTabTitle,
   type ActiveProjectRef,
   type SyncedState,
+  type WorkspaceTab,
 } from '../lib/workspaceStore'
 import { Sidebar } from './ide/Sidebar'
 import { RightPanel } from './ide/RightPanel'
@@ -60,6 +61,7 @@ interface IdeShellProps {
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
+  onSelectTab: (tab: WorkspaceTab) => void
 }
 
 export function IdeShell({
@@ -71,6 +73,7 @@ export function IdeShell({
   onOpenProject,
   onOpenWorktree,
   onOpenVSCode,
+  onSelectTab,
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
@@ -106,18 +109,6 @@ export function IdeShell({
     },
     [update],
   )
-
-  function selectTab(id: string) {
-    if (activeProjectId == null) return
-    update((prev) => {
-      const workspace = prev.workspaces[activeProjectId]
-      if (!workspace) return prev
-      return {
-        ...prev,
-        workspaces: { ...prev.workspaces, [activeProjectId]: { ...workspace, activeId: id } },
-      }
-    })
-  }
 
   function closeTab(id: string) {
     if (activeProjectId == null) return
@@ -171,8 +162,9 @@ export function IdeShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <TopTabs
           tabs={activeTabs}
+          allTabs={allTabs}
           activeId={activeTabId}
-          onSelect={selectTab}
+          onSelect={onSelectTab}
           onClose={closeTab}
           onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
         />
