@@ -7,6 +7,13 @@ export type ChatStreamEvent =
     }
   | { type: 'text_delta'; text: string }
   | {
+      type: 'command_approval'
+      approval_id: string
+      command: string
+      reason: string
+    }
+  | { type: 'command_approval_expired'; approval_id: string }
+  | {
       type: 'proposal'
       id: string
       path: string
@@ -59,7 +66,21 @@ function parseEvent(line: string): ChatStreamEvent {
   ) {
     return event as ChatStreamEvent
   }
+  if (
+    event.type === 'command_approval_expired' &&
+    typeof event.approval_id === 'string'
+  ) {
+    return event as ChatStreamEvent
+  }
   if (event.type === 'text_delta' && typeof event.text === 'string') {
+    return event as ChatStreamEvent
+  }
+  if (
+    event.type === 'command_approval' &&
+    typeof event.approval_id === 'string' &&
+    typeof event.command === 'string' &&
+    typeof event.reason === 'string'
+  ) {
     return event as ChatStreamEvent
   }
   if (

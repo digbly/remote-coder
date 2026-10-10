@@ -68,6 +68,7 @@ def test_chat_streams_and_persists_a_resumable_conversation(
             "list_project_files",
             "read_project_file",
             "propose_file_change",
+            "run_project_command",
         }
         calls["stream"] += 1
         if calls["stream"] == 2:
@@ -132,6 +133,60 @@ def test_chat_streams_and_persists_a_resumable_conversation(
         ]["id"]
         == conversation_id
     )
+
+
+def test_chat_runs_provider_command_and_returns_output_to_provider(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    settings_url = f"/api/v1/projects/{project_id}/ai-chat/command-permission"
+    response = client.put(
+        settings_url,
+        json={"mode": "allow_all"},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, _client, _api_key, _model, _system, messages, tools):
+        assert "run_project_command" in {tool.name for tool in tools}
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("command-1", "run_project_command", {"command": "pwd"})
+        else:
+            result = json.loads(messages[-1].content)
+            assert result["output"].strip() == str(project_path)
+            assert result["exit_code"] == 0
+            yield TextDelta("Command completed")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Show my working directory",
+            },
+            headers=_csrf(client),
+        )
+    )
+
+    assert [event["type"] for event in events] == [
+        "message_start",
+        "text_delta",
+        "complete",
+    ]
+    assert events[1]["text"] == "Command completed"
 
 
 def test_chat_rejects_unavailable_model_before_persisting_messages(

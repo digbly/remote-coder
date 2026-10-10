@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  decideAICommand,
   consumeChatStream,
+  fetchAICommandPermission,
   fetchAIConversation,
   fetchAIConversations,
   fetchAIProviderModels,
@@ -9,7 +11,9 @@ import {
   fetchAIProviders,
   openAIChatStream,
   updateAIProposal,
+  updateAICommandPermission,
   type AIChatMessage,
+  type AICommandPermission,
   type AIChangeProposal,
   type AIConversation,
   type AIProvider,
@@ -39,6 +43,13 @@ export function ChatPanel({
   const [modelId, setModelId] = useState('')
   const [conversations, setConversations] = useState<AIConversation[]>([])
   const [proposals, setProposals] = useState<AIChangeProposal[]>([])
+  const [commandPermission, setCommandPermission] = useState<AICommandPermission>('manual')
+  const [permissionSaving, setPermissionSaving] = useState(false)
+  const [pendingCommand, setPendingCommand] = useState<{
+    approvalId: string
+    command: string
+  } | null>(null)
+  const [approvalBusy, setApprovalBusy] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(conversationId ?? '')
   const [messages, setMessages] = useState<AIChatMessage[]>([])
   const [draft, setDraft] = useState('')
@@ -51,12 +62,17 @@ export function ChatPanel({
 
   useEffect(() => {
     let alive = true
-    Promise.all([fetchAIProviders(), fetchAIConversations(projectId)])
-      .then(([providerList, conversationList]) => {
+    Promise.all([
+      fetchAIProviders(),
+      fetchAIConversations(projectId),
+      fetchAICommandPermission(projectId),
+    ])
+      .then(([providerList, conversationList, permission]) => {
         if (!alive) return
         setProviders(providerList.providers)
         setProviderId((current) => current ?? providerList.providers[0]?.id ?? null)
         setConversations(conversationList)
+        setCommandPermission(permission)
         setLoadError('')
       })
       .catch((reason: unknown) => {
@@ -119,12 +135,39 @@ export function ChatPanel({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [messages])
+  }, [messages, pendingCommand])
 
   async function refreshConversations(): Promise<AIConversation[]> {
     const result = await fetchAIConversations(projectId)
     setConversations(result)
     return result
+  }
+
+  async function changeCommandPermission(mode: AICommandPermission) {
+    setPermissionSaving(true)
+    setError('')
+    try {
+      setCommandPermission(await updateAICommandPermission(projectId, mode))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('chat.permissionSaveFailed'))
+    } finally {
+      setPermissionSaving(false)
+    }
+  }
+
+  async function decideCommand(approved: boolean) {
+    if (!pendingCommand || approvalBusy) return
+    setApprovalBusy(true)
+    setError('')
+    try {
+      await decideAICommand(projectId, pendingCommand.approvalId, approved)
+      setPendingCommand(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('chat.commandDecisionFailed'))
+      abortRef.current?.abort()
+    } finally {
+      setApprovalBusy(false)
+    }
   }
 
   async function selectConversation(id: string) {
@@ -207,6 +250,14 @@ export function ChatPanel({
                 : message,
             ),
           )
+        } else if (streamEvent.type === 'command_approval') {
+          setPendingCommand({
+            approvalId: streamEvent.approval_id,
+            command: streamEvent.command,
+          })
+        } else if (streamEvent.type === 'command_approval_expired') {
+          setPendingCommand(null)
+          setError(t('chat.commandApprovalExpired'))
         } else if (streamEvent.type === 'proposal') {
           const proposal: AIChangeProposal = {
             id: streamEvent.id,
@@ -270,6 +321,7 @@ export function ChatPanel({
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null
+      setPendingCommand(null)
       setStreaming(false)
     }
   }
@@ -320,7 +372,7 @@ export function ChatPanel({
               setModels([])
               setModelId('')
             }}
-            disabled={streaming}
+            disabled={loading || streaming || permissionSaving}
           >
             <option value="">{t('chat.selectProvider')}</option>
             {providers.map((item) => (
@@ -328,6 +380,25 @@ export function ChatPanel({
                 {item.name} ({item.kind})
               </option>
             ))}
+          </select>
+        </label>
+        <label className="text-xs text-[var(--muted-2)]">
+          {t('chat.commandPermission')}
+          <select
+            className={`ml-2 ${selectClass}`}
+            value={commandPermission}
+            onChange={(event) => {
+              const mode = event.target.value
+              if (mode === 'manual' || mode === 'risky' || mode === 'allow_all') {
+                void changeCommandPermission(mode)
+              }
+            }}
+            disabled={loading || streaming || permissionSaving}
+            aria-label={t('chat.commandPermission')}
+          >
+            <option value="manual">{t('chat.permissionManual')}</option>
+            <option value="risky">{t('chat.permissionRisky')}</option>
+            <option value="allow_all">{t('chat.permissionAllowAll')}</option>
           </select>
         </label>
         <label className="text-xs text-[var(--muted-2)]">
@@ -399,6 +470,37 @@ export function ChatPanel({
             )}
           </article>
         ))}
+        {pendingCommand && (
+          <article className="mx-auto max-w-3xl rounded-xl border border-amber-500/50 bg-[var(--surface)] p-4">
+            <h3 className="text-sm font-semibold text-[var(--fg-strong)]">
+              {t('chat.commandApprovalTitle')}
+            </h3>
+            <p className="mt-1 text-xs text-[var(--muted-2)]">
+              {t('chat.commandApprovalHint')}
+            </p>
+            <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-[var(--bg)] p-3 text-xs leading-5 text-[var(--fg-2)]">
+              <code>{pendingCommand.command}</code>
+            </pre>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void decideCommand(true)}
+                disabled={approvalBusy}
+                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {t('chat.runCommand')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void decideCommand(false)}
+                disabled={approvalBusy}
+                className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--fg-2)] hover:bg-[var(--hover)] disabled:opacity-50"
+              >
+                {t('chat.cancelCommand')}
+              </button>
+            </div>
+          </article>
+        )}
         {proposals.map((proposal) => (
           <article
             key={`proposal-${proposal.id}`}

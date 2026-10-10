@@ -1,13 +1,17 @@
+from pathlib import Path
+
 from fastapi import APIRouter, status
 from fastapi.responses import StreamingResponse
 
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import ErrorCode, api_error, error_responses
 from app.modules.ai_changes.router import router as ai_changes_router
-from app.modules.ai_chat import service
+from app.modules.ai_chat import approvals, service
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.schemas import (
     ChatTurnRequest,
+    CommandApprovalDecision,
+    CommandPermissionRead,
     ConversationDetail,
     ConversationListResponse,
 )
@@ -18,6 +22,53 @@ from app.modules.projects import service as project_service
 
 router = APIRouter(prefix="/projects/{project_id}/ai-chat", tags=["ai-chat"])
 _CHAT_ERRORS = error_responses(401, 403, 404, 413, 422, 502, 503)
+
+
+@router.get("/command-permission", response_model=CommandPermissionRead)
+def get_command_permission(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+) -> CommandPermissionRead:
+    project_service.get_project(db, current_user, project_id)
+    return CommandPermissionRead(mode=service.get_command_permission(db, current_user.id))
+
+
+@router.put("/command-permission", response_model=CommandPermissionRead)
+def update_command_permission(
+    project_id: int,
+    payload: CommandPermissionRead,
+    current_user: CurrentUser,
+    db: DbDep,
+    _csrf: CsrfDep,
+) -> CommandPermissionRead:
+    project_service.get_project(db, current_user, project_id)
+    return CommandPermissionRead(
+        mode=service.set_command_permission(db, current_user.id, payload.mode)
+    )
+
+
+@router.post(
+    "/commands/{approval_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(401, 403, 404),
+)
+async def decide_command_approval(
+    project_id: int,
+    approval_id: str,
+    payload: CommandApprovalDecision,
+    current_user: CurrentUser,
+    db: DbDep,
+    _csrf: CsrfDep,
+) -> None:
+    project_service.get_project(db, current_user, project_id)
+    if not approvals.resolve_approval(
+        approval_id,
+        current_user.id,
+        project_id,
+        payload.approved,
+    ):
+        raise api_error(ErrorCode.AI_COMMAND_APPROVAL_NOT_FOUND, status_code=404)
 
 
 @router.get("/conversations", response_model=ConversationListResponse, responses=_CHAT_ERRORS)
@@ -67,6 +118,7 @@ async def stream_message(
     _, api_key, adapter = provider_service.chat_credentials(
         db, current_user.id, payload.provider_id, settings
     )
+    permission = service.get_command_permission(db, current_user.id)
     (
         project,
         conversation,
@@ -88,7 +140,10 @@ async def stream_message(
             adapter=adapter,
             api_key=api_key,
             model_id=payload.model_id,
-            context=ProjectContext(db, current_user, project.id, conversation.id),
+            context=ProjectContext(
+                db, current_user, project.id, conversation.id, Path(project.path)
+            ),
+            permission=permission,
             conversation_id=conversation.id,
             conversation_title=conversation.title,
             user_message_id=user_message.id,

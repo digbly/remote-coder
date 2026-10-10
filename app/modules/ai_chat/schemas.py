@@ -1,8 +1,27 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.ai_chat.models import MessageRole, MessageStatus
+
+
+class CommandPermission(StrEnum):
+    MANUAL = "manual"
+    RISKY = "risky"
+    ALLOW_ALL = "allow_all"
+
+
+class CommandPermissionRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: CommandPermission
+
+
+class CommandApprovalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approved: bool
 
 
 class ChatTurnRequest(BaseModel):

@@ -8,9 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ErrorCode
 from app.core.i18n import translate
-from app.modules.ai_chat import service
+from app.modules.ai_chat import approvals, service
+from app.modules.ai_chat.commands import (
+    RUN_PROJECT_COMMAND_NAME,
+    command_from_call,
+    command_needs_approval,
+    execute_project_command,
+)
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage, MessageStatus
+from app.modules.ai_chat.schemas import CommandPermission
 from app.modules.ai_chat.tools import (
     MAX_TOOL_CALLS_PER_TURN,
     MAX_TOOL_RESULT_CHARS,
@@ -34,10 +41,12 @@ MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
     "You are a code assistant for the selected project. You may only inspect project files "
-    "using the provided project tools. You may create a proposed replacement for an existing "
+    "using the provided project tools. You may run commands using run_project_command; "
+    "the user may need to approve them. You may create a proposed replacement for an existing "
     "file using propose_file_change; this only creates a reviewable diff and does not change "
-    "the file. Never claim to have applied a change or run a command. Do not request or use "
-    "paths outside the project. Tell the user when a proposal is ready for review."
+    "the file. Never claim to have applied a change. Only claim command execution when the "
+    "tool returned a successful exit status. Do not request or use paths outside the project. "
+    "Tell the user when a proposal is ready for review."
 )
 
 
@@ -57,6 +66,7 @@ async def stream_chat_turn(
     user_content: str,
     assistant_message: ChatMessage,
     history: list[ProviderMessage],
+    permission: CommandPermission = CommandPermission.MANUAL,
 ) -> AsyncIterator[bytes]:
     text_parts: list[str] = []
     output_chars = 0
@@ -123,7 +133,55 @@ async def stream_chat_turn(
                     )
                 )
                 for call in tool_calls:
-                    result = execute_project_tool(context, call)
+                    command = command_from_call(call)
+                    if call.name == RUN_PROJECT_COMMAND_NAME:
+                        if command is None or context.project_path is None:
+                            result = json.dumps({"error": "invalid_command_arguments"})
+                        else:
+                            result = ""
+                            if command_needs_approval(command, permission):
+                                try:
+                                    pending = approvals.create_approval(
+                                        context.user.id, context.project_id, command
+                                    )
+                                except approvals.ApprovalCapacityError:
+                                    result = json.dumps({"error": "approval_capacity_reached"})
+                                    pending = None
+                                if pending is not None:
+                                    try:
+                                        yield _event(
+                                            {
+                                                "type": "command_approval",
+                                                "approval_id": pending.approval_id,
+                                                "command": command,
+                                                "reason": (
+                                                    "manual_permission"
+                                                    if permission is CommandPermission.MANUAL
+                                                    else "command_may_change_state"
+                                                ),
+                                            }
+                                        )
+                                        try:
+                                            approved = await approvals.wait_for_decision(pending)
+                                        except TimeoutError:
+                                            result = json.dumps({"error": "approval_timed_out"})
+                                            approved = False
+                                            yield _event(
+                                                {
+                                                    "type": "command_approval_expired",
+                                                    "approval_id": pending.approval_id,
+                                                }
+                                            )
+                                        if not approved and not result:
+                                            result = json.dumps({"error": "command_cancelled"})
+                                    finally:
+                                        approvals.discard_approval(pending)
+                            if not result:
+                                result = await execute_project_command(
+                                    context.project_path, command
+                                )
+                    else:
+                        result = execute_project_tool(context, call)
                     if call.name == "propose_file_change":
                         try:
                             proposal_result = json.loads(result)

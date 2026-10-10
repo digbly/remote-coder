@@ -2,6 +2,7 @@ import json
 
 from fastapi import HTTPException
 
+from app.modules.ai_chat.commands import RUN_PROJECT_COMMAND
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_providers.base import ProviderTool, ToolCall
 
@@ -45,6 +46,7 @@ PROJECT_TOOLS = (
             "additionalProperties": False,
         },
     ),
+    RUN_PROJECT_COMMAND,
 )
 
 

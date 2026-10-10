@@ -10,6 +10,7 @@ from app.core.errors import validation_exception_handler
 from app.core.i18n import resolve_language, set_language
 from app.core.logging import configure_logging
 from app.modules.agents.router import router as agents_router
+from app.modules.ai_chat.approvals import cancel_all as cancel_pending_approvals
 from app.modules.ai_chat.router import router as ai_chat_router
 from app.modules.ai_providers.router import router as ai_providers_router
 from app.modules.auth.router import router as auth_router
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            cancel_pending_approvals()
             reaper.cancel()
             with suppress(asyncio.CancelledError):
                 await reaper

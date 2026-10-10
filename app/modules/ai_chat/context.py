@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,7 @@ class ProjectContext:
     user: User
     project_id: int
     conversation_id: str = ""
+    project_path: Path | None = None
 
     def list_files(self, path: str | None = None) -> dict[str, object]:
         tree = project_service.list_files(self.db, self.user, self.project_id, path)

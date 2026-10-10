@@ -50,6 +50,7 @@ const ERROR_CODE_KEYS = {
   AI_CHAT_CONVERSATION_NOT_FOUND: 'apiErrors.aiChatConversationNotFound',
   AI_CHAT_MODEL_UNAVAILABLE: 'apiErrors.aiChatModelUnavailable',
   AI_CHAT_LIMIT_EXCEEDED: 'apiErrors.aiChatLimitExceeded',
+  AI_COMMAND_APPROVAL_NOT_FOUND: 'apiErrors.aiCommandApprovalNotFound',
   AI_CHANGE_PROPOSAL_NOT_FOUND: 'apiErrors.aiChangeProposalNotFound',
   AI_CHANGE_PROPOSAL_NOT_PENDING: 'apiErrors.aiChangeProposalNotPending',
   AI_CHANGE_PROPOSAL_STALE: 'apiErrors.aiChangeProposalStale',
@@ -289,6 +290,54 @@ export interface AIChangeProposal {
   status: 'pending' | 'applied' | 'rejected' | 'stale'
   created_at: string
   updated_at: string
+}
+
+export type AICommandPermission = 'manual' | 'risky' | 'allow_all'
+
+export async function fetchAICommandPermission(projectId: number): Promise<AICommandPermission> {
+  const response = await request(`/projects/${projectId}/ai-chat/command-permission`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { mode: AICommandPermission }
+  return result.mode
+}
+
+export async function updateAICommandPermission(
+  projectId: number,
+  mode: AICommandPermission,
+): Promise<AICommandPermission> {
+  const response = await request(`/projects/${projectId}/ai-chat/command-permission`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { mode: AICommandPermission }
+  return result.mode
+}
+
+export async function decideAICommand(
+  projectId: number,
+  approvalId: string,
+  approved: boolean,
+): Promise<void> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/commands/${encodeURIComponent(approvalId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved }),
+    },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])

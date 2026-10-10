@@ -1,9 +1,16 @@
+import logging
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core import user_settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.ai_chat.models import ChatMessage, Conversation, MessageRole, MessageStatus
-from app.modules.ai_chat.schemas import ChatMessageRead, ConversationDetail, ConversationRead
+from app.modules.ai_chat.schemas import (
+    ChatMessageRead,
+    CommandPermission,
+    ConversationDetail,
+    ConversationRead,
+)
 from app.modules.ai_providers.base import ChatMessage as ProviderMessage
 from app.modules.auth.models import User
 from app.modules.projects import service as project_service
@@ -13,6 +20,24 @@ MAX_HISTORY_MESSAGES = 20
 MAX_HISTORY_CHARS = 80_000
 MAX_CONVERSATIONS = 100
 DEFAULT_TITLE = "New chat"
+COMMAND_PERMISSION_KEY = "ai_chat_command_permission"
+logger = logging.getLogger(__name__)
+
+
+def get_command_permission(db: Session, user_id: int) -> CommandPermission:
+    value = user_settings.get_value(db, user_id, COMMAND_PERMISSION_KEY)
+    try:
+        return CommandPermission(value) if value is not None else CommandPermission.MANUAL
+    except ValueError as exc:
+        logger.error("Invalid saved AI chat command permission for user_id=%s", user_id)
+        raise RuntimeError("saved AI chat command permission is invalid") from exc
+
+
+def set_command_permission(
+    db: Session, user_id: int, mode: CommandPermission
+) -> CommandPermission:
+    user_settings.set_value(db, user_id, COMMAND_PERMISSION_KEY, mode.value)
+    return mode
 
 
 def list_conversations(db: Session, user: User, project_id: int) -> list[ConversationRead]:
