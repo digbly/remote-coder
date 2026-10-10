@@ -78,6 +78,10 @@ gh auth login
 gh auth status
 ```
 
+The Dev Container installs GitHub CLI automatically. For other environments,
+install it using the [official installation instructions](https://github.com/cli/cli/blob/trunk/docs/install_linux.md),
+then verify it with `gh --version`.
+
 ## 5. Run
 
 Run the API and web dev servers together:
