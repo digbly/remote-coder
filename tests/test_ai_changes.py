@@ -178,6 +178,384 @@ def test_stale_or_foreign_proposals_cannot_be_applied(
     assert foreign.status_code == 404
 
 
+def _create_new_file_proposal(
+    client: TestClient,
+    project_id: int,
+    provider_id: int,
+    monkeypatch,
+    *,
+    path: str = "new_seo.tsx",
+    content: str = "export const Seo = 1\n",
+) -> tuple[str, str, dict[str, object]]:
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    calls = 0
+
+    async def stream(self, *_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield ToolCall("create-1", "create_project_file", {"path": path, "content": content})
+        else:
+            yield TextDelta("I proposed a new file.")
+        yield TurnComplete("tool_calls" if calls == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Create a new file",
+            },
+            headers=_csrf(client),
+        )
+    )
+    proposal_event = next(event for event in events if event["type"] == "proposal")
+    return events[0]["conversation"]["id"], proposal_event["id"], proposal_event
+
+
+def test_create_file_proposal_writes_only_after_apply(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    conversation_id, proposal_id, event = _create_new_file_proposal(
+        client, project_id, provider_id, monkeypatch
+    )
+    target = path / "new_seo.tsx"
+
+    assert not target.exists()
+    assert event["path"] == "new_seo.tsx"
+    assert "+export const Seo = 1" in event["diff"]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+        f"/proposals/{proposal_id}/apply",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["proposal"]["status"] == "applied"
+    assert target.read_text(encoding="utf-8") == "export const Seo = 1\n"
+
+
+def test_create_file_proposal_is_stale_when_file_appears(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    conversation_id, proposal_id, _ = _create_new_file_proposal(
+        client, project_id, provider_id, monkeypatch
+    )
+    target = path / "new_seo.tsx"
+    target.write_text("created elsewhere\n", encoding="utf-8")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+        f"/proposals/{proposal_id}/apply",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "AI_CHANGE_PROPOSAL_STALE"
+    assert target.read_text(encoding="utf-8") == "created elsewhere\n"
+
+
+def test_create_file_proposal_rejects_existing_path(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    existing = path / "new_seo.tsx"
+    existing.write_text("already here\n", encoding="utf-8")
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    tool_results: list[str] = []
+    calls = 0
+
+    async def stream(self, _client, _api_key, _model, _system, messages, _tools):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield ToolCall(
+                "create-1", "create_project_file", {"path": "new_seo.tsx", "content": "x"}
+            )
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("That file already exists.")
+        yield TurnComplete("tool_calls" if calls == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Create a new file",
+            },
+            headers=_csrf(client),
+        )
+    )
+
+    assert all(event["type"] != "proposal" for event in events)
+    assert tool_results and "FILE_ALREADY_EXISTS" in tool_results[0]
+    assert existing.read_text(encoding="utf-8") == "already here\n"
+
+
+def _run_tool_flow(
+    client: TestClient,
+    project_id: int,
+    provider_id: int,
+    monkeypatch,
+    name: str,
+    arguments: dict[str, object],
+    *,
+    permission: str | None = None,
+    captured: list[str] | None = None,
+) -> list[dict[str, object]]:
+    if permission is not None:
+        client.put(
+            f"/api/v1/projects/{project_id}/ai-chat/command-permission",
+            json={"mode": permission},
+            headers=_csrf(client),
+        )
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    calls = 0
+
+    async def stream(self, _client, _api_key, _model, _system, messages, _tools):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield ToolCall("call-1", name, arguments)
+        else:
+            if captured is not None:
+                captured.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    return _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "do it"},
+            headers=_csrf(client),
+        )
+    )
+
+
+def _apply_url(project_id: int, events: list[dict[str, object]], proposal_id: object) -> str:
+    conversation_id = events[0]["conversation"]["id"]
+    return (
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+        f"/proposals/{proposal_id}/apply"
+    )
+
+
+def test_delete_file_proposal_is_removed_only_after_apply(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    target = path / "main.py"
+    target.write_text("bye\n", encoding="utf-8")
+
+    events = _run_tool_flow(
+        client, project_id, provider_id, monkeypatch, "delete_project_file", {"path": "main.py"}
+    )
+    proposal = next(event for event in events if event["type"] == "proposal")
+
+    assert proposal["change_type"] == "delete"
+    assert proposal["status"] == "pending"
+    assert "-bye" in proposal["diff"]
+    assert target.exists()
+
+    applied = client.post(_apply_url(project_id, events, proposal["id"]), headers=_csrf(client))
+    assert applied.status_code == 200
+    assert applied.json()["proposal"]["status"] == "applied"
+    assert not target.exists()
+
+
+def test_delete_directory_proposal_removes_the_tree(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    package = path / "pkg"
+    package.mkdir()
+    (package / "a.py").write_text("a", encoding="utf-8")
+    (package / "b.py").write_text("b", encoding="utf-8")
+
+    events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "delete_project_directory",
+        {"path": "pkg"},
+    )
+    proposal = next(event for event in events if event["type"] == "proposal")
+
+    assert proposal["change_type"] == "delete_directory"
+    assert "pkg/a.py" in proposal["diff"]
+    assert package.exists()
+
+    applied = client.post(_apply_url(project_id, events, proposal["id"]), headers=_csrf(client))
+    assert applied.status_code == 200
+    assert not package.exists()
+
+
+def test_create_directory_proposal_makes_the_folder(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+
+    events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "create_project_directory",
+        {"path": "assets"},
+    )
+    proposal = next(event for event in events if event["type"] == "proposal")
+
+    assert proposal["change_type"] == "create_directory"
+    assert not (path / "assets").exists()
+
+    applied = client.post(_apply_url(project_id, events, proposal["id"]), headers=_csrf(client))
+    assert applied.status_code == 200
+    assert (path / "assets").is_dir()
+
+
+def test_move_proposal_renames_the_entry(client: TestClient, projects_root, monkeypatch) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    (path / "a.py").write_text("payload\n", encoding="utf-8")
+
+    events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "move_project_entry",
+        {"path": "a.py", "target_path": "b.py"},
+    )
+    proposal = next(event for event in events if event["type"] == "proposal")
+
+    assert proposal["change_type"] == "move"
+    assert proposal["target_path"] == "b.py"
+
+    applied = client.post(_apply_url(project_id, events, proposal["id"]), headers=_csrf(client))
+    assert applied.status_code == 200
+    assert not (path / "a.py").exists()
+    assert (path / "b.py").read_text(encoding="utf-8") == "payload\n"
+
+
+def test_allow_all_permission_applies_create_immediately(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+
+    events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "create_project_file",
+        {"path": "new.py", "content": "hello\n"},
+        permission="allow_all",
+    )
+    proposal = next(event for event in events if event["type"] == "proposal")
+
+    assert proposal["status"] == "applied"
+    assert (path / "new.py").read_text(encoding="utf-8") == "hello\n"
+
+
+def test_risky_permission_reviews_delete_but_applies_create(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    (path / "main.py").write_text("keep\n", encoding="utf-8")
+
+    delete_events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "delete_project_file",
+        {"path": "main.py"},
+        permission="risky",
+    )
+    assert next(e for e in delete_events if e["type"] == "proposal")["status"] == "pending"
+    assert (path / "main.py").exists()
+
+    create_events = _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "create_project_file",
+        {"path": "added.py", "content": "x"},
+        permission="risky",
+    )
+    assert next(e for e in create_events if e["type"] == "proposal")["status"] == "applied"
+    assert (path / "added.py").exists()
+
+
+def test_search_tool_reports_matching_lines(client: TestClient, projects_root, monkeypatch) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    (path / "src.py").write_text("a needle here\n", encoding="utf-8")
+
+    captured: list[str] = []
+    _run_tool_flow(
+        client,
+        project_id,
+        provider_id,
+        monkeypatch,
+        "search_project_files",
+        {"query": "needle"},
+        captured=captured,
+    )
+
+    assert captured and "needle" in captured[0]
+
+
 def test_proposal_write_does_not_overwrite_concurrent_editor_save(
     tmp_path: Path, monkeypatch
 ) -> None:

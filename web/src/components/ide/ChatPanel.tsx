@@ -26,13 +26,25 @@ const selectClass =
 type ToolLabelKey =
   | 'chat.toolList'
   | 'chat.toolRead'
+  | 'chat.toolSearch'
   | 'chat.toolPropose'
+  | 'chat.toolCreate'
+  | 'chat.toolDelete'
+  | 'chat.toolMkdir'
+  | 'chat.toolRmdir'
+  | 'chat.toolMove'
   | 'chat.toolCommand'
 
 const TOOL_LABEL_KEYS: Record<string, ToolLabelKey> = {
   list_project_files: 'chat.toolList',
   read_project_file: 'chat.toolRead',
+  search_project_files: 'chat.toolSearch',
   propose_file_change: 'chat.toolPropose',
+  create_project_file: 'chat.toolCreate',
+  delete_project_file: 'chat.toolDelete',
+  create_project_directory: 'chat.toolMkdir',
+  delete_project_directory: 'chat.toolRmdir',
+  move_project_entry: 'chat.toolMove',
   run_project_command: 'chat.toolCommand',
 }
 
@@ -125,6 +137,7 @@ export function ChatPanel({
   const [loadError, setLoadError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const optimisticIdRef = useRef(0)
 
   useEffect(() => {
     let alive = true
@@ -270,9 +283,31 @@ export function ChatPanel({
     setStreaming(true)
     const controller = new AbortController()
     abortRef.current = controller
-    let assistantId: number | null = null
+    const optimisticUserId = optimisticIdRef.current - 1
+    const optimisticAssistantId = optimisticUserId - 1
+    optimisticIdRef.current = optimisticAssistantId
+    let assistantId: number | null = optimisticAssistantId
     let activeConversationId = selectedConversation
     let streamCompleted = false
+    setMessages((current) => [
+      ...current,
+      {
+        id: optimisticUserId,
+        role: 'user',
+        content,
+        thinking: '',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: optimisticAssistantId,
+        role: 'assistant',
+        content: '',
+        thinking: '',
+        status: 'streaming',
+        created_at: new Date().toISOString(),
+      },
+    ])
     try {
       const response = await openAIChatStream(
         projectId,
@@ -291,25 +326,17 @@ export function ChatPanel({
           activeConversationId = streamEvent.conversation.id
           setSelectedConversation(streamEvent.conversation.id)
           onConversationChange(streamEvent.conversation.id, streamEvent.conversation.title)
-          setMessages((current) => [
-            ...current,
-            {
-              id: streamEvent.user_message_id,
-              role: 'user',
-              content,
-              thinking: '',
-              status: 'completed',
-              created_at: new Date().toISOString(),
-            },
-            {
-              id: streamEvent.assistant_message_id,
-              role: 'assistant',
-              content: '',
-              thinking: '',
-              status: 'streaming',
-              created_at: new Date().toISOString(),
-            },
-          ])
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id === optimisticUserId) {
+                return { ...message, id: streamEvent.user_message_id }
+              }
+              if (message.id === optimisticAssistantId) {
+                return { ...message, id: streamEvent.assistant_message_id }
+              }
+              return message
+            }),
+          )
         } else if (streamEvent.type === 'text_delta') {
           setMessages((current) =>
             current.map((message) =>
@@ -339,6 +366,8 @@ export function ChatPanel({
             id: streamEvent.id,
             conversation_id: activeConversationId,
             path: streamEvent.path,
+            target_path: streamEvent.target_path,
+            change_type: streamEvent.change_type as AIChangeProposal['change_type'],
             diff: streamEvent.diff,
             status: streamEvent.status,
             created_at: new Date().toISOString(),
@@ -619,17 +648,24 @@ export function ChatPanel({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold text-[var(--fg-strong)]">
-                  {t('chat.proposalTitle')}
+                  {t('chat.proposalTitle')} · {t(`chat.proposalKind.${proposal.change_type}`)}
                 </h3>
-                <p className="text-xs text-[var(--muted-2)]">{proposal.path}</p>
+                <p className="text-xs text-[var(--muted-2)]">
+                  {proposal.path}
+                  {proposal.change_type === 'move' && proposal.target_path
+                    ? ` → ${proposal.target_path}`
+                    : ''}
+                </p>
               </div>
               <span className="text-xs text-[var(--muted-2)]">
                 {t(`chat.proposalStatus.${proposal.status}`)}
               </span>
             </div>
-            <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-[var(--bg)] p-3 text-xs leading-5 text-[var(--fg-2)]">
-              <code>{proposal.diff}</code>
-            </pre>
+            {proposal.diff && (
+              <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-[var(--bg)] p-3 text-xs leading-5 text-[var(--fg-2)]">
+                <code>{proposal.diff}</code>
+              </pre>
+            )}
             {proposal.status === 'pending' && (
               <div className="mt-3 flex gap-2">
                 <button

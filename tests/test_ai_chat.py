@@ -69,7 +69,13 @@ def test_chat_streams_and_persists_a_resumable_conversation(
         assert {tool.name for tool in tools} == {
             "list_project_files",
             "read_project_file",
+            "search_project_files",
             "propose_file_change",
+            "create_project_file",
+            "delete_project_file",
+            "create_project_directory",
+            "delete_project_directory",
+            "move_project_entry",
             "run_project_command",
         }
         calls["stream"] += 1
@@ -358,6 +364,42 @@ def test_chat_recovers_with_final_answer_when_tool_rounds_exhausted(
     assert all(len(tools) > 0 for tools in tools_seen[:-1])
     assert "Tool use is now disabled for this turn." in systems_seen[-1]
     assert all("Tool use is now disabled" not in system for system in systems_seen[:-1])
+
+
+def test_chat_empty_model_response_is_reported_as_failure(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, *_args, **_kwargs):
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Question",
+            },
+            headers=_csrf(client),
+        )
+    )
+    conversation_id = events[0]["conversation"]["id"]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+
+    assert events[-1]["type"] == "error"
+    assert events[-1]["code"] == "AI_CHAT_EMPTY_RESPONSE"
+    assert messages[-1]["status"] == "failed"
 
 
 def test_chat_provider_failure_is_streamed_and_persisted(

@@ -19,6 +19,8 @@ export type ChatStreamEvent =
       type: 'proposal'
       id: string
       path: string
+      target_path: string | null
+      change_type: string
       diff: string
       status: 'pending' | 'applied' | 'rejected' | 'stale'
     }
@@ -100,6 +102,8 @@ function parseEvent(line: string): ChatStreamEvent {
     event.type === 'proposal' &&
     typeof event.id === 'string' &&
     typeof event.path === 'string' &&
+    typeof event.change_type === 'string' &&
+    (event.target_path === null || typeof event.target_path === 'string') &&
     typeof event.diff === 'string' &&
     (event.status === 'pending' ||
       event.status === 'applied' ||

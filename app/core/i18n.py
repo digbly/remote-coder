@@ -19,6 +19,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Could not clone the repository",
         "FILE_PATH_INVALID": "The file path is not allowed",
         "FILE_NOT_FOUND": "File not found",
+        "FILE_ALREADY_EXISTS": "A file already exists at this path",
         "FILE_TOO_LARGE": "The file is too large to open",
         "FILE_BINARY": "Binary files cannot be opened in the editor",
         "FILE_WRITE_FAILED": "Could not save the file",
@@ -57,6 +58,9 @@ MESSAGES: dict[str, dict[str, str]] = {
             "The assistant reached the maximum number of steps for one reply, so this answer "
             "may be incomplete. Send another message to continue"
         ),
+        "AI_CHAT_EMPTY_RESPONSE": (
+            "The model returned an empty response. Send another message to retry"
+        ),
         "AI_COMMAND_APPROVAL_NOT_FOUND": "Command approval expired or is no longer available",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Change proposal not found",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Change proposal is no longer pending",
@@ -82,6 +86,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "PROJECT_CLONE_FAILED": "Không thể clone repository",
         "FILE_PATH_INVALID": "Đường dẫn tệp không được phép",
         "FILE_NOT_FOUND": "Không tìm thấy tệp",
+        "FILE_ALREADY_EXISTS": "Đã tồn tại tệp ở đường dẫn này",
         "FILE_TOO_LARGE": "Tệp quá lớn để mở",
         "FILE_BINARY": "Không thể mở tệp nhị phân trong trình soạn thảo",
         "FILE_WRITE_FAILED": "Không thể lưu tệp",
@@ -120,6 +125,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Trợ lý đã đạt số bước tối đa cho một phản hồi nên câu trả lời có thể chưa đầy đủ. "
             "Hãy gửi thêm tin nhắn để tiếp tục"
         ),
+        "AI_CHAT_EMPTY_RESPONSE": ("Model trả về nội dung rỗng. Hãy gửi lại tin nhắn để thử lại"),
         "AI_COMMAND_APPROVAL_NOT_FOUND": "Yêu cầu duyệt lệnh đã hết hạn hoặc không còn khả dụng",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Không tìm thấy đề xuất thay đổi",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Đề xuất thay đổi không còn ở trạng thái chờ duyệt",

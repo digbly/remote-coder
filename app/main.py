@@ -28,16 +28,23 @@ from app.modules.workspace.router import router as workspace_router
 TERMINAL_REAP_INTERVAL_SECONDS = 300
 
 
-def _apply_lightweight_migrations() -> None:
-    inspector = inspect(engine)
-    if "ai_chat_messages" not in inspector.get_table_names():
+def _add_column_if_missing(table: str, column: str, definition: str) -> None:
+    columns = {item["name"] for item in inspect(engine).get_columns(table)}
+    if column in columns:
         return
-    columns = {column["name"] for column in inspector.get_columns("ai_chat_messages")}
-    if "thinking" not in columns:
-        with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE ai_chat_messages ADD COLUMN thinking TEXT NOT NULL DEFAULT ''")
-            )
+    with engine.begin() as connection:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+
+def _apply_lightweight_migrations() -> None:
+    tables = set(inspect(engine).get_table_names())
+    if "ai_chat_messages" in tables:
+        _add_column_if_missing("ai_chat_messages", "thinking", "TEXT NOT NULL DEFAULT ''")
+    if "ai_change_proposals" in tables:
+        _add_column_if_missing(
+            "ai_change_proposals", "change_type", "VARCHAR(16) NOT NULL DEFAULT 'modify'"
+        )
+        _add_column_if_missing("ai_change_proposals", "target_path", "VARCHAR(4096)")
 
 
 def init_db(settings: Settings) -> None:

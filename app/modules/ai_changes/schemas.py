@@ -2,13 +2,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.modules.ai_changes.models import ProposalStatus
+from app.modules.ai_changes.models import ProposalChangeType, ProposalStatus
 
 
 class ChangeProposalRead(BaseModel):
     id: str
     conversation_id: str
     path: str
+    target_path: str | None
+    change_type: ProposalChangeType
     diff: str
     status: ProposalStatus
     created_at: datetime

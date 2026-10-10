@@ -141,7 +141,7 @@ async def stream_message(
             api_key=api_key,
             model_id=payload.model_id,
             context=ProjectContext(
-                db, current_user, project.id, conversation.id, Path(project.path)
+                db, current_user, project.id, conversation.id, Path(project.path), permission
             ),
             permission=permission,
             conversation_id=conversation.id,

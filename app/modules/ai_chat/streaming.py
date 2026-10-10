@@ -43,13 +43,14 @@ MAX_THINKING_OUTPUT_CHARS = 48_000
 MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
-    "You are a code assistant for the selected project. You may only inspect project files "
-    "using the provided project tools. You may run commands using run_project_command; "
-    "the user may need to approve them. You may create a proposed replacement for an existing "
-    "file using propose_file_change; this only creates a reviewable diff and does not change "
-    "the file. Never claim to have applied a change. Only claim command execution when the "
-    "tool returned a successful exit status. Do not request or use paths outside the project. "
-    "Tell the user when a proposal is ready for review."
+    "You are a code assistant for the selected project. Inspect files with the provided "
+    "project tools. File and directory changes use propose_file_change (edit an existing file), "
+    "create_project_file (new file), delete_project_file, create_project_directory, "
+    "delete_project_directory, and move_project_entry; each returns a reviewable change that "
+    "may be applied immediately or await the user's approval. Never claim a change, command, "
+    "or proposal outcome that the tool result did not report. You may run commands using "
+    "run_project_command; the user may need to approve them. Do not use paths outside the "
+    "project."
 )
 FINAL_ANSWER_INSTRUCTION = (
     "Tool use is now disabled for this turn. Provide your best final answer to the user's "
@@ -94,6 +95,7 @@ async def stream_chat_turn(
         )
         total_tool_calls = 0
         total_tool_output = 0
+        proposal_emitted = False
         async with httpx.AsyncClient() as client:
             for round_index in range(MAX_TOOL_ROUNDS_PER_TURN):
                 final_round = round_index + 1 >= MAX_TOOL_ROUNDS_PER_TURN
@@ -221,20 +223,10 @@ async def stream_chat_turn(
                                 )
                     else:
                         result = execute_project_tool(context, call)
-                    if call.name == "propose_file_change":
-                        try:
-                            proposal_result = json.loads(result)
-                        except json.JSONDecodeError:
-                            proposal_result = None
-                        if isinstance(proposal_result, dict) and isinstance(
-                            proposal_result.get("proposal"), dict
-                        ):
-                            yield _event(
-                                {
-                                    "type": "proposal",
-                                    **proposal_result["proposal"],
-                                }
-                            )
+                    proposal_payload = _proposal_payload(result)
+                    if proposal_payload is not None:
+                        proposal_emitted = True
+                        yield _event({"type": "proposal", **proposal_payload})
                     total_tool_output += len(result)
                     if (
                         len(result) > MAX_TOOL_RESULT_CHARS
@@ -251,6 +243,21 @@ async def stream_chat_turn(
                     )
 
         content = "".join(text_parts)
+        if not content.strip() and not proposal_emitted:
+            logger.warning(
+                "AI chat produced an empty response conversation_id=%s provider=%s",
+                conversation_id,
+                adapter.kind,
+            )
+            service.finish_assistant(
+                db,
+                assistant_message,
+                "",
+                MessageStatus.FAILED,
+                thinking="".join(thinking_parts),
+            )
+            yield _error_event(ErrorCode.AI_CHAT_EMPTY_RESPONSE, assistant_message.id)
+            return
         service.finish_assistant(
             db,
             assistant_message,
@@ -357,6 +364,16 @@ def _tool_call_event(call: ToolCall) -> bytes:
     if isinstance(path, str):
         payload["path"] = path
     return _event(payload)
+
+
+def _proposal_payload(result: str) -> dict[str, object] | None:
+    try:
+        parsed = json.loads(result)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict) and isinstance(parsed.get("proposal"), dict):
+        return parsed["proposal"]
+    return None
 
 
 def _event(payload: dict[str, object]) -> bytes:

@@ -286,10 +286,20 @@ export interface AIConversationDetail {
   messages: AIChatMessage[]
 }
 
+export type AIProposalChangeType =
+  | 'modify'
+  | 'create'
+  | 'delete'
+  | 'create_directory'
+  | 'delete_directory'
+  | 'move'
+
 export interface AIChangeProposal {
   id: string
   conversation_id: string
   path: string
+  target_path: string | null
+  change_type: AIProposalChangeType
   diff: string
   status: 'pending' | 'applied' | 'rejected' | 'stale'
   created_at: string

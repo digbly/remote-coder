@@ -19,6 +19,15 @@ class ProposalStatus(StrEnum):
     STALE = "stale"
 
 
+class ProposalChangeType(StrEnum):
+    MODIFY = "modify"
+    CREATE = "create"
+    DELETE = "delete"
+    CREATE_DIRECTORY = "create_directory"
+    DELETE_DIRECTORY = "delete_directory"
+    MOVE = "move"
+
+
 class ChangeProposal(Base):
     __tablename__ = "ai_change_proposals"
 
@@ -31,6 +40,15 @@ class ChangeProposal(Base):
         ForeignKey("ai_conversations.id", ondelete="CASCADE"), index=True
     )
     path: Mapped[str] = mapped_column(String(4096))
+    target_path: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    change_type: Mapped[ProposalChangeType] = mapped_column(
+        Enum(
+            ProposalChangeType,
+            name="ai_change_proposal_change_type",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        default=ProposalChangeType.MODIFY,
+    )
     original_hash: Mapped[str] = mapped_column(String(64))
     original_content: Mapped[str] = mapped_column(Text)
     proposed_content: Mapped[str] = mapped_column(Text)
