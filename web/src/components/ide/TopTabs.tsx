@@ -24,7 +24,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
           return (
             <div
               key={tab.id}
-              className={`group flex min-w-0 max-w-[220px] items-center gap-2 border-r border-[var(--border)] px-3 text-[12px] ${
+              className={`group relative flex w-[180px] shrink-0 items-stretch border-r border-[var(--border)] text-[12px] ${
                 active
                   ? 'border-t-2 border-t-indigo-500 bg-[var(--active)] text-[var(--fg-strong)]'
                   : 'text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'
@@ -33,7 +33,8 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
               <button
                 type="button"
                 onClick={() => onSelect(tab)}
-                className="flex min-w-0 items-center gap-2"
+                title={tab.title}
+                className="flex min-w-0 flex-1 items-center gap-2 px-3 pr-7 text-left"
               >
                 <span className={`h-2 w-2 shrink-0 rounded-sm ${TAB_DOT_COLORS[tab.kind]}`} />
                 <span className="truncate">{tab.title}</span>
@@ -42,7 +43,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew }: TopTabsPro
                 type="button"
                 aria-label={t('ide.closeTab', { title: tab.title })}
                 onClick={() => onClose(tab.id)}
-                className="ml-auto rounded p-0.5 text-[var(--muted-3)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:opacity-100"
+                className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--muted-3)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
               >
                 <CloseIcon width={12} height={12} />
               </button>

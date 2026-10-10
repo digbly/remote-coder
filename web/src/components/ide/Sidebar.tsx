@@ -326,8 +326,7 @@ export function Sidebar({
 
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<SearchIcon />} label={t('ide.search')} onClick={onOpenSearch} />
-        <NavItem icon={<TasksIcon />} label={t('ide.tasks')} />
-        <NavItem icon={<AutomationsIcon />} label={t('ide.automations')} />
+        
       </nav>
 
       <div className="mt-5 flex items-center justify-between px-3.5 pb-1">
