@@ -25,7 +25,6 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
-  const [token, setToken] = useState('')
   const [branch, setBranch] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -65,7 +64,6 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
           : await createGithubProject({
               repo_url: repoUrl.trim(),
               ...(trimmedName ? { name: trimmedName } : {}),
-              ...(token.trim() ? { token: token.trim() } : {}),
               ...(branch.trim() ? { branch: branch.trim() } : {}),
             })
       onCreated(project)
@@ -173,20 +171,9 @@ export function NewProjectDialog({ onClose, onCreated }: NewProjectDialogProps) 
                   className={inputClass}
                 />
               </div>
-              <div>
-                <label htmlFor="project-token" className={labelClass}>
-                  {t('ide.newProjectDialog.token')}
-                </label>
-                <input
-                  id="project-token"
-                  type="password"
-                  autoComplete="off"
-                  value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder={t('ide.newProjectDialog.tokenPlaceholder')}
-                  className={inputClass}
-                />
-              </div>
+              <p className="text-xs text-[#8b9099]">
+                {t('ide.newProjectDialog.githubAuthHint')}
+              </p>
               <div>
                 <label htmlFor="project-branch" className={labelClass}>
                   {t('ide.newProjectDialog.branch')}

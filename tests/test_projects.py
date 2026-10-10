@@ -149,19 +149,33 @@ def test_create_project_rejects_unsafe_name(client: TestClient) -> None:
     assert _error_code(response) == "VALIDATION_ERROR"
 
 
+def test_create_github_project_rejects_legacy_token(client: TestClient) -> None:
+    _login(client)
+    response = client.post(
+        GITHUB_URL,
+        json={"repo_url": "https://github.com/owner/private-repo", "token": "legacy-token"},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 422
+    assert _error_code(response) == "VALIDATION_ERROR"
+    assert any(error["field"] == "token" for error in response.json()["detail"]["errors"])
+    assert "legacy-token" not in response.text
+
+
 def test_create_github_project_success(client: TestClient, projects_root, monkeypatch) -> None:
     _login(client)
     captured: dict = {}
 
-    def fake_clone(remote_url, destination, branch, token, settings):
-        captured.update(remote_url=remote_url, destination=destination, branch=branch, token=token)
+    def fake_clone(repository, destination, branch, settings):
+        captured.update(repository=repository, destination=destination, branch=branch)
         destination.mkdir(parents=True)
 
     monkeypatch.setattr(service, "_clone_repository", fake_clone)
 
     response = client.post(
         GITHUB_URL,
-        json={"repo_url": "https://github.com/owner/repo.git", "token": "abc"},
+        json={"repo_url": "https://github.com/owner/repo.git"},
         headers=_csrf(client),
     )
 
@@ -171,8 +185,7 @@ def test_create_github_project_success(client: TestClient, projects_root, monkey
     assert body["remote_url"] == "https://github.com/owner/repo.git"
     assert body["name"] == "repo"
     assert Path(body["path"]).is_dir()
-    assert captured["remote_url"] == "https://github.com/owner/repo.git"
-    assert captured["token"] == "abc"
+    assert captured["repository"] == "owner/repo"
     assert captured["destination"].is_relative_to(projects_root)
 
 
@@ -182,7 +195,7 @@ def test_create_github_project_clone_failure(
     _login(client)
 
     def failing_run(command, **kwargs):
-        Path(command[-1]).mkdir(parents=True)
+        Path(command[4]).mkdir(parents=True)
         return SimpleNamespace(returncode=1, stdout="", stderr="boom")
 
     monkeypatch.setattr(service.subprocess, "run", failing_run)
@@ -199,7 +212,7 @@ def test_create_github_project_clone_failure(
     assert list((projects_root / "1").glob(".repo.cloning-*")) == []
 
 
-def test_clone_repository_keeps_token_out_of_argv(monkeypatch) -> None:
+def test_clone_repository_uses_gh_cli_and_branch(monkeypatch, tmp_path) -> None:
     captured: dict = {}
 
     def fake_run(command, **kwargs):
@@ -210,17 +223,25 @@ def test_clone_repository_keeps_token_out_of_argv(monkeypatch) -> None:
     monkeypatch.setattr(service.subprocess, "run", fake_run)
 
     service._clone_repository(
-        "https://github.com/owner/repo.git",
-        Path("/tmp/repo"),
-        None,
-        "secret-token",
+        "owner/repo",
+        tmp_path / "repo",
+        "feature/test",
         Settings(),
     )
 
-    assert "secret-token" not in " ".join(captured["command"])
-    assert captured["env"]["GIT_CONFIG_VALUE_0"] == "Authorization: Bearer secret-token"
-    assert captured["env"]["GIT_CONFIG_KEY_0"] == "http.extraHeader"
-    assert captured["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert captured["command"] == [
+        "gh",
+        "repo",
+        "clone",
+        "owner/repo",
+        str(tmp_path / "repo"),
+        "--",
+        "--depth",
+        "1",
+        "--branch",
+        "feature/test",
+    ]
+    assert captured["env"]["GH_PROMPT_DISABLED"] == "1"
 
 
 def test_list_projects_scoped_to_owner(client: TestClient, projects_root) -> None:
@@ -276,7 +297,7 @@ def test_delete_project(client: TestClient, projects_root) -> None:
 def test_delete_github_project_removes_clone(client: TestClient, monkeypatch) -> None:
     _login(client)
 
-    def fake_clone(remote_url, destination, branch, token, settings):
+    def fake_clone(repository, destination, branch, settings):
         destination.mkdir(parents=True)
 
     monkeypatch.setattr(service, "_clone_repository", fake_clone)
