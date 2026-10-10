@@ -9,7 +9,13 @@ type DetectionState =
   | { status: 'ready'; agents: AgentDefinition[] }
   | { status: 'error' }
 
-export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) => void }) {
+export function NewTabMenu({
+  onSelect,
+  onNewChat,
+}: {
+  onSelect: (agent?: AgentDefinition) => void
+  onNewChat: () => void
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null)
@@ -100,6 +106,17 @@ export function NewTabMenu({ onSelect }: { onSelect: (agent?: AgentDefinition) =
           >
             <TerminalIcon width={13} height={13} />
             {t('ide.newTerminal')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onNewChat()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
+          >
+            {t('chat.tabTitle')}
           </button>
           <div className="my-1 border-t border-[var(--border)]" />
           <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-3)]">

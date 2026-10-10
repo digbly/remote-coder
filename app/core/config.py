@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET_KEY = "dev-secret-key-change-me-in-production-0123456789"
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     admin_username: str = "admin"
     admin_password: str = DEFAULT_ADMIN_PASSWORD
+    ai_credential_encryption_key: SecretStr | None = None
 
     access_token_cookie_name: str = "access_token"
     refresh_token_cookie_name: str = "refresh_token"
