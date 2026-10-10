@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 API_HOST="${API_HOST:-127.0.0.1}"
 API_PORT="${API_PORT:-8000}"
+WEB_HOST="${WEB_HOST:-127.0.0.1}"
 WEB_DIR="$ROOT_DIR/web"
 
 if [[ ! -x "$VENV_DIR/bin/uvicorn" ]]; then
@@ -45,7 +46,7 @@ setsid bash -c "cd '$ROOT_DIR' && exec '$VENV_DIR/bin/uvicorn' app.main:app --re
 pids+=("$!")
 
 echo "Web -> see Vite output below"
-setsid bash -c "cd '$WEB_DIR' && exec npm run dev" &
+setsid bash -c "cd '$WEB_DIR' && exec npm run dev -- --host '$WEB_HOST'" &
 pids+=("$!")
 
 wait -n "${pids[@]}" || true
