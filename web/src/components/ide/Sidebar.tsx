@@ -343,9 +343,6 @@ export function Sidebar({
           <IconButton label={t('ide.newProject')} onClick={() => setShowNewProject(true)}>
             <FolderPlusIcon width={14} height={14} />
           </IconButton>
-          <IconButton label={t('ide.newProject')} onClick={() => setShowNewProject(true)}>
-            <PlusIcon width={14} height={14} />
-          </IconButton>
         </span>
       </div>
 

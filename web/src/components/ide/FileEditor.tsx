@@ -91,6 +91,11 @@ export function FileEditor({ projectId, path, line, active }: FileEditorProps) {
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
+    // @monaco-editor/react creates the editor inside a display:none wrapper and
+    // only reveals it afterwards. With automaticLayout disabled the editor keeps
+    // its 0x0 measurement until the next layout() call (e.g. a tab switch), so
+    // force a layout once the container is actually visible.
+    editor.layout()
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current())
     if (active && line !== undefined) {
       revealedLineRef.current = line
