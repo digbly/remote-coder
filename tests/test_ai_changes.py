@@ -1,11 +1,15 @@
+import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 from app.modules.ai_providers.base import ProviderModel, TextDelta, ToolCall, TurnComplete
 from app.modules.ai_providers.openai import OpenAIAdapter
+from app.modules.projects import service as project_service
 from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login
 
 PROVIDERS_URL = "/api/v1/ai-providers"
@@ -172,3 +176,59 @@ def test_stale_or_foreign_proposals_cannot_be_applied(
     assert stale.json()["detail"]["code"] == "AI_CHANGE_PROPOSAL_STALE"
     assert target.read_text(encoding="utf-8") == "print('edited elsewhere')\n"
     assert foreign.status_code == 404
+
+
+def test_proposal_write_does_not_overwrite_concurrent_editor_save(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "main.py"
+    original_content = "original"
+    target.write_text(original_content, encoding="utf-8")
+    monkeypatch.setattr(
+        project_service,
+        "_resolve_project_file",
+        lambda _db, _owner, _project_id, _path: (tmp_path, target),
+    )
+    proposal_write_entered = Event()
+    allow_proposal_write = Event()
+    editor_write_started = Event()
+    editor_write_entered = Event()
+    write_resolved_file = project_service._write_resolved_file
+
+    def pause_proposal_write(root: Path, path: Path, content: str):
+        if content == "proposal":
+            proposal_write_entered.set()
+            if not allow_proposal_write.wait(timeout=2):
+                raise TimeoutError("proposal write was not released")
+        else:
+            editor_write_entered.set()
+        return write_resolved_file(root, path, content)
+
+    monkeypatch.setattr(project_service, "_write_resolved_file", pause_proposal_write)
+
+    def write_editor_save():
+        editor_write_started.set()
+        return project_service.write_file(None, None, 1, "main.py", "editor save")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        proposal_write = executor.submit(
+            project_service.write_file_if_hash_matches,
+            None,
+            None,
+            1,
+            "main.py",
+            hashlib.sha256(original_content.encode("utf-8")).hexdigest(),
+            "proposal",
+        )
+        assert proposal_write_entered.wait(timeout=1)
+        editor_write = executor.submit(write_editor_save)
+        try:
+            assert editor_write_started.wait(timeout=1)
+            assert not editor_write_entered.wait(timeout=0.1)
+        finally:
+            allow_proposal_write.set()
+
+        assert proposal_write.result(timeout=1) is True
+        editor_write.result(timeout=1)
+
+    assert target.read_text(encoding="utf-8") == "editor save"

@@ -59,19 +59,18 @@ async def stream_chat_turn(
     text_parts: list[str] = []
     output_chars = 0
     messages = [*history, ProviderMessage(role="user", content=user_content)]
-    yield _event(
-        {
-            "type": "message_start",
-            "conversation": {
-                "id": conversation_id,
-                "title": conversation_title,
-            },
-            "user_message_id": user_message_id,
-            "assistant_message_id": assistant_message.id,
-        }
-    )
-
     try:
+        yield _event(
+            {
+                "type": "message_start",
+                "conversation": {
+                    "id": conversation_id,
+                    "title": conversation_title,
+                },
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message.id,
+            }
+        )
         total_tool_calls = 0
         total_tool_output = 0
         async with httpx.AsyncClient() as client:
@@ -174,6 +173,9 @@ async def stream_chat_turn(
             "".join(text_parts),
             MessageStatus.INTERRUPTED,
         )
+        raise
+    except Exception:
+        service.finish_assistant(db, assistant_message, "".join(text_parts), MessageStatus.FAILED)
         raise
 
 

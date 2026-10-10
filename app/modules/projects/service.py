@@ -1,8 +1,10 @@
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -67,6 +69,8 @@ _DEFAULT_IGNORED_DIRECTORIES = {
     "build",
     "target",
 }
+
+_FILE_WRITE_LOCK = threading.Lock()
 
 _GITHUB_URL_RE = re.compile(
     r"^(?:https?://|git@)?(?:www\.)?github\.com[/:]"
@@ -173,6 +177,10 @@ def read_file(db: Session, owner: User, project_id: int, path: str) -> FileConte
     browser never has to render something it cannot handle.
     """
     root, target = _resolve_project_file(db, owner, project_id, path)
+    return _read_resolved_file(root, target)
+
+
+def _read_resolved_file(root: Path, target: Path) -> FileContentRead:
     if not target.is_file():
         raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
 
@@ -202,6 +210,34 @@ def write_file(
 ) -> FileContentRead:
     """Persist the editor's content to ``path`` using an atomic replace."""
     root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        return _write_resolved_file(root, target, content)
+
+
+def write_file_if_hash_matches(
+    db: Session,
+    owner: User,
+    project_id: int,
+    path: str,
+    expected_hash: str,
+    content: str,
+) -> bool:
+    """Replace an existing file only while its content hash still matches."""
+    root, target = _resolve_project_file(db, owner, project_id, path)
+    with _FILE_WRITE_LOCK:
+        try:
+            current = _read_resolved_file(root, target)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                return False
+            raise
+        if hashlib.sha256(current.content.encode("utf-8")).hexdigest() != expected_hash:
+            return False
+        _write_resolved_file(root, target, content)
+        return True
+
+
+def _write_resolved_file(root: Path, target: Path, content: str) -> FileContentRead:
     if not target.parent.is_dir():
         raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 

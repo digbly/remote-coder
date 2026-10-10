@@ -75,13 +75,18 @@ def apply_proposal(
     if proposal.status is not ProposalStatus.PENDING:
         raise api_error(ErrorCode.AI_CHANGE_PROPOSAL_NOT_PENDING, status_code=409)
 
-    current = project_service.read_file(db, user, project_id, proposal.path)
-    if _content_hash(current.content) != proposal.original_hash:
+    if not project_service.write_file_if_hash_matches(
+        db,
+        user,
+        project_id,
+        proposal.path,
+        proposal.original_hash,
+        proposal.proposed_content,
+    ):
         proposal.status = ProposalStatus.STALE
         db.commit()
         raise api_error(ErrorCode.AI_CHANGE_PROPOSAL_STALE, status_code=409)
 
-    project_service.write_file(db, user, project_id, proposal.path, proposal.proposed_content)
     proposal.status = ProposalStatus.APPLIED
     db.commit()
     db.refresh(proposal)

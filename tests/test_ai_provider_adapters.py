@@ -61,6 +61,7 @@ async def test_openai_streams_text_tool_call_and_completion() -> None:
     ]
 
     def handler(request: Request) -> Response:
+        assert request.headers["authorization"] == f"Bearer {API_KEY}"
         payload = json.loads(request.content)
         assert payload["stream"] is True
         assert payload["tools"][0]["type"] == "function"
