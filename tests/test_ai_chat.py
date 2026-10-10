@@ -12,10 +12,12 @@ from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage as StoredMessage
 from app.modules.ai_chat.models import MessageStatus
 from app.modules.ai_chat.streaming import stream_chat_turn
+from app.modules.ai_chat.tools import MAX_TOOL_ROUNDS_PER_TURN
 from app.modules.ai_providers.base import (
     ProviderAPIError,
     ProviderModel,
     TextDelta,
+    ThinkingDelta,
     ToolCall,
     TurnComplete,
 )
@@ -135,6 +137,48 @@ def test_chat_streams_and_persists_a_resumable_conversation(
     )
 
 
+def test_chat_streams_and_persists_thinking(client: TestClient, projects_root, monkeypatch) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, *_args, **_kwargs):
+        yield ThinkingDelta("Deliberating")
+        yield TextDelta("Answer")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Question",
+            },
+            headers=_csrf(client),
+        )
+    )
+    conversation_id = events[0]["conversation"]["id"]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+
+    assert [event["type"] for event in events] == [
+        "message_start",
+        "thinking_delta",
+        "text_delta",
+        "complete",
+    ]
+    assert events[1]["text"] == "Deliberating"
+    assert messages[-1]["thinking"] == "Deliberating"
+    assert messages[-1]["content"] == "Answer"
+
+
 def test_chat_runs_provider_command_and_returns_output_to_provider(
     client: TestClient, projects_root, monkeypatch
 ) -> None:
@@ -183,10 +227,12 @@ def test_chat_runs_provider_command_and_returns_output_to_provider(
 
     assert [event["type"] for event in events] == [
         "message_start",
+        "tool_call",
         "text_delta",
         "complete",
     ]
-    assert events[1]["text"] == "Command completed"
+    assert events[1]["name"] == "run_project_command"
+    assert events[2]["text"] == "Command completed"
 
 
 def test_chat_rejects_unavailable_model_before_persisting_messages(
@@ -263,6 +309,57 @@ def test_chat_conversation_is_scoped_to_owner_and_project(
     assert cross_user.json()["detail"]["code"] == "PROJECT_NOT_FOUND"
 
 
+def test_chat_recovers_with_final_answer_when_tool_rounds_exhausted(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    calls = {"n": 0}
+    tools_seen: list[tuple] = []
+    systems_seen: list[str] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, _client, _api_key, _model, _system, messages, tools):
+        calls["n"] += 1
+        tools_seen.append(tuple(tools))
+        systems_seen.append(_system)
+        if tools:
+            yield ToolCall(f"call-{calls['n']}", "list_project_files", {})
+        else:
+            yield TextDelta("Final answer")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Keep exploring forever",
+            },
+            headers=_csrf(client),
+        )
+    )
+
+    assert events[-1]["type"] == "complete"
+    assert events[-1]["status"] == "completed"
+    assert any(event["type"] == "notice" for event in events)
+    assert any(event["type"] == "tool_call" for event in events)
+    assert any(
+        event["type"] == "text_delta" and event["text"] == "Final answer" for event in events
+    )
+    assert calls["n"] == MAX_TOOL_ROUNDS_PER_TURN
+    assert tools_seen[-1] == ()
+    assert all(len(tools) > 0 for tools in tools_seen[:-1])
+    assert "Tool use is now disabled for this turn." in systems_seen[-1]
+    assert all("Tool use is now disabled" not in system for system in systems_seen[:-1])
+
+
 def test_chat_provider_failure_is_streamed_and_persisted(
     client: TestClient, projects_root, monkeypatch, caplog
 ) -> None:
@@ -297,6 +394,7 @@ def test_chat_provider_failure_is_streamed_and_persisted(
 
     assert events[-1]["type"] == "error"
     assert events[-1]["code"] == "AI_PROVIDER_FAILED"
+    assert events[-1]["message"] == "model is not available"
     assert messages[-1]["status"] == "failed"
     assert "provider-secret" not in str(events)
     assert "provider=openai status=400 detail=model is not available" in caplog.text
@@ -352,7 +450,7 @@ async def test_cancelled_stream_persists_interrupted_status(monkeypatch) -> None
 
     statuses: list[MessageStatus] = []
 
-    def finish(_db, _message, _content, status):
+    def finish(_db, _message, _content, status, thinking=""):
         statuses.append(status)
 
     class InterruptedAdapter:
@@ -396,7 +494,7 @@ async def test_cancelled_immediately_after_start_persists_interrupted_status(mon
 
     statuses: list[MessageStatus] = []
 
-    def finish(_db, _message, _content, status):
+    def finish(_db, _message, _content, status, thinking=""):
         statuses.append(status)
 
     class UnusedAdapter:
@@ -433,7 +531,7 @@ async def test_unexpected_stream_failure_persists_failed_status(monkeypatch) -> 
 
     statuses: list[MessageStatus] = []
 
-    def finish(_db, _message, _content, status):
+    def finish(_db, _message, _content, status, thinking=""):
         statuses.append(status)
 
     class FailingAdapter:

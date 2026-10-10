@@ -53,6 +53,7 @@ class ChatMessageRead(BaseModel):
     id: int
     role: MessageRole
     content: str
+    thinking: str
     status: MessageStatus
     created_at: datetime
 

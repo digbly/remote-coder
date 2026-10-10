@@ -52,6 +52,9 @@ class ChatMessage:
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
     tool_name: str | None = None
+    thinking: str | None = None
+    thinking_signature: str | None = None
+    redacted_thinking: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,13 +70,24 @@ class TextDelta:
 
 
 @dataclass(frozen=True)
+class ThinkingDelta:
+    text: str
+
+
+@dataclass(frozen=True)
+class ThinkingComplete:
+    signature: str | None = None
+    redacted: str | None = None
+
+
+@dataclass(frozen=True)
 class TurnComplete:
     reason: str | None
     input_tokens: int | None = None
     output_tokens: int | None = None
 
 
-ProviderEvent = TextDelta | ToolCall | TurnComplete
+ProviderEvent = TextDelta | ThinkingDelta | ThinkingComplete | ToolCall | TurnComplete
 
 
 class ProviderAdapter(Protocol):

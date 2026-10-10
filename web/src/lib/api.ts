@@ -263,6 +263,10 @@ export interface AIChatMessage {
   id: number
   role: 'user' | 'assistant'
   content: string
+  thinking: string
+  error?: string
+  notice?: string
+  steps?: string[]
   status: 'streaming' | 'completed' | 'failed' | 'interrupted'
   created_at: string
 }

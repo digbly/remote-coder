@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
@@ -14,6 +15,7 @@ from app.modules.ai_providers.base import (
     ProviderModel,
     ProviderTool,
     TextDelta,
+    ThinkingDelta,
     ToolCall,
     TurnComplete,
     _safe_request_error,
@@ -25,6 +27,11 @@ from app.modules.ai_providers.base import (
 )
 
 API_BASE = "https://api.openai.com/v1"
+_REASONING_MODEL_PATTERN = re.compile(r"^(gpt-5|o3|o4)(-|$)")
+
+
+def _supports_thinking(model: str) -> bool:
+    return _REASONING_MODEL_PATTERN.match(model) is not None
 
 
 class OpenAIAdapter(ProviderAdapterBase):
@@ -65,6 +72,8 @@ class OpenAIAdapter(ProviderAdapterBase):
             "input": _input_items(messages),
             "stream": True,
         }
+        if _supports_thinking(model):
+            payload["reasoning"] = {"summary": "auto"}
         if tools:
             payload["tools"] = [
                 {
@@ -92,6 +101,10 @@ class OpenAIAdapter(ProviderAdapterBase):
                         delta = event.get("delta")
                         if isinstance(delta, str):
                             yield TextDelta(delta)
+                    elif event_type == "response.reasoning_summary_text.delta":
+                        delta = event.get("delta")
+                        if isinstance(delta, str):
+                            yield ThinkingDelta(delta)
                     elif event_type == "response.output_item.done":
                         item = event.get("item")
                         if isinstance(item, dict) and item.get("type") == "function_call":

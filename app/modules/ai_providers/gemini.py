@@ -15,6 +15,7 @@ from app.modules.ai_providers.base import (
     ProviderModel,
     ProviderTool,
     TextDelta,
+    ThinkingDelta,
     ToolCall,
     TurnComplete,
     _safe_request_error,
@@ -28,6 +29,11 @@ from app.modules.ai_providers.base import (
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 MODEL_PAGE_SIZE = 100
+
+
+def _supports_thinking(model: str) -> bool:
+    model_id = model.removeprefix("models/")
+    return model_id.startswith(("gemini-2.5", "gemini-3"))
 
 
 class GeminiAdapter(ProviderAdapterBase):
@@ -98,6 +104,8 @@ class GeminiAdapter(ProviderAdapterBase):
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": _contents(messages),
         }
+        if _supports_thinking(model):
+            payload["generationConfig"] = {"thinkingConfig": {"includeThoughts": True}}
         if tools:
             payload["tools"] = [
                 {
@@ -207,11 +215,14 @@ def _chunk_events(chunk: dict[str, object], api_key: str | None = None) -> list[
             parts = content.get("parts") if isinstance(content, dict) else None
             if isinstance(parts, list):
                 for part in parts:
-                    if not isinstance(part, dict) or part.get("thought") is True:
+                    if not isinstance(part, dict):
                         continue
                     text = part.get("text")
-                    if isinstance(text, str):
-                        events.append(TextDelta(text))
+                    if isinstance(text, str) and text:
+                        if part.get("thought") is True:
+                            events.append(ThinkingDelta(text))
+                        else:
+                            events.append(TextDelta(text))
                     function_call = part.get("functionCall")
                     if isinstance(function_call, dict):
                         name = function_call.get("name")

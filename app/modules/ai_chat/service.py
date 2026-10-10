@@ -143,8 +143,10 @@ def finish_assistant(
     assistant_message: ChatMessage,
     content: str,
     status: MessageStatus,
+    thinking: str = "",
 ) -> None:
     assistant_message.content = content
+    assistant_message.thinking = thinking
     assistant_message.status = status
     db.commit()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Sequence
 
 import httpx
@@ -14,6 +15,8 @@ from app.modules.ai_providers.base import (
     ProviderModel,
     ProviderTool,
     TextDelta,
+    ThinkingComplete,
+    ThinkingDelta,
     ToolCall,
     TurnComplete,
     _safe_request_error,
@@ -27,6 +30,12 @@ from app.modules.ai_providers.base import (
 API_BASE = "https://api.anthropic.com/v1"
 API_VERSION = "2023-06-01"
 MODEL_PAGE_SIZE = 100
+THINKING_BUDGET_TOKENS = 2048
+_THINKING_MODEL_PATTERN = re.compile(r"claude-(opus|sonnet|haiku)-4|claude-3[-.]7")
+
+
+def _supports_thinking(model: str) -> bool:
+    return _THINKING_MODEL_PATTERN.search(model) is not None
 
 
 class AnthropicAdapter(ProviderAdapterBase):
@@ -97,6 +106,11 @@ class AnthropicAdapter(ProviderAdapterBase):
             "messages": _messages(messages),
             "stream": True,
         }
+        if _supports_thinking(model):
+            payload["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": THINKING_BUDGET_TOKENS,
+            }
         if tools:
             payload["tools"] = [
                 {
@@ -109,6 +123,8 @@ class AnthropicAdapter(ProviderAdapterBase):
 
         tool_inputs: dict[int, dict[str, object]] = {}
         tool_json: dict[int, str] = {}
+        thinking_signatures: dict[int, str] = {}
+        redacted_thinking: dict[int, str] = {}
         input_tokens: int | None = None
         output_tokens: int | None = None
         stop_reason: str | None = None
@@ -133,7 +149,8 @@ class AnthropicAdapter(ProviderAdapterBase):
                         index = event.get("index")
                         block = event.get("content_block")
                         if isinstance(index, int) and isinstance(block, dict):
-                            if block.get("type") == "tool_use":
+                            block_type = block.get("type")
+                            if block_type == "tool_use":
                                 initial = block.get("input")
                                 tool_inputs[index] = {
                                     "id": block.get("id"),
@@ -141,22 +158,45 @@ class AnthropicAdapter(ProviderAdapterBase):
                                     "input": initial if isinstance(initial, dict) else {},
                                 }
                                 tool_json[index] = ""
+                            elif block_type == "thinking":
+                                thinking_signatures[index] = ""
+                            elif block_type == "redacted_thinking":
+                                data = block.get("data")
+                                if isinstance(data, str):
+                                    redacted_thinking[index] = data
                     elif event_type == "content_block_delta":
                         index = event.get("index")
                         delta = event.get("delta")
                         if isinstance(delta, dict):
-                            if delta.get("type") == "text_delta":
+                            delta_type = delta.get("type")
+                            if delta_type == "text_delta":
                                 text = delta.get("text")
                                 if isinstance(text, str):
                                     yield TextDelta(text)
-                            elif delta.get("type") == "input_json_delta" and isinstance(index, int):
+                            elif delta_type == "thinking_delta":
+                                thinking = delta.get("thinking")
+                                if isinstance(thinking, str):
+                                    yield ThinkingDelta(thinking)
+                            elif delta_type == "signature_delta" and isinstance(index, int):
+                                signature = delta.get("signature")
+                                if isinstance(signature, str):
+                                    thinking_signatures[index] = (
+                                        thinking_signatures.get(index, "") + signature
+                                    )
+                            elif delta_type == "input_json_delta" and isinstance(index, int):
                                 partial = delta.get("partial_json")
                                 if isinstance(partial, str):
                                     tool_json[index] = tool_json.get(index, "") + partial
                     elif event_type == "content_block_stop":
                         index = event.get("index")
-                        if isinstance(index, int) and index in tool_inputs:
-                            yield _tool_call(index, tool_inputs, tool_json)
+                        if isinstance(index, int):
+                            if index in tool_inputs:
+                                yield _tool_call(index, tool_inputs, tool_json)
+                            elif index in redacted_thinking:
+                                yield ThinkingComplete(redacted=redacted_thinking.pop(index))
+                            elif index in thinking_signatures:
+                                signature = thinking_signatures.pop(index)
+                                yield ThinkingComplete(signature=signature or None)
                     elif event_type == "message_delta":
                         usage = event.get("usage")
                         delta = event.get("delta")
@@ -177,25 +217,37 @@ class AnthropicAdapter(ProviderAdapterBase):
 
 def _messages(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
-    for message in messages:
+    index = 0
+    while index < len(messages):
+        message = messages[index]
         if message.role == "tool":
-            if not message.tool_call_id:
-                raise ProviderAPIError(AnthropicAdapter.kind)
-            result.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": message.tool_call_id,
-                            "content": message.content,
-                        }
-                    ],
-                }
-            )
+            blocks: list[dict[str, object]] = []
+            while index < len(messages) and messages[index].role == "tool":
+                tool_message = messages[index]
+                if not tool_message.tool_call_id:
+                    raise ProviderAPIError(AnthropicAdapter.kind)
+                blocks.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_message.tool_call_id,
+                        "content": tool_message.content,
+                    }
+                )
+                index += 1
+            result.append({"role": "user", "content": blocks})
             continue
 
         content: list[dict[str, object]] = []
+        if message.redacted_thinking is not None:
+            content.append({"type": "redacted_thinking", "data": message.redacted_thinking})
+        elif message.thinking is not None:
+            thinking_block: dict[str, object] = {
+                "type": "thinking",
+                "thinking": message.thinking,
+            }
+            if message.thinking_signature is not None:
+                thinking_block["signature"] = message.thinking_signature
+            content.append(thinking_block)
         if message.content:
             content.append({"type": "text", "text": message.content})
         for call in message.tool_calls:
@@ -209,6 +261,7 @@ def _messages(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
             )
         if content:
             result.append({"role": message.role, "content": content})
+        index += 1
     return result
 
 

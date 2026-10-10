@@ -58,6 +58,7 @@ class ChatMessage(Base):
         )
     )
     content: Mapped[str] = mapped_column(Text)
+    thinking: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[MessageStatus] = mapped_column(
         Enum(
             MessageStatus,

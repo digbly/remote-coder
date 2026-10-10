@@ -23,6 +23,72 @@ import {
 const selectClass =
   'rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:border-indigo-500'
 
+type ToolLabelKey =
+  | 'chat.toolList'
+  | 'chat.toolRead'
+  | 'chat.toolPropose'
+  | 'chat.toolCommand'
+
+const TOOL_LABEL_KEYS: Record<string, ToolLabelKey> = {
+  list_project_files: 'chat.toolList',
+  read_project_file: 'chat.toolRead',
+  propose_file_change: 'chat.toolPropose',
+  run_project_command: 'chat.toolCommand',
+}
+
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(streaming)
+  const wasStreaming = useRef(streaming)
+  useEffect(() => {
+    if (wasStreaming.current && !streaming) setOpen(false)
+    wasStreaming.current = streaming
+  }, [streaming])
+
+  return (
+    <div className="mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs font-medium text-[var(--muted-2)] transition hover:text-[var(--fg-2)]"
+      >
+        <svg
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          className={`h-3 w-3 transition-transform ${open ? 'rotate-90' : ''}`}
+        >
+          <path d="M7 5l6 5-6 5z" fill="currentColor" />
+        </svg>
+        {streaming ? t('chat.thinking') : t('chat.thinkingComplete')}
+      </button>
+      {open && (
+        <div className="mt-2 whitespace-pre-wrap break-words border-l-2 border-[var(--border)] pl-3 text-xs italic leading-5 text-[var(--muted-2)]">
+          {text || t('chat.thinking')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ToolSteps({ steps, streaming }: { steps: string[]; streaming: boolean }) {
+  return (
+    <ul className="mb-2 space-y-1">
+      {steps.map((step, index) => (
+        <li
+          key={index}
+          className={`flex items-center gap-1.5 text-xs ${
+            streaming && index === steps.length - 1 ? 'text-[var(--fg-2)]' : 'text-[var(--muted-2)]'
+          }`}
+        >
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted-3)]" />
+          <span className="truncate">{step}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function ChatPanel({
   projectId,
   tabId,
@@ -231,6 +297,7 @@ export function ChatPanel({
               id: streamEvent.user_message_id,
               role: 'user',
               content,
+              thinking: '',
               status: 'completed',
               created_at: new Date().toISOString(),
             },
@@ -238,6 +305,7 @@ export function ChatPanel({
               id: streamEvent.assistant_message_id,
               role: 'assistant',
               content: '',
+              thinking: '',
               status: 'streaming',
               created_at: new Date().toISOString(),
             },
@@ -247,6 +315,14 @@ export function ChatPanel({
             current.map((message) =>
               message.id === assistantId
                 ? { ...message, content: message.content + streamEvent.text }
+                : message,
+            ),
+          )
+        } else if (streamEvent.type === 'thinking_delta') {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId
+                ? { ...message, thinking: message.thinking + streamEvent.text }
                 : message,
             ),
           )
@@ -281,12 +357,26 @@ export function ChatPanel({
                 : message,
             ),
           )
+        } else if (streamEvent.type === 'notice') {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId ? { ...message, notice: streamEvent.message } : message,
+            ),
+          )
+        } else if (streamEvent.type === 'tool_call') {
+          const label = describeTool(streamEvent.name, streamEvent.path)
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId
+                ? { ...message, steps: [...(message.steps ?? []), label] }
+                : message,
+            ),
+          )
         } else if (streamEvent.type === 'error') {
-          setError(streamEvent.message)
           setMessages((current) =>
             current.map((message) =>
               message.id === streamEvent.assistant_message_id
-                ? { ...message, status: 'failed' }
+                ? { ...message, status: 'failed', error: streamEvent.message }
                 : message,
             ),
           )
@@ -328,6 +418,12 @@ export function ChatPanel({
 
   const provider = providers.find((item) => item.id === providerId)
   const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
+
+  function describeTool(name: string, path?: string): string {
+    const labelKey = TOOL_LABEL_KEYS[name]
+    const base = labelKey ? t(labelKey) : name
+    return path ? `${base} · ${path}` : base
+  }
 
   async function actOnProposal(proposal: AIChangeProposal, action: 'apply' | 'reject') {
     if (!selectedConversation) return
@@ -459,11 +555,25 @@ export function ChatPanel({
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-2)]">
               {message.role === 'user' ? t('chat.you') : t('chat.assistant')}
             </p>
+            {message.role === 'assistant' && message.thinking && (
+              <ThinkingBlock text={message.thinking} streaming={message.status === 'streaming'} />
+            )}
+            {message.role === 'assistant' && message.steps && message.steps.length > 0 && (
+              <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
+            )}
             <div className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--fg-2)]">
-              {message.content || (message.status === 'streaming' ? t('chat.thinking') : '')}
+              {message.content ||
+                (message.status === 'streaming' && !message.thinking && !message.steps?.length
+                  ? t('chat.thinking')
+                  : '')}
             </div>
             {message.status === 'failed' && (
-              <p className="mt-2 text-xs text-[var(--danger)]">{t('chat.failedStatus')}</p>
+              <p className="mt-2 text-xs text-[var(--danger)]">
+                {message.error || t('chat.failedStatus')}
+              </p>
+            )}
+            {message.role === 'assistant' && message.notice && (
+              <p className="mt-2 text-xs text-amber-500">{message.notice}</p>
             )}
             {message.status === 'interrupted' && (
               <p className="mt-2 text-xs text-[var(--muted-2)]">{t('chat.interrupted')}</p>

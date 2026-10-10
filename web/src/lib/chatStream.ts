@@ -6,6 +6,8 @@ export type ChatStreamEvent =
       assistant_message_id: number
     }
   | { type: 'text_delta'; text: string }
+  | { type: 'thinking_delta'; text: string }
+  | { type: 'tool_call'; name: string; path?: string }
   | {
       type: 'command_approval'
       approval_id: string
@@ -21,6 +23,7 @@ export type ChatStreamEvent =
       status: 'pending' | 'applied' | 'rejected' | 'stale'
     }
   | { type: 'complete'; conversation_id: string; assistant_message_id: number; status: string }
+  | { type: 'notice'; code: string; message: string }
   | { type: 'error'; code: string; message: string; assistant_message_id: number }
 
 export async function consumeChatStream(
@@ -75,6 +78,16 @@ function parseEvent(line: string): ChatStreamEvent {
   if (event.type === 'text_delta' && typeof event.text === 'string') {
     return event as ChatStreamEvent
   }
+  if (event.type === 'thinking_delta' && typeof event.text === 'string') {
+    return event as ChatStreamEvent
+  }
+  if (
+    event.type === 'tool_call' &&
+    typeof event.name === 'string' &&
+    (event.path === undefined || typeof event.path === 'string')
+  ) {
+    return event as ChatStreamEvent
+  }
   if (
     event.type === 'command_approval' &&
     typeof event.approval_id === 'string' &&
@@ -100,6 +113,13 @@ function parseEvent(line: string): ChatStreamEvent {
     typeof event.conversation_id === 'string' &&
     typeof event.assistant_message_id === 'number' &&
     typeof event.status === 'string'
+  ) {
+    return event as ChatStreamEvent
+  }
+  if (
+    event.type === 'notice' &&
+    typeof event.code === 'string' &&
+    typeof event.message === 'string'
   ) {
     return event as ChatStreamEvent
   }

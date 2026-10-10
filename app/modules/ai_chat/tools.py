@@ -7,8 +7,8 @@ from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_providers.base import ProviderTool, ToolCall
 
 MAX_TOOL_RESULT_CHARS = 32_000
-MAX_TOOL_CALLS_PER_TURN = 8
-MAX_TOOL_ROUNDS_PER_TURN = 4
+MAX_TOOL_CALLS_PER_TURN = 12
+MAX_TOOL_ROUNDS_PER_TURN = 6
 
 PROJECT_TOOLS = (
     ProviderTool(

@@ -32,11 +32,14 @@ from app.modules.ai_providers.base import (
     ProviderAdapter,
     ProviderAPIError,
     TextDelta,
+    ThinkingComplete,
+    ThinkingDelta,
     ToolCall,
     TurnComplete,
 )
 
 MAX_ASSISTANT_OUTPUT_CHARS = 48_000
+MAX_THINKING_OUTPUT_CHARS = 48_000
 MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
@@ -47,6 +50,10 @@ SYSTEM_INSTRUCTIONS = (
     "the file. Never claim to have applied a change. Only claim command execution when the "
     "tool returned a successful exit status. Do not request or use paths outside the project. "
     "Tell the user when a proposal is ready for review."
+)
+FINAL_ANSWER_INSTRUCTION = (
+    "Tool use is now disabled for this turn. Provide your best final answer to the user's "
+    "request using only the information already gathered. Do not request any further tools."
 )
 
 
@@ -69,7 +76,9 @@ async def stream_chat_turn(
     permission: CommandPermission = CommandPermission.MANUAL,
 ) -> AsyncIterator[bytes]:
     text_parts: list[str] = []
+    thinking_parts: list[str] = []
     output_chars = 0
+    thinking_chars = 0
     messages = [*history, ProviderMessage(role="user", content=user_content)]
     try:
         yield _event(
@@ -87,16 +96,28 @@ async def stream_chat_turn(
         total_tool_output = 0
         async with httpx.AsyncClient() as client:
             for round_index in range(MAX_TOOL_ROUNDS_PER_TURN):
+                final_round = round_index + 1 >= MAX_TOOL_ROUNDS_PER_TURN
+                round_tools = () if final_round else PROJECT_TOOLS
+                round_system = (
+                    f"{SYSTEM_INSTRUCTIONS}\n\n{FINAL_ANSWER_INSTRUCTION}"
+                    if final_round
+                    else SYSTEM_INSTRUCTIONS
+                )
+                if final_round:
+                    yield _notice_event(ErrorCode.AI_CHAT_TOOL_LIMIT_REACHED)
                 round_text: list[str] = []
+                round_thinking: list[str] = []
+                round_thinking_signature: str | None = None
+                round_redacted_thinking: str | None = None
                 tool_calls: list[ToolCall] = []
                 completed = False
                 async for provider_event in adapter.stream(
                     client,
                     api_key,
                     model_id,
-                    SYSTEM_INSTRUCTIONS,
+                    round_system,
                     messages,
-                    PROJECT_TOOLS,
+                    round_tools,
                 ):
                     if isinstance(provider_event, TextDelta):
                         if not provider_event.text:
@@ -107,6 +128,18 @@ async def stream_chat_turn(
                         round_text.append(provider_event.text)
                         output_chars += len(provider_event.text)
                         yield _event({"type": "text_delta", "text": provider_event.text})
+                    elif isinstance(provider_event, ThinkingDelta):
+                        if not provider_event.text:
+                            continue
+                        if thinking_chars + len(provider_event.text) > MAX_THINKING_OUTPUT_CHARS:
+                            raise ChatTurnLimitError
+                        thinking_parts.append(provider_event.text)
+                        round_thinking.append(provider_event.text)
+                        thinking_chars += len(provider_event.text)
+                        yield _event({"type": "thinking_delta", "text": provider_event.text})
+                    elif isinstance(provider_event, ThinkingComplete):
+                        round_thinking_signature = provider_event.signature
+                        round_redacted_thinking = provider_event.redacted
                     elif isinstance(provider_event, ToolCall):
                         tool_calls.append(provider_event)
                     elif isinstance(provider_event, TurnComplete):
@@ -117,12 +150,10 @@ async def stream_chat_turn(
                         adapter.kind,
                         diagnostic="Stream ended without a completion event",
                     )
-                if not tool_calls:
+                if not tool_calls or final_round:
                     break
                 total_tool_calls += len(tool_calls)
                 if total_tool_calls > MAX_TOOL_CALLS_PER_TURN:
-                    raise ChatTurnLimitError
-                if round_index + 1 >= MAX_TOOL_ROUNDS_PER_TURN:
                     raise ChatTurnLimitError
 
                 messages.append(
@@ -130,9 +161,17 @@ async def stream_chat_turn(
                         role="assistant",
                         content="".join(round_text),
                         tool_calls=tuple(tool_calls),
+                        thinking=(
+                            "".join(round_thinking)
+                            if round_thinking or round_thinking_signature is not None
+                            else None
+                        ),
+                        thinking_signature=round_thinking_signature,
+                        redacted_thinking=round_redacted_thinking,
                     )
                 )
                 for call in tool_calls:
+                    yield _tool_call_event(call)
                     command = command_from_call(call)
                     if call.name == RUN_PROJECT_COMMAND_NAME:
                         if command is None or context.project_path is None:
@@ -212,7 +251,13 @@ async def stream_chat_turn(
                     )
 
         content = "".join(text_parts)
-        service.finish_assistant(db, assistant_message, content, MessageStatus.COMPLETED)
+        service.finish_assistant(
+            db,
+            assistant_message,
+            content,
+            MessageStatus.COMPLETED,
+            thinking="".join(thinking_parts),
+        )
         yield _event(
             {
                 "type": "complete",
@@ -222,8 +267,22 @@ async def stream_chat_turn(
             }
         )
     except ChatTurnLimitError:
+        logger.warning(
+            "AI chat turn limit exceeded conversation_id=%s provider=%s output_chars=%s "
+            "thinking_chars=%s",
+            conversation_id,
+            adapter.kind,
+            output_chars,
+            thinking_chars,
+        )
         content = "".join(text_parts)
-        service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
+        service.finish_assistant(
+            db,
+            assistant_message,
+            content,
+            MessageStatus.FAILED,
+            thinking="".join(thinking_parts),
+        )
         yield _error_event(ErrorCode.AI_CHAT_LIMIT_EXCEEDED, assistant_message.id)
     except ProviderAPIError as exc:
         logger.warning(
@@ -234,14 +293,25 @@ async def stream_chat_turn(
             exc.diagnostic or str(exc),
         )
         content = "".join(text_parts)
-        service.finish_assistant(db, assistant_message, content, MessageStatus.FAILED)
-        yield _error_event(ErrorCode.AI_PROVIDER_FAILED, assistant_message.id)
+        service.finish_assistant(
+            db,
+            assistant_message,
+            content,
+            MessageStatus.FAILED,
+            thinking="".join(thinking_parts),
+        )
+        yield _error_event(
+            ErrorCode.AI_PROVIDER_FAILED,
+            assistant_message.id,
+            detail=exc.diagnostic or str(exc),
+        )
     except asyncio.CancelledError:
         service.finish_assistant(
             db,
             assistant_message,
             "".join(text_parts),
             MessageStatus.INTERRUPTED,
+            thinking="".join(thinking_parts),
         )
         raise
     except Exception:
@@ -250,19 +320,43 @@ async def stream_chat_turn(
             conversation_id,
             adapter.kind,
         )
-        service.finish_assistant(db, assistant_message, "".join(text_parts), MessageStatus.FAILED)
+        service.finish_assistant(
+            db,
+            assistant_message,
+            "".join(text_parts),
+            MessageStatus.FAILED,
+            thinking="".join(thinking_parts),
+        )
         raise
 
 
-def _error_event(code: ErrorCode, message_id: int) -> bytes:
+def _error_event(code: ErrorCode, message_id: int, detail: str | None = None) -> bytes:
     return _event(
         {
             "type": "error",
             "code": code.value,
-            "message": translate(code.value),
+            "message": detail or translate(code.value),
             "assistant_message_id": message_id,
         }
     )
+
+
+def _notice_event(code: ErrorCode) -> bytes:
+    return _event(
+        {
+            "type": "notice",
+            "code": code.value,
+            "message": translate(code.value),
+        }
+    )
+
+
+def _tool_call_event(call: ToolCall) -> bytes:
+    payload: dict[str, object] = {"type": "tool_call", "name": call.name}
+    path = call.arguments.get("path")
+    if isinstance(path, str):
+        payload["path"] = path
+    return _event(payload)
 
 
 def _event(payload: dict[str, object]) -> bytes:
