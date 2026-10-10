@@ -150,14 +150,16 @@ def _contents(messages: Sequence[ChatMessage]) -> list[dict[str, object]]:
         if message.content:
             parts.append({"text": message.content})
         for call in message.tool_calls:
-            function_call: dict[str, object] = {
-                "name": call.name,
-                "args": call.arguments,
+            part: dict[str, object] = {
+                "functionCall": {
+                    "name": call.name,
+                    "args": call.arguments,
+                    "id": call.id,
+                }
             }
-            function_call["id"] = call.id
             if call.thought_signature:
-                function_call["thoughtSignature"] = call.thought_signature
-            parts.append({"functionCall": function_call})
+                part["thoughtSignature"] = call.thought_signature
+            parts.append(part)
         if parts:
             contents.append(
                 {"role": "model" if message.role == "assistant" else "user", "parts": parts}
@@ -215,16 +217,14 @@ def _chunk_events(chunk: dict[str, object], api_key: str | None = None) -> list[
                         name = function_call.get("name")
                         arguments = function_call.get("args", {})
                         call_id = function_call.get("id")
-                        thought_signature = function_call.get("thoughtSignature")
+                        thought_signature = part.get("thoughtSignature")
                         if not isinstance(name, str) or not isinstance(arguments, dict):
                             raise ProviderAPIError(GeminiAdapter.kind)
                         call_id = call_id if isinstance(call_id, str) else uuid4().hex
                         thought_signature = (
                             thought_signature if isinstance(thought_signature, str) else None
                         )
-                        events.append(
-                            ToolCall(call_id, name, arguments, thought_signature)
-                        )
+                        events.append(ToolCall(call_id, name, arguments, thought_signature))
 
             finish_reason = candidate.get("finishReason")
             if isinstance(finish_reason, str):

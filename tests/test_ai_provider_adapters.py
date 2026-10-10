@@ -269,9 +269,7 @@ async def test_gemini_round_trips_thought_signature_for_tool_calls() -> None:
     messages = [
         ChatMessage(
             role="assistant",
-            tool_calls=(
-                ToolCall("call-1", "read_file", {"path": "main.py"}, thought_signature),
-            ),
+            tool_calls=(ToolCall("call-1", "read_file", {"path": "main.py"}, thought_signature),),
         )
     ]
     chunk = {
@@ -284,8 +282,8 @@ async def test_gemini_round_trips_thought_signature_for_tool_calls() -> None:
                                 "name": "read_file",
                                 "args": {"path": "main.py"},
                                 "id": "call-1",
-                                "thoughtSignature": thought_signature,
-                            }
+                            },
+                            "thoughtSignature": thought_signature,
                         }
                     ]
                 },
@@ -297,8 +295,9 @@ async def test_gemini_round_trips_thought_signature_for_tool_calls() -> None:
 
     def handler(request: Request) -> Response:
         payload = json.loads(request.content)
-        sent_call = payload["contents"][0]["parts"][0]["functionCall"]
-        assert sent_call["thoughtSignature"] == thought_signature
+        sent_part = payload["contents"][0]["parts"][0]
+        assert sent_part["thoughtSignature"] == thought_signature
+        assert "thoughtSignature" not in sent_part["functionCall"]
         body = f"data: {json.dumps(chunk)}\n\n"
         return Response(200, headers={"content-type": "text/event-stream"}, text=body)
 
