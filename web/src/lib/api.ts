@@ -23,6 +23,7 @@ const ERROR_CODE_KEYS = {
   FILE_TOO_LARGE: 'apiErrors.fileTooLarge',
   FILE_BINARY: 'apiErrors.fileBinary',
   FILE_WRITE_FAILED: 'apiErrors.fileWriteFailed',
+  SEARCH_QUERY_INVALID: 'apiErrors.searchQueryInvalid',
   GIT_NOT_A_REPOSITORY: 'apiErrors.gitNotARepository',
   GIT_COMMAND_FAILED: 'apiErrors.gitCommandFailed',
   GIT_INVALID_PATH: 'apiErrors.gitInvalidPath',
@@ -147,6 +148,39 @@ export interface FileContent {
   path: string
   content: string
   size: number
+}
+
+export type FileSearchMode = 'names' | 'contents'
+
+export interface SearchSpan {
+  start: number
+  end: number
+}
+
+export interface FileSearchMatch {
+  line: number
+  text: string
+  spans: SearchSpan[]
+}
+
+export interface FileSearchEntry {
+  path: string
+  matches: FileSearchMatch[]
+  spans: SearchSpan[]
+}
+
+export interface FileSearchResult {
+  entries: FileSearchEntry[]
+  truncated: boolean
+}
+
+export interface FileSearchOptions {
+  mode: FileSearchMode
+  include?: string
+  exclude?: string
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  regex?: boolean
 }
 
 export interface GitBranches {
@@ -453,6 +487,25 @@ export async function saveFileContent(
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as FileContent
+}
+
+export async function searchProjectFiles(
+  projectId: number,
+  query: string,
+  options: FileSearchOptions,
+): Promise<FileSearchResult> {
+  const params = new URLSearchParams({ q: query, mode: options.mode })
+  if (options.include) params.set('include', options.include)
+  if (options.exclude) params.set('exclude', options.exclude)
+  if (options.caseSensitive) params.set('case_sensitive', 'true')
+  if (options.wholeWord) params.set('whole_word', 'true')
+  if (options.regex) params.set('regex', 'true')
+  const response = await request(`/projects/${projectId}/search?${params.toString()}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as FileSearchResult
 }
 
 export async function fetchWorktrees(projectId: number): Promise<Worktree[]> {

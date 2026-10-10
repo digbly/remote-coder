@@ -12,6 +12,7 @@ export interface WorkspaceTab {
   agentId?: string
   agentLabel?: string
   filePath?: string
+  line?: number
 }
 
 export interface ProjectWorkspace {
@@ -59,7 +60,8 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentId === undefined || typeof value.agentId === 'string') &&
     (value.agentLabel === undefined || typeof value.agentLabel === 'string') &&
-    (value.filePath === undefined || typeof value.filePath === 'string')
+    (value.filePath === undefined || typeof value.filePath === 'string') &&
+    (value.line === undefined || typeof value.line === 'number')
   )
 }
 
@@ -139,13 +141,17 @@ export function withOpenFile(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
   path: string,
+  line?: number,
 ): Record<number, ProjectWorkspace> {
   const tabs = workspaces[project.id]?.tabs ?? []
   const existing = tabs.find((tab) => tab.kind === 'editor' && tab.filePath === path)
   if (existing) {
     return {
       ...workspaces,
-      [project.id]: { tabs, activeId: existing.id },
+      [project.id]: {
+        tabs: tabs.map((tab) => (tab.id === existing.id ? { ...tab, line } : tab)),
+        activeId: existing.id,
+      },
     }
   }
   const id = newTerminalId()
@@ -156,6 +162,7 @@ export function withOpenFile(
     kind: 'editor',
     projectId: project.id,
     filePath: path,
+    line,
   }
   return {
     ...workspaces,

@@ -8,10 +8,21 @@ import { useTheme } from '../../lib/themeContext'
 interface FileEditorProps {
   projectId: number
   path: string
+  line?: number
   active: boolean
 }
 
-export function FileEditor({ projectId, path, active }: FileEditorProps) {
+type EditorInstance = Parameters<OnMount>[0]
+
+function revealLine(editor: EditorInstance, line: number): void {
+  const model = editor.getModel()
+  const target = model ? Math.min(line, model.getLineCount()) : line
+  editor.setPosition({ lineNumber: target, column: 1 })
+  editor.revealLineInCenter(target)
+  editor.focus()
+}
+
+export function FileEditor({ projectId, path, line, active }: FileEditorProps) {
   const { t } = useTranslation()
   const { resolved } = useTheme()
   const [content, setContent] = useState('')
@@ -24,6 +35,7 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
+  const revealedLineRef = useRef<number | undefined>(undefined)
   const contentRef = useRef('')
   const savedRef = useRef('')
   const savingRef = useRef(false)
@@ -80,11 +92,23 @@ export function FileEditor({ projectId, path, active }: FileEditorProps) {
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current())
+    if (active && line !== undefined) {
+      revealedLineRef.current = line
+      revealLine(editor, line)
+    }
   }
 
   useEffect(() => {
     if (active) editorRef.current?.layout()
   }, [active])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!active || !ready || line === undefined || !editor) return
+    if (revealedLineRef.current === line) return
+    revealedLineRef.current = line
+    revealLine(editor, line)
+  }, [active, ready, line])
 
   useEffect(() => {
     const container = containerRef.current

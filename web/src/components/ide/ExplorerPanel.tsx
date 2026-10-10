@@ -1,8 +1,22 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchFileTree, type FileNode, type FileTree } from '../../lib/api'
+import {
+  fetchFileTree,
+  searchProjectFiles,
+  type FileNode,
+  type FileSearchMode,
+  type FileSearchResult,
+  type FileTree,
+} from '../../lib/api'
 import { useAsyncData } from '../../lib/useAsyncData'
-import { ChevronRightIcon, FileIcon, FolderIcon, RefreshIcon } from './icons'
+import { SearchResultTree } from './SearchResultTree'
+import {
+  ChevronRightIcon,
+  FileIcon,
+  FolderIcon,
+  RefreshIcon,
+  SearchIcon,
+} from './icons'
 
 type DirState =
   | { status: 'loading' }
@@ -101,11 +115,37 @@ function TreeItem({ node, depth, onOpenFile, dirs, onLoadDir }: TreeItemProps) {
 
 interface ExplorerPanelProps {
   projectId: number
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, line?: number) => void
 }
 
 export function ExplorerPanel({ projectId, onOpenFile }: ExplorerPanelProps) {
   return <ExplorerBody key={projectId} projectId={projectId} onOpenFile={onOpenFile} />
+}
+
+interface SearchToggleProps {
+  active: boolean
+  label: string
+  onClick: () => void
+  children: string
+}
+
+function SearchToggle({ active, label, onClick, children }: SearchToggleProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-medium transition ${
+        active
+          ? 'bg-indigo-600 text-white'
+          : 'text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]'
+      }`}
+    >
+      {children}
+    </button>
+  )
 }
 
 function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
@@ -118,6 +158,17 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
 
   const [dirs, setDirs] = useState<Record<string, DirState>>({})
   const [version, setVersion] = useState(0)
+
+  const [query, setQuery] = useState('')
+  const [mode, setMode] = useState<FileSearchMode>('names')
+  const [include, setInclude] = useState('')
+  const [exclude, setExclude] = useState('')
+  const [caseSensitive, setCaseSensitive] = useState(false)
+  const [wholeWord, setWholeWord] = useState(false)
+  const [regex, setRegex] = useState(false)
+  const [result, setResult] = useState<{ query: string; data: FileSearchResult } | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
   const loadDir = useCallback(
     (path: string) => {
@@ -138,6 +189,56 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
     },
     [projectId, t],
   )
+
+  const trimmedQuery = query.trim()
+  const isStale = result !== null && result.query !== trimmedQuery
+  const currentResult = result?.query === trimmedQuery ? result.data : null
+
+  useEffect(() => {
+    if (!trimmedQuery) return
+
+    let active = true
+    const timer = setTimeout(() => {
+      setSearching(true)
+      setSearchError(null)
+      searchProjectFiles(projectId, trimmedQuery, {
+        mode,
+        include,
+        exclude,
+        caseSensitive,
+        wholeWord,
+        regex,
+      })
+        .then((next) => {
+          if (!active) return
+          setResult({ query: trimmedQuery, data: next })
+          setSearchError(null)
+        })
+        .catch((err) => {
+          if (!active) return
+          setResult(null)
+          setSearchError(err instanceof Error ? err.message : t('ide.searchFailed'))
+        })
+        .finally(() => {
+          if (active) setSearching(false)
+        })
+    }, 250)
+
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [
+    projectId,
+    trimmedQuery,
+    mode,
+    include,
+    exclude,
+    caseSensitive,
+    wholeWord,
+    regex,
+    t,
+  ])
 
   const handleRefresh = () => {
     setDirs({})
@@ -160,30 +261,159 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
         </button>
       </div>
 
+      <div className="shrink-0 border-b border-[var(--border)] px-2 pb-2">
+        <div className="relative">
+          <SearchIcon
+            width={13}
+            height={13}
+            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-2)]"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('ide.searchPlaceholder')}
+            aria-label={t('ide.searchPlaceholder')}
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] py-1 pl-7 pr-2 text-[12.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="mt-1.5 flex items-center gap-0.5">
+          <SearchToggle
+            active={caseSensitive}
+            label={t('ide.searchMatchCase')}
+            onClick={() => setCaseSensitive((value) => !value)}
+          >
+            Aa
+          </SearchToggle>
+          <SearchToggle
+            active={wholeWord}
+            label={t('ide.searchMatchWholeWord')}
+            onClick={() => setWholeWord((value) => !value)}
+          >
+            ab
+          </SearchToggle>
+          <SearchToggle
+            active={regex}
+            label={t('ide.searchUseRegex')}
+            onClick={() => setRegex((value) => !value)}
+          >
+            .*
+          </SearchToggle>
+
+          <div className="ml-auto grid grid-cols-2 rounded-md bg-[var(--hover-subtle)] p-0.5">
+            <button
+              type="button"
+              aria-pressed={mode === 'names'}
+              onClick={() => setMode('names')}
+              className={`rounded px-2 py-0.5 text-[11px] font-medium transition ${
+                mode === 'names'
+                  ? 'bg-[var(--surface)] text-[var(--fg-strong)] shadow-sm'
+                  : 'text-[var(--muted)] hover:text-[var(--fg-2)]'
+              }`}
+            >
+              {t('ide.searchNames')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === 'contents'}
+              onClick={() => setMode('contents')}
+              className={`rounded px-2 py-0.5 text-[11px] font-medium transition ${
+                mode === 'contents'
+                  ? 'bg-[var(--surface)] text-[var(--fg-strong)] shadow-sm'
+                  : 'text-[var(--muted)] hover:text-[var(--fg-2)]'
+              }`}
+            >
+              {t('ide.searchContents')}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-1.5 space-y-1">
+          <input
+            type="text"
+            value={include}
+            onChange={(event) => setInclude(event.target.value)}
+            placeholder={t('ide.searchIncludePlaceholder')}
+            aria-label={t('ide.searchFilesToInclude')}
+            className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+          />
+          <input
+            type="text"
+            value={exclude}
+            onChange={(event) => setExclude(event.target.value)}
+            placeholder={t('ide.searchExcludePlaceholder')}
+            aria-label={t('ide.searchFilesToExclude')}
+            className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+          />
+        </div>
+      </div>
+
       <div key={version} className="min-h-0 flex-1 overflow-y-auto px-1 pb-3">
-        {loading && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('common.loading')}</p>
-        )}
-        {!loading && error && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[var(--danger)]">{error}</p>
-        )}
-        {!loading && !error && tree?.entries.length === 0 && (
-          <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">{t('ide.noFiles')}</p>
-        )}
-        {!loading &&
-          !error &&
-          tree?.entries.map((node) => (
-            <TreeItem
-              key={node.path}
-              node={node}
-              depth={0}
-              onOpenFile={onOpenFile}
-              dirs={dirs}
-              onLoadDir={loadDir}
-            />
-          ))}
-        {!loading && !error && tree?.truncated && (
-          <p className="px-2.5 py-2 text-[11px] text-[var(--muted-3)]">{t('ide.filesTruncated')}</p>
+        {trimmedQuery ? (
+          <>
+            {(searching || isStale) && !searchError && (
+              <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">
+                {t('common.loading')}
+              </p>
+            )}
+            {!searching && searchError && (
+              <p className="px-2.5 py-1.5 text-[13px] text-[var(--danger)]">{searchError}</p>
+            )}
+            {!searching && !searchError && currentResult && (
+              currentResult.entries.length === 0 ? (
+                <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">
+                  {t('ide.searchNoResults')}
+                </p>
+              ) : (
+                <>
+                  <SearchResultTree
+                    entries={currentResult.entries}
+                    mode={mode}
+                    onOpenFile={onOpenFile}
+                  />
+                  {currentResult.truncated && (
+                    <p className="px-2.5 py-2 text-[11px] text-[var(--muted-3)]">
+                      {t('ide.searchResultsTruncated')}
+                    </p>
+                  )}
+                </>
+              )
+            )}
+          </>
+        ) : (
+          <>
+            {loading && (
+              <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">
+                {t('common.loading')}
+              </p>
+            )}
+            {!loading && error && (
+              <p className="px-2.5 py-1.5 text-[13px] text-[var(--danger)]">{error}</p>
+            )}
+            {!loading && !error && tree?.entries.length === 0 && (
+              <p className="px-2.5 py-1.5 text-[13px] text-[var(--muted-2)]">
+                {t('ide.noFiles')}
+              </p>
+            )}
+            {!loading &&
+              !error &&
+              tree?.entries.map((node) => (
+                <TreeItem
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  onOpenFile={onOpenFile}
+                  dirs={dirs}
+                  onLoadDir={loadDir}
+                />
+              ))}
+            {!loading && !error && tree?.truncated && (
+              <p className="px-2.5 py-2 text-[11px] text-[var(--muted-3)]">
+                {t('ide.filesTruncated')}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>

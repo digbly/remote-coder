@@ -89,9 +89,12 @@ export function IdeShell({
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
   }
 
-  function openFile(path: string) {
+  function openFile(path: string, line?: number) {
     if (!activeProject) return
-    update((prev) => ({ ...prev, workspaces: withOpenFile(prev.workspaces, activeProject, path) }))
+    update((prev) => ({
+      ...prev,
+      workspaces: withOpenFile(prev.workspaces, activeProject, path, line),
+    }))
   }
 
   const setTabTitle = useCallback(
@@ -193,7 +196,12 @@ export function IdeShell({
                   }`}
                 >
                   {tab.kind === 'editor' && tab.filePath ? (
-                    <FileEditor projectId={projectId} path={tab.filePath} active={active} />
+                    <FileEditor
+                      projectId={projectId}
+                      path={tab.filePath}
+                      line={tab.line}
+                      active={active}
+                    />
                   ) : tab.kind === 'vscode' && tab.worktree ? (
                     <VSCodePanel projectId={projectId} worktree={tab.worktree} title={tab.title} />
                   ) : (

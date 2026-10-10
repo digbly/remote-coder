@@ -1,3 +1,4 @@
+import fnmatch
 import os
 import re
 import shutil
@@ -19,16 +20,53 @@ from app.modules.projects.schemas import (
     DirectoryListing,
     FileContentRead,
     FileNode,
+    FileSearchRead,
     FileTreeRead,
     GithubProjectCreate,
     LocalProjectCreate,
+    SearchFileResult,
+    SearchMatch,
+    SearchSpan,
 )
 
 DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
 MAX_TREE_ENTRIES = 5000
 MAX_FILE_BYTES = 1_000_000
+MAX_SEARCH_RESULTS = 200
+MAX_SEARCH_FILES = 20_000
+MAX_SEARCH_BYTES = 100_000_000
+MAX_MATCHES_PER_FILE = 100
+_MAX_MATCH_TEXT = 500
+_MAX_MATCH_LINE = 2_000
+_MAX_HIGHLIGHTS = 100
 _EXCLUDED_DIRECTORIES = {".git"}
+# Heavy dependency/cache folders that are skipped by default (like a code
+# search tool's ignore list). Naming one of these in the ``include`` filter
+# opts back into searching it.
+_DEFAULT_IGNORED_DIRECTORIES = {
+    ".venv",
+    "venv",
+    "env",
+    "virtualenv",
+    "node_modules",
+    "bower_components",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    ".cache",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".parcel-cache",
+    ".gradle",
+    "dist",
+    "build",
+    "target",
+}
 
 _GITHUB_URL_RE = re.compile(
     r"^(?:https?://|git@)?(?:www\.)?github\.com[/:]"
@@ -187,6 +225,225 @@ def write_file(
     return FileContentRead(
         path=target.relative_to(root).as_posix(), content=content, size=len(data)
     )
+
+
+def search_files(
+    db: Session,
+    owner: User,
+    project_id: int,
+    *,
+    query: str,
+    mode: str = "names",
+    include: str | None = None,
+    exclude: str | None = None,
+    case_sensitive: bool = False,
+    whole_word: bool = False,
+    regex: bool = False,
+) -> FileSearchRead:
+    """Search the project tree by file name or file contents.
+
+    The walk never follows symlinks (so it cannot loop or leave the project),
+    always skips ``.git``, and by default skips heavy dependency/cache folders
+    (see ``_DEFAULT_IGNORED_DIRECTORIES``); naming one of those folders in
+    ``include`` opts back into it. ``include``/``exclude`` are comma separated
+    globs matched against the project-relative path (or file name). Results are
+    capped so a huge tree cannot exhaust the request.
+    """
+    project = get_project(db, owner, project_id)
+    root = Path(project.path).resolve()
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    matcher = _build_search_matcher(
+        query, case_sensitive=case_sensitive, whole_word=whole_word, regex=regex
+    )
+    include_globs = _parse_globs(include)
+    exclude_globs = _parse_globs(exclude)
+    ignored_dirs = _ignored_directories(root, include_globs)
+
+    entries: list[SearchFileResult] = []
+    scanned = 0
+    scanned_bytes = 0
+    truncated = False
+
+    stack: list[tuple[str, str]] = [(str(root), "")]
+    while stack and not truncated:
+        directory, relative_dir = stack.pop()
+        try:
+            with os.scandir(directory) as iterator:
+                children = sorted(
+                    iterator,
+                    key=lambda entry: (
+                        not entry.is_dir(follow_symlinks=False),
+                        entry.name.lower(),
+                    ),
+                )
+        except OSError:
+            continue
+
+        subdirectories: list[tuple[str, str]] = []
+        for entry in children:
+            if entry.is_symlink():
+                continue
+            name = entry.name
+            relative = f"{relative_dir}/{name}" if relative_dir else name
+
+            if entry.is_dir(follow_symlinks=False):
+                if name in _EXCLUDED_DIRECTORIES or name in ignored_dirs:
+                    continue
+                subdirectories.append((entry.path, relative))
+                continue
+
+            if not _matches_search_globs(relative, include_globs, exclude_globs):
+                continue
+
+            scanned += 1
+            if scanned > MAX_SEARCH_FILES:
+                truncated = True
+                break
+
+            if mode == "contents":
+                matches, consumed = _match_file_contents(Path(entry.path), matcher)
+                scanned_bytes += consumed
+                if matches:
+                    entries.append(SearchFileResult(path=relative, matches=matches))
+                if scanned_bytes > MAX_SEARCH_BYTES:
+                    truncated = True
+                    break
+            elif matcher.search(name):
+                entries.append(
+                    SearchFileResult(path=relative, spans=_match_spans(name, len(name), matcher))
+                )
+
+            if len(entries) >= MAX_SEARCH_RESULTS:
+                truncated = True
+                break
+
+        stack.extend(reversed(subdirectories))
+
+    return FileSearchRead(entries=entries, truncated=truncated)
+
+
+def _ignored_directories(root: Path, include_globs: list[str]) -> set[str]:
+    """Default-ignored dirs (built-in plus the project's ``.gitignore``).
+
+    Naming one of them in ``include`` opts back into the whole tree.
+    """
+    ignored = _DEFAULT_IGNORED_DIRECTORIES | _gitignore_directories(root)
+    if any(_pattern_root(pattern) in ignored for pattern in include_globs):
+        return set()
+    return ignored
+
+
+def _gitignore_directories(root: Path) -> set[str]:
+    """Best-effort directory names from the project's ``.gitignore``.
+
+    Only plain names map cleanly onto our name-based ignore (globs and
+    negations are skipped); the last path segment of a nested entry is used.
+    """
+    try:
+        content = (root / ".gitignore").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+
+    names: set[str] = set()
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", "!")):
+            continue
+        entry = line.rstrip("/")
+        if not entry or any(char in entry for char in "*?[]"):
+            continue
+        names.add(PurePosixPath(entry).name)
+    return names
+
+
+def _pattern_root(pattern: str) -> str:
+    parts = PurePosixPath(pattern).parts
+    return parts[0] if parts else ""
+
+
+def _build_search_matcher(
+    query: str, *, case_sensitive: bool, whole_word: bool, regex: bool
+) -> re.Pattern[str]:
+    pattern = query if regex else re.escape(query)
+    if whole_word:
+        pattern = rf"(?<![0-9A-Za-z_]){pattern}(?![0-9A-Za-z_])"
+    flags = 0 if case_sensitive else re.IGNORECASE
+    try:
+        return re.compile(pattern, flags)
+    except re.error as exc:
+        raise api_error(
+            ErrorCode.SEARCH_QUERY_INVALID, status_code=status.HTTP_400_BAD_REQUEST
+        ) from exc
+
+
+def _parse_globs(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _matches_search_globs(relative: str, include: list[str], exclude: list[str]) -> bool:
+    if any(_glob_match(relative, pattern) for pattern in exclude):
+        return False
+    if not include:
+        return True
+    return any(_glob_match(relative, pattern) for pattern in include)
+
+
+def _glob_match(relative: str, pattern: str) -> bool:
+    name = PurePosixPath(relative).name
+    if pattern.startswith("**/"):
+        return fnmatch.fnmatchcase(name, pattern[3:]) or fnmatch.fnmatchcase(relative, pattern)
+    if "/" in pattern:
+        return fnmatch.fnmatchcase(relative, pattern)
+    return fnmatch.fnmatchcase(name, pattern)
+
+
+def _match_spans(text: str, limit: int, matcher: re.Pattern[str]) -> list[SearchSpan]:
+    """Highlight spans for ``matcher`` within the first ``limit`` characters."""
+    spans: list[SearchSpan] = []
+    for found in matcher.finditer(text):
+        start, end = found.span()
+        if start >= limit:
+            break
+        spans.append(SearchSpan(start=start, end=min(end, limit)))
+        if len(spans) >= _MAX_HIGHLIGHTS:
+            break
+    return spans
+
+
+def _match_file_contents(
+    path: Path, matcher: re.Pattern[str]
+) -> tuple[list[SearchMatch], int]:
+    try:
+        size = path.stat().st_size
+        if size > MAX_FILE_BYTES:
+            return [], 0
+        data = path.read_bytes()
+    except OSError:
+        return [], 0
+    if len(data) > MAX_FILE_BYTES:
+        return [], 0
+    if b"\x00" in data:
+        return [], len(data)
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return [], len(data)
+
+    matches: list[SearchMatch] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        haystack = line[:_MAX_MATCH_LINE]
+        if not matcher.search(haystack):
+            continue
+        display = haystack[:_MAX_MATCH_TEXT]
+        spans = _match_spans(haystack, len(display), matcher)
+        matches.append(SearchMatch(line=number, text=display, spans=spans))
+        if len(matches) >= MAX_MATCHES_PER_FILE:
+            break
+    return matches, len(data)
 
 
 def _resolve_project_file(

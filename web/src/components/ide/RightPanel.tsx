@@ -21,7 +21,7 @@ interface RightPanelProps {
   projectId: number
   width: number
   onClose: () => void
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, line?: number) => void
 }
 
 export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanelProps) {

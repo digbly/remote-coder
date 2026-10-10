@@ -76,3 +76,25 @@ class FileContentRead(BaseModel):
 class FileWriteRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4096)
     content: str
+
+
+class SearchSpan(BaseModel):
+    start: int
+    end: int
+
+
+class SearchMatch(BaseModel):
+    line: int
+    text: str
+    spans: list[SearchSpan] = Field(default_factory=list)
+
+
+class SearchFileResult(BaseModel):
+    path: str
+    matches: list[SearchMatch] = Field(default_factory=list)
+    spans: list[SearchSpan] = Field(default_factory=list)
+
+
+class FileSearchRead(BaseModel):
+    entries: list[SearchFileResult] = Field(default_factory=list)
+    truncated: bool = False

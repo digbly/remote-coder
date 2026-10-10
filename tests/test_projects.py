@@ -633,3 +633,298 @@ def test_project_file_write_rejects_oversized(client: TestClient, projects_root)
 
     assert response.status_code == 400
     assert _error_code(response) == "FILE_TOO_LARGE"
+
+
+def _register_search_repo(client: TestClient, root: Path) -> int:
+    repo = root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "main.py").write_text("import os\n\nprint('Hello World')\n")
+    (repo / "src" / "utils.py").write_text("def helper():\n    return 42\n")
+    (repo / "README.md").write_text("# Project\nhello world\n")
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text("hello world\n")
+    return _register_local(client, repo)["id"]
+
+
+def test_project_search_names(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "main", "mode": "names"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["truncated"] is False
+    assert [entry["path"] for entry in body["entries"]] == ["src/main.py"]
+    assert body["entries"][0]["matches"] == []
+    assert body["entries"][0]["spans"] == [{"start": 0, "end": 4}]
+
+
+def test_project_search_names_is_case_insensitive_by_default(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "MAIN", "mode": "names"}
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["src/main.py"]
+
+
+def test_project_search_names_case_sensitive(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "MAIN", "mode": "names", "case_sensitive": "true"},
+    ).json()
+
+    assert body["entries"] == []
+
+
+def test_project_search_names_respects_include_and_exclude(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    included = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": ".", "mode": "names", "include": "*.md"},
+    ).json()
+    assert [entry["path"] for entry in included["entries"]] == ["README.md"]
+
+    excluded = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": ".", "mode": "names", "exclude": "src/**"},
+    ).json()
+    assert [entry["path"] for entry in excluded["entries"]] == ["README.md"]
+
+
+def test_project_search_contents_returns_line_matches(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "hello world", "mode": "contents"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    paths = {entry["path"]: entry["matches"] for entry in body["entries"]}
+    assert set(paths) == {"src/main.py", "README.md"}
+    assert paths["README.md"] == [
+        {"line": 2, "text": "hello world", "spans": [{"start": 0, "end": 11}]}
+    ]
+    assert paths["src/main.py"][0]["line"] == 3
+
+
+def test_project_search_contents_skips_git_and_binary(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "binary.bin").write_bytes(b"match\x00here")
+    (repo / "text.txt").write_text("a match here\n")
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text("match\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "match", "mode": "contents"}
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["text.txt"]
+
+
+def test_project_search_contents_whole_word(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "a.txt").write_text("cat category\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "cat", "mode": "contents", "whole_word": "true"},
+    ).json()
+
+    assert body["entries"][0]["matches"] == [
+        {"line": 1, "text": "cat category", "spans": [{"start": 0, "end": 3}]}
+    ]
+
+
+def test_project_search_regex_and_invalid(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    valid = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "h.llo world", "mode": "contents", "regex": "true"},
+    )
+    assert valid.status_code == 200
+    assert any(entry["path"] == "README.md" for entry in valid.json()["entries"])
+
+    invalid = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "(unclosed", "mode": "contents", "regex": "true"},
+    )
+    assert invalid.status_code == 400
+    assert _error_code(invalid) == "SEARCH_QUERY_INVALID"
+
+
+def test_project_search_requires_auth(client: TestClient) -> None:
+    assert client.get(f"{PROJECTS_URL}/1/search", params={"q": "x"}).status_code == 401
+
+
+def test_project_search_scoped_to_owner(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    client.cookies.clear()
+    _login(client, username=OTHER_USERNAME)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/search", params={"q": "main"})
+    assert response.status_code == 404
+    assert _error_code(response) == "PROJECT_NOT_FOUND"
+
+
+def test_project_search_rejects_empty_query(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_search_repo(client, projects_root)
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/search", params={"q": ""})
+
+    assert response.status_code == 422
+    assert _error_code(response) == "VALIDATION_ERROR"
+
+
+def test_project_search_globstar_matches_nested_and_root(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "deep.py").write_text("x\n")
+    (repo / "root.py").write_text("x\n")
+    (repo / "notes.md").write_text("x\n")
+    project_id = _register_local(client, repo)["id"]
+
+    included = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": ".", "mode": "names", "include": "**/*.py"},
+    ).json()
+    assert sorted(entry["path"] for entry in included["entries"]) == [
+        "root.py",
+        "src/deep.py",
+    ]
+
+    excluded = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": ".", "mode": "names", "exclude": "**/*.py"},
+    ).json()
+    assert [entry["path"] for entry in excluded["entries"]] == ["notes.md"]
+
+
+def test_project_search_truncates_at_result_cap(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setattr(service, "MAX_SEARCH_RESULTS", 2)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    for index in range(5):
+        (repo / f"file{index}.txt").write_text("hit\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "file", "mode": "names"}
+    ).json()
+
+    assert len(body["entries"]) == 2
+    assert body["truncated"] is True
+
+
+def test_project_search_ignores_heavy_directories_by_default(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("needle\n")
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
+    (repo / "node_modules" / "pkg" / "index.js").write_text("needle\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "needle", "mode": "contents"}
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["src/app.py"]
+
+
+def test_project_search_include_overrides_heavy_directory_ignore(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("needle\n")
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
+    (repo / "node_modules" / "pkg" / "index.js").write_text("needle\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "needle", "mode": "contents", "include": "node_modules/**"},
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["node_modules/pkg/index.js"]
+
+
+def test_project_search_ignores_gitignored_directories(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("needle\n")
+    (repo / "generated").mkdir()
+    (repo / "generated" / "out.py").write_text("needle\n")
+    (repo / "vendor" / "lib").mkdir(parents=True)
+    (repo / "vendor" / "lib" / "dep.py").write_text("needle\n")
+    (repo / ".gitignore").write_text("generated/\nvendor/lib/\n*.log\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search", params={"q": "needle", "mode": "contents"}
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["src/app.py"]
+
+
+def test_project_search_gitignore_override_via_include(
+    client: TestClient, projects_root
+) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("needle\n")
+    (repo / "generated").mkdir()
+    (repo / "generated" / "out.py").write_text("needle\n")
+    (repo / ".gitignore").write_text("generated/\n")
+    project_id = _register_local(client, repo)["id"]
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/search",
+        params={"q": "needle", "mode": "contents", "include": "generated/**"},
+    ).json()
+
+    assert [entry["path"] for entry in body["entries"]] == ["generated/out.py"]

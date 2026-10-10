@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Query, status
 
 from app.core.deps import DbDep, SettingsDep
@@ -8,6 +10,7 @@ from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     DirectoryListing,
     FileContentRead,
+    FileSearchRead,
     FileTreeRead,
     FileWriteRequest,
     GithubProjectCreate,
@@ -92,6 +95,37 @@ def list_project_files(
     path: str | None = Query(None, max_length=4096),
 ) -> FileTreeRead:
     return service.list_files(db, current_user, project_id, path)
+
+
+@router.get(
+    "/{project_id}/search",
+    response_model=FileSearchRead,
+    responses=error_responses(400, 401, 403, 404, 422),
+)
+def search_project_files(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    q: str = Query(min_length=1, max_length=500),
+    mode: Literal["names", "contents"] = Query("names"),
+    include: str | None = Query(None, max_length=4096),
+    exclude: str | None = Query(None, max_length=4096),
+    case_sensitive: bool = Query(False),
+    whole_word: bool = Query(False),
+    regex: bool = Query(False),
+) -> FileSearchRead:
+    return service.search_files(
+        db,
+        current_user,
+        project_id,
+        query=q,
+        mode=mode,
+        include=include,
+        exclude=exclude,
+        case_sensitive=case_sensitive,
+        whole_word=whole_word,
+        regex=regex,
+    )
 
 
 @router.get(
