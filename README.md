@@ -43,12 +43,13 @@ docker run --rm --name remote-coder \
   remote-coder
 ```
 
-Open the web app at `https://your-domain/`; the API docs are at
-`https://your-domain/docs`. Put the container behind a TLS-terminating reverse
-proxy and forward HTTPS traffic to port 8000: production cookies are Secure and
-will not work over plain HTTP. Keep the generated `SECRET_KEY` stable and
-provide a strong `ADMIN_PASSWORD`. Named volumes preserve projects, the SQLite
-database, logs, and code-server data when the container is removed.
+For local access, open the web app at `http://localhost:8000/`; the API docs
+are at `http://localhost:8000/docs`. Because production cookies are Secure,
+sign-in requires HTTPS. For production, put the container behind a
+TLS-terminating reverse proxy and forward HTTPS traffic to port 8000. Keep the
+generated `SECRET_KEY` stable and provide a strong `ADMIN_PASSWORD`. Named
+volumes preserve projects, the SQLite database, logs, and code-server data
+when the container is removed.
 
 ## Run
 

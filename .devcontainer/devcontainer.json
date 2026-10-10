@@ -23,7 +23,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "python -m pip install --upgrade pip uv && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]' && npm ci --prefix web && curl -fsSL https://code-server.dev/install.sh | sh",
+  "postCreateCommand": "python -m pip install --upgrade pip uv && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]' && npm ci --prefix web && curl -fsSL https://code-server.dev/install.sh | sh && git --global config pull.rebase false",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python", "charliermarsh.ruff", "dbaeumer.vscode-eslint"],
