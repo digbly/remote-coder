@@ -67,6 +67,7 @@ interface IdeShellProps {
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onSelectTab: (tab: WorkspaceTab) => void
+  onProjectDeleted: (projectId: number) => void
 }
 
 export function IdeShell({
@@ -79,6 +80,7 @@ export function IdeShell({
   onOpenWorktree,
   onOpenVSCode,
   onSelectTab,
+  onProjectDeleted,
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
@@ -165,6 +167,27 @@ export function IdeShell({
     }))
   }
 
+  function closeProjectTabs(projectId: number) {
+    const removed = workspaces[projectId]?.tabs ?? []
+    for (const tab of removed) {
+      if (tab.kind === 'terminal') {
+        void killTerminal(projectId, tab.id).catch(() => {
+          /* the terminal may already be gone */
+        })
+      }
+    }
+    update((prev) => {
+      const next = { ...prev.workspaces }
+      delete next[projectId]
+      return { ...prev, workspaces: next }
+    })
+  }
+
+  function handleProjectDeleted(projectId: number) {
+    closeProjectTabs(projectId)
+    onProjectDeleted(projectId)
+  }
+
   function closeWorktreeTabs(projectId: number, worktree: string) {
     const removed = (workspaces[projectId]?.tabs ?? []).filter((tab) => tab.worktree === worktree)
     for (const tab of removed) {
@@ -191,6 +214,7 @@ export function IdeShell({
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
             onWorktreeDeleted={closeWorktreeTabs}
+            onProjectDeleted={handleProjectDeleted}
             onOpenSearch={() => setSearchOpen(true)}
             activeProjectId={activeProjectId}
             chatWorktrees={chatWorktrees}

@@ -239,6 +239,9 @@ const en = {
     deleteWorktree: 'Delete worktree',
     deleteWorktreeConfirm: 'Delete worktree "{{name}}"? This cannot be undone.',
     deleteWorktreeFailed: 'Could not delete the worktree',
+    deleteProject: 'Delete project',
+    deleteProjectConfirm: 'Delete project "{{name}}"? This cannot be undone.',
+    deleteProjectFailed: 'Could not delete the project',
     newWorktreeDialog: {
       title: 'New worktree',
       nameTab: 'New branch',

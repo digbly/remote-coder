@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import {
+  deleteProject,
   deleteWorktree,
   fetchProjects,
   fetchRunningTerminals,
@@ -173,6 +174,7 @@ function ProjectItem({
   onOpenVSCode,
   onOpenWorktreeDialog,
   onWorktreeContextMenu,
+  onProjectContextMenu,
 }: {
   project: Project
   accent: string
@@ -184,11 +186,16 @@ function ProjectItem({
   onOpenVSCode: (project: Project, worktree: string) => void
   onOpenWorktreeDialog: (project: Project) => void
   onWorktreeContextMenu: (worktree: Worktree, x: number, y: number) => void
+  onProjectContextMenu: (x: number, y: number) => void
 }) {
   const { t } = useTranslation()
   return (
     <div className="pb-1.5">
       <div
+        onContextMenu={(event) => {
+          event.preventDefault()
+          onProjectContextMenu(event.clientX, event.clientY)
+        }}
         className={`group flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition ${
           active ? 'bg-[var(--hover)] text-[var(--fg-strong)]' : 'text-[var(--fg-2)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
         }`}
@@ -231,15 +238,16 @@ function ProjectItem({
   )
 }
 
-interface WorktreeMenu {
+interface ContextMenu {
   x: number
   y: number
   project: Project
-  worktree: Worktree
+  worktree?: Worktree
 }
 
 const MENU_WIDTH = 208
 const MENU_HEIGHT = 140
+const PROJECT_MENU_HEIGHT = 88
 const MENU_MARGIN = 8
 
 interface SidebarProps {
@@ -249,6 +257,7 @@ interface SidebarProps {
   onOpenWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onWorktreeDeleted: (projectId: number, worktree: string) => void
+  onProjectDeleted: (projectId: number) => void
   onOpenSearch: () => void
   activeProjectId: number | null
   chatWorktrees: Record<number, string[]>
@@ -265,6 +274,7 @@ export function Sidebar({
   onOpenWorktree,
   onOpenVSCode,
   onWorktreeDeleted,
+  onProjectDeleted,
   onOpenSearch,
   activeProjectId,
   chatWorktrees,
@@ -279,7 +289,7 @@ export function Sidebar({
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [worktreeTarget, setWorktreeTarget] = useState<Project | null>(null)
-  const [menu, setMenu] = useState<WorktreeMenu | null>(null)
+  const [menu, setMenu] = useState<ContextMenu | null>(null)
   const [menuError, setMenuError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -361,41 +371,43 @@ export function Sidebar({
     window.open(vscodeUrl(project.id, worktree), '_blank', 'noopener,noreferrer')
   }
 
-  function openWorktreeMenu(project: Project, worktree: Worktree, x: number, y: number) {
+  function openMenu(project: Project, x: number, y: number, worktree?: Worktree) {
     setMenuError(null)
+    const height = worktree ? MENU_HEIGHT : PROJECT_MENU_HEIGHT
     const maxX = Math.max(MENU_MARGIN, window.innerWidth - MENU_WIDTH - MENU_MARGIN)
-    const maxY = Math.max(MENU_MARGIN, window.innerHeight - MENU_HEIGHT - MENU_MARGIN)
+    const maxY = Math.max(MENU_MARGIN, window.innerHeight - height - MENU_MARGIN)
     setMenu({
       x: Math.min(x, maxX),
       y: Math.min(y, maxY),
       project,
-      worktree,
+      ...(worktree ? { worktree } : {}),
     })
   }
 
   function runMenuAction(action: (project: Project, worktree: string) => void) {
-    if (!menu) return
     const current = menu
+    if (!current?.worktree) return
     setMenu(null)
     action(current.project, current.worktree.name)
   }
 
   function handleDeleteWorktree() {
-    if (!menu) return
     const current = menu
+    if (!current?.worktree) return
+    const worktree = current.worktree
     setMenu(null)
-    if (current.worktree.is_primary) return
+    if (worktree.is_primary) return
     if (
       !window.confirm(
-        t('ide.deleteWorktreeConfirm', { name: current.worktree.branch ?? current.worktree.name }),
+        t('ide.deleteWorktreeConfirm', { name: worktree.branch ?? worktree.name }),
       )
     ) {
       return
     }
     setMenuError(null)
-    deleteWorktree(current.project.id, current.worktree.name)
+    deleteWorktree(current.project.id, worktree.name)
       .then(() => {
-        onWorktreeDeleted(current.project.id, current.worktree.name)
+        onWorktreeDeleted(current.project.id, worktree.name)
         fetchWorktrees(current.project.id)
           .then((list) => setWorktrees((prev) => ({ ...prev, [current.project.id]: list })))
           .catch(() => {
@@ -404,6 +416,31 @@ export function Sidebar({
       })
       .catch((err) => {
         setMenuError(err instanceof Error ? err.message : t('ide.deleteWorktreeFailed'))
+      })
+  }
+
+  function handleDeleteProject() {
+    const current = menu
+    if (!current) return
+    setMenu(null)
+    if (!window.confirm(t('ide.deleteProjectConfirm', { name: current.project.name }))) {
+      return
+    }
+    setMenuError(null)
+    deleteProject(current.project.id)
+      .then(() => {
+        setProjects((prev) =>
+          prev ? prev.filter((project) => project.id !== current.project.id) : prev,
+        )
+        setWorktrees((prev) => {
+          const next = { ...prev }
+          delete next[current.project.id]
+          return next
+        })
+        onProjectDeleted(current.project.id)
+      })
+      .catch((err) => {
+        setMenuError(err instanceof Error ? err.message : t('ide.deleteProjectFailed'))
       })
   }
 
@@ -473,9 +510,8 @@ export function Sidebar({
             onOpenWorktree={onOpenWorktree}
             onOpenVSCode={onOpenVSCode}
             onOpenWorktreeDialog={setWorktreeTarget}
-            onWorktreeContextMenu={(worktree, x, y) =>
-              openWorktreeMenu(project, worktree, x, y)
-            }
+            onWorktreeContextMenu={(worktree, x, y) => openMenu(project, x, y, worktree)}
+            onProjectContextMenu={(x, y) => openMenu(project, x, y)}
           />
         ))}
       </div>
@@ -531,48 +567,62 @@ export function Sidebar({
           className="fixed z-30 w-52 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
         >
           <p className="truncate px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-3)]">
-            {menu.worktree.name}
+            {menu.worktree ? menu.worktree.name : menu.project.name}
           </p>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runMenuAction(onOpenWorktree)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
-          >
-            <TerminalIcon width={13} height={13} />
-            {t('ide.openTerminal')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runMenuAction(onOpenVSCode)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
-          >
-            <CodeIcon width={13} height={13} />
-            {t('ide.openInVSCode')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runMenuAction(openVSCodeNewTab)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
-          >
-            <ExternalLinkIcon width={13} height={13} />
-            {t('ide.openInNewTab')}
-          </button>
-          {!menu.worktree.is_primary && (
+          {menu.worktree ? (
             <>
-              <div className="my-1 border-t border-[var(--border)]" />
               <button
                 type="button"
                 role="menuitem"
-                onClick={handleDeleteWorktree}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--danger)] hover:bg-[var(--active)]"
+                onClick={() => runMenuAction(onOpenWorktree)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
               >
-                <TrashIcon width={13} height={13} />
-                {t('ide.deleteWorktree')}
+                <TerminalIcon width={13} height={13} />
+                {t('ide.openTerminal')}
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => runMenuAction(onOpenVSCode)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
+              >
+                <CodeIcon width={13} height={13} />
+                {t('ide.openInVSCode')}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => runMenuAction(openVSCodeNewTab)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
+              >
+                <ExternalLinkIcon width={13} height={13} />
+                {t('ide.openInNewTab')}
+              </button>
+              {!menu.worktree.is_primary && (
+                <>
+                  <div className="my-1 border-t border-[var(--border)]" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleDeleteWorktree}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--danger)] hover:bg-[var(--active)]"
+                  >
+                    <TrashIcon width={13} height={13} />
+                    {t('ide.deleteWorktree')}
+                  </button>
+                </>
+              )}
             </>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleDeleteProject}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--danger)] hover:bg-[var(--active)]"
+            >
+              <TrashIcon width={13} height={13} />
+              {t('ide.deleteProject')}
+            </button>
           )}
         </div>
       )}

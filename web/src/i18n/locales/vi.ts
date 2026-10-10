@@ -239,6 +239,9 @@ const vi = {
     deleteWorktree: 'Xoá worktree',
     deleteWorktreeConfirm: 'Xoá worktree "{{name}}"? Không thể hoàn tác.',
     deleteWorktreeFailed: 'Không thể xoá worktree',
+    deleteProject: 'Xoá dự án',
+    deleteProjectConfirm: 'Xoá dự án "{{name}}"? Không thể hoàn tác.',
+    deleteProjectFailed: 'Không thể xoá dự án',
     newWorktreeDialog: {
       title: 'Worktree mới',
       nameTab: 'Nhánh mới',

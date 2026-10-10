@@ -76,6 +76,13 @@ export function WorkspaceLayout() {
     update((prev) => ({ ...prev, workspaces: withVSCodeTab(prev.workspaces, ref, worktree) }))
   }
 
+  function projectDeleted(deletedId: number) {
+    if (activeProject?.id === deletedId) {
+      setActiveProject(null)
+      navigate('/', { replace: true })
+    }
+  }
+
   function selectTab(tab: WorkspaceTab) {
     const projectId = tab.projectId
     if (projectId == null) return
@@ -101,6 +108,7 @@ export function WorkspaceLayout() {
       onOpenWorktree={openWorktree}
       onOpenVSCode={openVSCode}
       onSelectTab={selectTab}
+      onProjectDeleted={projectDeleted}
     />
   )
 }

@@ -685,6 +685,14 @@ export async function deleteWorktree(projectId: number, name: string): Promise<v
   }
 }
 
+export async function deleteProject(projectId: number): Promise<void> {
+  const response = await request(`/projects/${projectId}`, { method: 'DELETE' })
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+}
+
 export async function fetchAgents(): Promise<AgentDefinition[]> {
   const response = await request('/agents')
   if (!response.ok) {
