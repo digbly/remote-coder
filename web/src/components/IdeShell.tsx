@@ -63,6 +63,7 @@ interface IdeShellProps {
   user: User
   onLogout: () => void
   activeProject: ActiveProjectRef | null
+  projectPending: boolean
   state: SyncedState
   update: (updater: (prev: SyncedState) => SyncedState) => void
   onOpenProject: (project: Project) => void
@@ -76,6 +77,7 @@ export function IdeShell({
   user,
   onLogout,
   activeProject,
+  projectPending,
   state,
   update,
   onOpenProject,
@@ -266,12 +268,17 @@ export function IdeShell({
         />
         <div className="flex min-h-0 min-w-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1">
-            {activeProjectId == null && (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
-                <p className="text-sm text-[var(--muted)]">{t('ide.noProjectSelected')}</p>
-                <p className="text-xs text-[var(--muted-4)]">{t('ide.openProjectHint')}</p>
-              </div>
-            )}
+            {activeProjectId == null &&
+              (projectPending ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <p className="text-sm text-[var(--muted)]">{t('common.loading')}</p>
+                </div>
+              ) : (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
+                  <p className="text-sm text-[var(--muted)]">{t('ide.noProjectSelected')}</p>
+                  <p className="text-xs text-[var(--muted-4)]">{t('ide.openProjectHint')}</p>
+                </div>
+              ))}
             {allTabs.map((tab) => {
               if (tab.projectId == null) return null
               const projectId = tab.projectId

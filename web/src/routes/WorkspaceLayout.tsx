@@ -21,13 +21,15 @@ function parseProjectId(value: string | null): number | null {
 
 export function WorkspaceLayout() {
   const { user, logout } = useAuth()
-  const { state, update } = useWorkspaceSync()
+  const { state, ready, update } = useWorkspaceSync()
   const [searchParams, setSearchParams] = useSearchParams()
   const [deepLinkId] = useState(() => parseProjectId(searchParams.get('project')))
   const [activeProject, setActiveProject] = useState<ActiveProjectRef | null>(null)
   const activeProjectId = state.activeProjectId
   const resolvedProject =
     activeProject && activeProject.id === activeProjectId ? activeProject : null
+  const projectPending =
+    !ready || (activeProjectId !== null && resolvedProject === null)
 
   // A project opened from a deep link is an initial intent only: fold it into the
   // synced state and drop the query param so the URL does not go stale and the
@@ -130,6 +132,7 @@ export function WorkspaceLayout() {
       user={user}
       onLogout={logout}
       activeProject={resolvedProject}
+      projectPending={projectPending}
       state={state}
       update={update}
       onOpenProject={openProject}

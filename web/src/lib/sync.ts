@@ -91,11 +91,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export interface WorkspaceSync {
   state: SyncedState
+  ready: boolean
   update: (updater: (prev: SyncedState) => SyncedState) => void
 }
 
 export function useWorkspaceSync(): WorkspaceSync {
   const [state, setState] = useState<SyncedState>(emptySyncedState)
+  const [ready, setReady] = useState(false)
   const [clientId] = useState(newClientId)
 
   const stateRef = useRef(state)
@@ -133,6 +135,9 @@ export function useWorkspaceSync(): WorkspaceSync {
           return
         }
         if (!isRecord(message) || message.type !== 'state') return
+        // The initial snapshot has arrived, so the layout can stop showing its
+        // loading placeholder even when the stored state is empty.
+        setReady(true)
         if (message.origin === clientId) return
 
         if (message.state === null) {
@@ -211,5 +216,5 @@ export function useWorkspaceSync(): WorkspaceSync {
     [clientId],
   )
 
-  return { state, update }
+  return { state, ready, update }
 }

@@ -55,7 +55,10 @@ def test_context_lists_only_project_relative_files_and_excludes_git(project_cont
     result = context.list_files()
 
     assert result == {
-        "entries": [{"path": "src", "type": "directory"}],
+        "entries": [
+            {"path": "src", "type": "directory"},
+            {"path": "src/main.py", "type": "file"},
+        ],
         "truncated": False,
     }
     with pytest.raises(HTTPException) as exc:
