@@ -707,3 +707,41 @@ async def test_openai_compatible_stream_error_payload_raises() -> None:
 
     assert exc_info.value.diagnostic == "upstream failed [REDACTED]"
     assert API_KEY not in (exc_info.value.diagnostic or "")
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_sends_opencode_session_header() -> None:
+    def handler(request: Request) -> Response:
+        assert request.headers["x-opencode-session"] == "conv-123"
+        assert request.headers["user-agent"].startswith("remote-coder/")
+        return Response(200, headers={"content-type": "text/event-stream"}, text="data: [DONE]\n\n")
+
+    async with await _client(handler) as client:
+        async for _event in OpenAICompatibleAdapter("opencode", BASE_URL).stream(
+            client, API_KEY, "model", "system", MESSAGES, TOOLS, session_id="conv-123"
+        ):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_opencode_sends_user_agent_when_listing_models() -> None:
+    def handler(request: Request) -> Response:
+        assert request.headers["user-agent"].startswith("remote-coder/")
+        return Response(200, json={"data": [{"id": "grok-4.7"}]})
+
+    async with await _client(handler) as client:
+        await OpenAICompatibleAdapter("opencode", BASE_URL).list_models(client, API_KEY)
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_custom_endpoint_omits_opencode_headers() -> None:
+    def handler(request: Request) -> Response:
+        assert "x-opencode-session" not in request.headers
+        assert not request.headers["user-agent"].startswith("remote-coder/")
+        return Response(200, headers={"content-type": "text/event-stream"}, text="data: [DONE]\n\n")
+
+    async with await _client(handler) as client:
+        async for _event in OpenAICompatibleAdapter("custom", BASE_URL).stream(
+            client, API_KEY, "model", "system", MESSAGES, TOOLS, session_id="conv-123"
+        ):
+            pass

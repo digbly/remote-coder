@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Sequence
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 
 import httpx
 
@@ -28,6 +30,11 @@ from app.modules.ai_providers.base import (
 
 _REASONING_KEYS = ("reasoning_content", "reasoning")
 
+try:
+    _USER_AGENT = f"remote-coder/{package_version('remote-coder')}"
+except PackageNotFoundError:
+    _USER_AGENT = "remote-coder"
+
 
 class OpenAICompatibleAdapter(ProviderAdapterBase):
     """Adapter for generic OpenAI-compatible ``chat/completions`` endpoints."""
@@ -36,11 +43,22 @@ class OpenAICompatibleAdapter(ProviderAdapterBase):
         self.kind = kind
         self.base_url = base_url.rstrip("/")
 
+    def _headers(self, api_key: str, session_id: str | None = None) -> dict[str, str]:
+        # OpenCode Go/Zen require a client-identifying user agent and a stable
+        # per-conversation id to route requests and optimize prompt caching
+        # (see https://opencode.ai/docs/go/).
+        headers = {"Authorization": f"Bearer {api_key}"}
+        if self.kind == "opencode":
+            headers["User-Agent"] = _USER_AGENT
+            if session_id:
+                headers["x-opencode-session"] = session_id
+        return headers
+
     async def list_models(self, client: httpx.AsyncClient, api_key: str) -> list[ProviderModel]:
         try:
             response = await client.get(
                 f"{self.base_url}/models",
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers=self._headers(api_key),
                 timeout=20,
             )
         except httpx.HTTPError as exc:
@@ -64,6 +82,8 @@ class OpenAICompatibleAdapter(ProviderAdapterBase):
         system: str,
         messages: Sequence[ChatMessage],
         tools: Sequence[ProviderTool],
+        *,
+        session_id: str | None = None,
     ) -> AsyncIterator[ProviderEvent]:
         payload: dict[str, object] = {
             "model": model,
@@ -92,7 +112,7 @@ class OpenAICompatibleAdapter(ProviderAdapterBase):
             async with client.stream(
                 "POST",
                 f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers=self._headers(api_key, session_id),
                 json=payload,
                 timeout=120,
             ) as response:

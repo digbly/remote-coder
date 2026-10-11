@@ -63,7 +63,7 @@ def test_chat_streams_and_persists_a_resumable_conversation(
         assert api_key == "provider-secret"
         return [ProviderModel("gpt-test", "GPT Test")]
 
-    async def stream(self, _client, api_key, model, _system, messages, tools):
+    async def stream(self, _client, api_key, model, _system, messages, tools, *, session_id=None):
         assert api_key == "provider-secret"
         assert model == "gpt-test"
         assert {tool.name for tool in tools} == {
@@ -205,7 +205,7 @@ def test_chat_runs_provider_command_and_returns_output_to_provider(
     async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
         return [ProviderModel("gpt-test", "GPT Test")]
 
-    async def stream(self, _client, _api_key, _model, _system, messages, tools):
+    async def stream(self, _client, _api_key, _model, _system, messages, tools, *, session_id=None):
         assert "run_project_command" in {tool.name for tool in tools}
         calls["stream"] += 1
         if calls["stream"] == 1:
@@ -328,7 +328,7 @@ def test_chat_recovers_with_final_answer_when_tool_rounds_exhausted(
     async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
         return [ProviderModel("gpt-test", "GPT Test")]
 
-    async def stream(self, _client, _api_key, _model, _system, messages, tools):
+    async def stream(self, _client, _api_key, _model, _system, messages, tools, *, session_id=None):
         calls["n"] += 1
         tools_seen.append(tuple(tools))
         systems_seen.append(_system)
@@ -492,7 +492,9 @@ def test_readonly_context_tool_refuses_traversal_and_never_writes(
     async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
         return [ProviderModel("gpt-test", "GPT Test")]
 
-    async def stream(self, _client, _api_key, _model, _system, messages, _tools):
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
         calls["stream"] += 1
         if calls["stream"] == 1:
             yield ToolCall("read-1", "read_project_file", {"path": "../outside.txt"})

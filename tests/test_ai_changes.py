@@ -285,7 +285,9 @@ def test_create_file_proposal_rejects_existing_path(
     tool_results: list[str] = []
     calls = 0
 
-    async def stream(self, _client, _api_key, _model, _system, messages, _tools):
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -339,7 +341,9 @@ def _run_tool_flow(
 
     calls = 0
 
-    async def stream(self, _client, _api_key, _model, _system, messages, _tools):
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
         nonlocal calls
         calls += 1
         if calls == 1:

@@ -98,6 +98,8 @@ class GeminiAdapter(ProviderAdapterBase):
         system: str,
         messages: Sequence[ChatMessage],
         tools: Sequence[ProviderTool],
+        *,
+        session_id: str | None = None,
     ) -> AsyncIterator[ProviderEvent]:
         model_path = quote(model.removeprefix("models/"), safe="")
         payload: dict[str, object] = {
