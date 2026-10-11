@@ -4,7 +4,6 @@ import {
   checkoutBranch,
   commitChanges,
   createBranch,
-  createPullRequest,
   discardPaths,
   fetchBranches,
   fetchGitStatus,
@@ -28,7 +27,6 @@ import {
   GitFileIcon,
   MinusIcon,
   PlusIcon,
-  PrIcon,
   RefreshIcon,
   SparklesIcon,
   SpinnerIcon,
@@ -150,15 +148,18 @@ function RowAction({
   )
 }
 
-type BusyAction =
-  | 'stage'
-  | 'commit'
-  | 'generate'
-  | 'pullRequest'
-  | 'discard'
-  | 'push'
-  | 'pull'
-  | 'branch'
+type BusyAction = 'stage' | 'commit' | 'generate' | 'discard' | 'push' | 'pull' | 'branch'
+
+// The primary source-control button adapts to the repository state.
+type PrimaryAction = 'commit' | 'push' | 'pull' | 'publish'
+
+function resolvePrimaryAction(status: GitStatus | null, clean: boolean): PrimaryAction {
+  if (status === null || !clean) return 'commit'
+  if (status.upstream === null) return 'publish'
+  if (status.ahead > 0) return 'push'
+  if (status.behind > 0) return 'pull'
+  return 'commit'
+}
 
 interface SourceControlPanelProps {
   projectId: number
@@ -172,10 +173,8 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
   const [loading, setLoading] = useState(true)
   const [reloadToken, setReloadToken] = useState(0)
   const [message, setMessage] = useState('')
-  const [branch, setBranch] = useState('')
   const [busy, setBusy] = useState<BusyAction | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [pullRequestUrl, setPullRequestUrl] = useState<string | null>(null)
   const [branchList, setBranchList] = useState<GitBranches | null>(null)
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
@@ -211,8 +210,8 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     status.conflicted.length === 0
 
   const canCommit = status !== null && status.staged.length > 0 && message.trim().length > 0
-  const canOpenPullRequest = status !== null && branch.trim().length > 0
   const canPull = status !== null && Boolean(status.upstream)
+  const primaryAction = resolvePrimaryAction(status, clean)
 
   function runAction(
     kind: BusyAction,
@@ -221,7 +220,6 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
   ) {
     setBusy(kind)
     setActionError(null)
-    if (kind !== 'pullRequest') setPullRequestUrl(null)
     action()
       .catch((err) => {
         setActionError(err instanceof Error ? err.message : fallbackMessage)
@@ -360,21 +358,32 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     )
   }
 
-  function handleCreatePullRequest(event: FormEvent) {
-    event.preventDefault()
-    if (!canOpenPullRequest) return
-    runAction(
-      'pullRequest',
-      async () => {
-        const result = await createPullRequest(projectId, branch.trim())
-        setPullRequestUrl(result.url)
-        setBranch('')
-      },
-      t('ide.prFailed'),
-    )
+  function handlePrimaryAction() {
+    if (primaryAction === 'pull') handlePull()
+    else handlePush()
   }
 
   const disabled = busy !== null
+
+  const primaryBusyKinds: Record<PrimaryAction, BusyAction> = {
+    commit: 'commit',
+    push: 'push',
+    pull: 'pull',
+    publish: 'push',
+  }
+  const primaryBusyKind = primaryBusyKinds[primaryAction]
+  const primaryDisabled =
+    disabled ||
+    (primaryAction === 'commit' && !canCommit) ||
+    (primaryAction === 'pull' && !canPull)
+  const primaryLabels: Record<PrimaryAction, { idle: string; busy: string }> = {
+    commit: { idle: t('ide.commit'), busy: t('ide.committing') },
+    push: { idle: t('ide.pushChanges'), busy: t('ide.pushing') },
+    pull: { idle: t('ide.pullChanges'), busy: t('ide.pulling') },
+    publish: { idle: t('ide.publishBranch'), busy: t('ide.publishing') },
+  }
+  const primaryLabel =
+    busy === primaryBusyKind ? primaryLabels[primaryAction].busy : primaryLabels[primaryAction].idle
 
   return (
     <div className="flex min-h-0 flex-1 flex-col text-sm">
@@ -472,12 +481,19 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
               </button>
             </div>
             <button
-              type="submit"
-              disabled={disabled || !canCommit}
+              type={primaryAction === 'commit' ? 'submit' : 'button'}
+              onClick={primaryAction === 'commit' ? undefined : handlePrimaryAction}
+              disabled={primaryDisabled}
               className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <CommitIcon width={14} height={14} />
-              {busy === 'commit' ? t('ide.committing') : t('ide.commit')}
+              {primaryAction === 'pull' ? (
+                <CloudDownloadIcon width={14} height={14} />
+              ) : primaryAction === 'push' || primaryAction === 'publish' ? (
+                <CloudUploadIcon width={14} height={14} />
+              ) : (
+                <CommitIcon width={14} height={14} />
+              )}
+              {primaryLabel}
             </button>
           </form>
         </div>
@@ -653,46 +669,9 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
         )}
       </div>
 
-      {!loading && !error && status && (
-        <div className="border-t border-[var(--border)]">
-          <form onSubmit={handleCreatePullRequest} className="space-y-2 p-2.5">
-            <label
-              htmlFor="git-pr-branch"
-              className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]"
-            >
-              {t('ide.branchName')}
-            </label>
-            <input
-              id="git-pr-branch"
-              value={branch}
-              onChange={(event) => setBranch(event.target.value)}
-              placeholder={t('ide.branchNamePlaceholder')}
-              className="w-full rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-1.5 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
-            />
-            <p className="text-[11px] leading-snug text-[var(--muted-3)]">{t('ide.prHint')}</p>
-            <button
-              type="submit"
-              disabled={disabled || !canOpenPullRequest}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--fg)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <PrIcon width={14} height={14} />
-              {busy === 'pullRequest' ? t('ide.creatingPr') : t('ide.createPr')}
-            </button>
-          </form>
-
-          {actionError && (
-            <p className="px-2.5 pb-2.5 text-[12px] text-[var(--danger)]">{actionError}</p>
-          )}
-          {pullRequestUrl && (
-            <a
-              href={pullRequestUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mx-2.5 mb-2.5 block truncate text-[12px] text-[var(--success)] hover:underline"
-            >
-              {t('ide.prCreated')} — {pullRequestUrl}
-            </a>
-          )}
+      {actionError && (
+        <div className="border-t border-[var(--border)] p-2.5">
+          <p className="text-[12px] text-[var(--danger)]">{actionError}</p>
         </div>
       )}
     </div>
