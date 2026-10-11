@@ -9,6 +9,7 @@ class GitChange(BaseModel):
 
 class GitStatusRead(BaseModel):
     branch: str | None = None
+    base: str | None = None
     upstream: str | None = None
     ahead: int = 0
     behind: int = 0

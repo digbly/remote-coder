@@ -2,6 +2,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path, PurePosixPath
 
 from fastapi import HTTPException, status
@@ -43,6 +44,12 @@ _WORKTREE_NAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,255}$")
 _DEFAULT_BRANCHES = ("main", "master")
 _WORKTREE_BRANCH_PREFIX = "refs/heads/"
 
+# The default (base) branch rarely changes, but the status endpoint is polled
+# frequently, so the resolved value is cached briefly to avoid a git call on
+# every read.
+_BASE_BRANCH_TTL_SECONDS = 60.0
+_base_branch_cache: dict[str, tuple[float, str]] = {}
+
 _COMMIT_MESSAGE_PROMPT = (
     "You are an expert software engineer writing a git commit message.\n"
     "Write ONE commit message for the changes below.\n"
@@ -68,7 +75,9 @@ def _read_status(path: Path, settings: Settings) -> GitStatusRead:
     result = _run_git(path, _STATUS_ARGS, timeout=settings.git_status_timeout_seconds)
     if result.returncode != 0:
         _raise_status_error(result)
-    return parse_status(result.stdout)
+    status = parse_status(result.stdout)
+    status.base = _cached_default_branch(path, settings)
+    return status
 
 
 def get_file_diff(
@@ -848,11 +857,29 @@ def _default_branch(path: Path, settings: Settings) -> str:
 
     for candidate in _DEFAULT_BRANCHES:
         exists = _run_git(
-            path, ["rev-parse", "--verify", candidate], timeout=settings.git_status_timeout_seconds
+            path,
+            ["rev-parse", "--verify", candidate],
+            timeout=settings.git_status_timeout_seconds,
         )
         if exists.returncode == 0:
             return candidate
     return _DEFAULT_BRANCHES[0]
+
+
+def _cached_default_branch(path: Path, settings: Settings) -> str:
+    """Return the default branch, memoizing the stable result per repository.
+
+    Callers on the polling path (git status) use this; the one-shot PR creation
+    path resolves directly via ``_default_branch``.
+    """
+    key = str(path.resolve())
+    now = time.monotonic()
+    cached = _base_branch_cache.get(key)
+    if cached is not None and now - cached[0] < _BASE_BRANCH_TTL_SECONDS:
+        return cached[1]
+    base = _default_branch(path, settings)
+    _base_branch_cache[key] = (now, base)
+    return base
 
 
 def _current_branch(path: Path, settings: Settings) -> str:
