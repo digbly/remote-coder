@@ -1114,6 +1114,19 @@ export async function setBrowserViewport(
   await browserControlRequest(projectId, sessionId, 'viewport', { width, height })
 }
 
+export async function inspectBrowser(projectId: number, sessionId: string): Promise<string> {
+  const response = await request(
+    `/projects/${projectId}/browser/inspect?session=${encodeURIComponent(sessionId)}`,
+    { method: 'POST' },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const data = (await response.json()) as { url?: string }
+  return data.url ?? ''
+}
+
 export async function insertBrowserText(
   projectId: number,
   sessionId: string,

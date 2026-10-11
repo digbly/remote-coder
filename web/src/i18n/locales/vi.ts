@@ -189,6 +189,7 @@ const vi = {
     browserBack: 'Quay lại',
     browserForward: 'Tiến tới',
     browserReload: 'Tải lại',
+    browserInspect: 'Kiểm tra',
     browserFullscreen: 'Toàn màn hình',
     browserExitFullscreen: 'Thoát toàn màn hình',
     browserConnecting: 'Đang kết nối trình duyệt…',

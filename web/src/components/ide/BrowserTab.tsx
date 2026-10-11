@@ -13,11 +13,12 @@ import {
   browserStreamUrl,
   controlBrowser,
   fetchBrowserSelection,
+  inspectBrowser,
   insertBrowserText,
   navigateBrowser,
   setBrowserViewport,
 } from '../../lib/api'
-import { ArrowLeftIcon, ArrowRightIcon, GlobeIcon, MaximizeIcon, MinimizeIcon, RefreshIcon } from './icons'
+import { ArrowLeftIcon, ArrowRightIcon, BugIcon, GlobeIcon, MaximizeIcon, MinimizeIcon, RefreshIcon } from './icons'
 
 interface FrameMessage {
   data: string
@@ -516,6 +517,25 @@ export function BrowserTab({
     }
   }
 
+  async function inspect() {
+    // Open the tab synchronously so the click still counts as a user gesture;
+    // the DevTools URL only exists after the async round-trip, so point the tab
+    // at it once it arrives.
+    const tab = window.open('', '_blank')
+    if (tab) tab.opener = null
+    try {
+      const url = await inspectBrowser(projectId, sessionId)
+      if (url && tab) {
+        tab.location.href = url
+      } else {
+        tab?.close()
+      }
+    } catch (err) {
+      tab?.close()
+      setError(err instanceof Error ? err.message : t('apiErrors.unknown'))
+    }
+  }
+
   async function copyOrCut(cut: boolean) {
     try {
       const text = await fetchBrowserSelection(projectId, sessionId)
@@ -608,6 +628,15 @@ export function BrowserTab({
           className={toolbarButton}
         >
           <RefreshIcon width={14} height={14} />
+        </button>
+        <button
+          type="button"
+          aria-label={t('ide.browserInspect')}
+          title={t('ide.browserInspect')}
+          onClick={() => void inspect()}
+          className={toolbarButton}
+        >
+          <BugIcon width={14} height={14} />
         </button>
         <button
           type="button"

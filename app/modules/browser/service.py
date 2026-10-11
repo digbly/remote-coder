@@ -100,6 +100,11 @@ def viewport_command(width: int, height: int, settings: Settings) -> list[str]:
     return [settings.browser_binary, "set", "viewport", str(width), str(height)]
 
 
+def inspect_command(settings: Settings) -> list[str]:
+    """Start the DevTools proxy for the session and report its frontend URL."""
+    return [settings.browser_binary, "inspect"]
+
+
 def insert_text_command(text: str, settings: Settings) -> list[str]:
     # A NUL byte cannot be passed through argv; drop it defensively.
     return [settings.browser_binary, "keyboard", "inserttext", text.replace("\x00", "")]
@@ -122,6 +127,29 @@ def selection_command(settings: Settings) -> list[str]:
 def is_http_url(url: str) -> bool:
     parts = urlsplit(url)
     return parts.scheme in {"http", "https"} and bool(parts.netloc)
+
+
+# ``agent-browser inspect`` prints a human line ending in the local DevTools URL,
+# for example ``✓ Opened DevTools: http://127.0.0.1:32825``.
+_INSPECT_URL_RE = re.compile(r"https?://[^\s\"']+")
+
+
+def parse_inspect_url(output: str | None) -> str | None:
+    """Extract the DevTools frontend URL from ``agent-browser inspect`` output."""
+    if not output:
+        return None
+    match = _INSPECT_URL_RE.search(output)
+    return match.group(0) if match else None
+
+
+def is_loopback_url(url: str) -> bool:
+    """Guard the URL handed to the client: only ever open a local DevTools proxy."""
+    parts = urlsplit(url)
+    return parts.scheme in {"http", "https"} and parts.hostname in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }
 
 
 def _default_runner(command: list[str], env: dict[str, str]) -> str:

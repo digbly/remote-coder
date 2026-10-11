@@ -189,6 +189,7 @@ const en = {
     browserBack: 'Back',
     browserForward: 'Forward',
     browserReload: 'Reload',
+    browserInspect: 'Inspect',
     browserFullscreen: 'Fullscreen',
     browserExitFullscreen: 'Exit fullscreen',
     browserConnecting: 'Connecting to the browser…',
