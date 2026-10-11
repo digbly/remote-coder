@@ -112,6 +112,7 @@ export interface GitChange {
 
 export interface GitStatus {
   branch: string | null
+  base: string | null
   upstream: string | null
   ahead: number
   behind: number

@@ -4,6 +4,7 @@ import {
   checkoutBranch,
   commitChanges,
   createBranch,
+  createPullRequest,
   discardPaths,
   fetchBranches,
   fetchGitStatus,
@@ -27,6 +28,7 @@ import {
   GitFileIcon,
   MinusIcon,
   PlusIcon,
+  PrIcon,
   RefreshIcon,
   SparklesIcon,
   SpinnerIcon,
@@ -148,17 +150,27 @@ function RowAction({
   )
 }
 
-type BusyAction = 'stage' | 'commit' | 'generate' | 'discard' | 'push' | 'pull' | 'branch'
+type BusyAction =
+  | 'stage'
+  | 'commit'
+  | 'generate'
+  | 'discard'
+  | 'push'
+  | 'pull'
+  | 'createPr'
+  | 'branch'
 
 // The primary source-control button adapts to the repository state.
-type PrimaryAction = 'commit' | 'push' | 'pull' | 'publish'
+type PrimaryAction = 'commit' | 'push' | 'pull' | 'publish' | 'createPr'
 
 function resolvePrimaryAction(status: GitStatus | null, clean: boolean): PrimaryAction {
   if (status === null || !clean) return 'commit'
   if (status.upstream === null) return 'publish'
   if (status.ahead > 0) return 'push'
   if (status.behind > 0) return 'pull'
-  return 'commit'
+  // Only offer a pull request when the current branch is not the base branch.
+  const onBaseBranch = status.branch === null || status.branch === status.base
+  return onBaseBranch ? 'commit' : 'createPr'
 }
 
 interface SourceControlPanelProps {
@@ -175,6 +187,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState<BusyAction | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [pullRequestUrl, setPullRequestUrl] = useState<string | null>(null)
   const [branchList, setBranchList] = useState<GitBranches | null>(null)
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
 
@@ -220,6 +233,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
   ) {
     setBusy(kind)
     setActionError(null)
+    if (kind !== 'createPr') setPullRequestUrl(null)
     action()
       .catch((err) => {
         setActionError(err instanceof Error ? err.message : fallbackMessage)
@@ -358,32 +372,69 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     )
   }
 
+  function handleCreatePullRequest() {
+    const branch = status?.branch
+    if (!branch) return
+    runAction(
+      'createPr',
+      async () => {
+        const result = await createPullRequest(projectId, branch)
+        setPullRequestUrl(result.url)
+      },
+      t('ide.prFailed'),
+    )
+  }
+
   function handlePrimaryAction() {
     if (primaryAction === 'pull') handlePull()
+    else if (primaryAction === 'createPr') handleCreatePullRequest()
     else handlePush()
   }
 
   const disabled = busy !== null
 
-  const primaryBusyKinds: Record<PrimaryAction, BusyAction> = {
-    commit: 'commit',
-    push: 'push',
-    pull: 'pull',
-    publish: 'push',
+  const primaryMeta: Record<
+    PrimaryAction,
+    { busyKind: BusyAction; idle: string; busy: string; icon: ReactNode }
+  > = {
+    commit: {
+      busyKind: 'commit',
+      idle: t('ide.commit'),
+      busy: t('ide.committing'),
+      icon: <CommitIcon width={14} height={14} />,
+    },
+    push: {
+      busyKind: 'push',
+      idle: t('ide.pushChanges'),
+      busy: t('ide.pushing'),
+      icon: <CloudUploadIcon width={14} height={14} />,
+    },
+    pull: {
+      busyKind: 'pull',
+      idle: t('ide.pullChanges'),
+      busy: t('ide.pulling'),
+      icon: <CloudDownloadIcon width={14} height={14} />,
+    },
+    publish: {
+      busyKind: 'push',
+      idle: t('ide.publishBranch'),
+      busy: t('ide.publishing'),
+      icon: <CloudUploadIcon width={14} height={14} />,
+    },
+    createPr: {
+      busyKind: 'createPr',
+      idle: t('ide.createPr'),
+      busy: t('ide.creatingPr'),
+      icon: <PrIcon width={14} height={14} />,
+    },
   }
-  const primaryBusyKind = primaryBusyKinds[primaryAction]
+  const primary = primaryMeta[primaryAction]
   const primaryDisabled =
     disabled ||
     (primaryAction === 'commit' && !canCommit) ||
-    (primaryAction === 'pull' && !canPull)
-  const primaryLabels: Record<PrimaryAction, { idle: string; busy: string }> = {
-    commit: { idle: t('ide.commit'), busy: t('ide.committing') },
-    push: { idle: t('ide.pushChanges'), busy: t('ide.pushing') },
-    pull: { idle: t('ide.pullChanges'), busy: t('ide.pulling') },
-    publish: { idle: t('ide.publishBranch'), busy: t('ide.publishing') },
-  }
-  const primaryLabel =
-    busy === primaryBusyKind ? primaryLabels[primaryAction].busy : primaryLabels[primaryAction].idle
+    (primaryAction === 'pull' && !canPull) ||
+    (primaryAction === 'createPr' && status?.branch == null)
+  const primaryLabel = busy === primary.busyKind ? primary.busy : primary.idle
 
   return (
     <div className="flex min-h-0 flex-1 flex-col text-sm">
@@ -486,13 +537,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
               disabled={primaryDisabled}
               className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {primaryAction === 'pull' ? (
-                <CloudDownloadIcon width={14} height={14} />
-              ) : primaryAction === 'push' || primaryAction === 'publish' ? (
-                <CloudUploadIcon width={14} height={14} />
-              ) : (
-                <CommitIcon width={14} height={14} />
-              )}
+              {primary.icon}
               {primaryLabel}
             </button>
           </form>
@@ -672,6 +717,19 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
       {actionError && (
         <div className="border-t border-[var(--border)] p-2.5">
           <p className="text-[12px] text-[var(--danger)]">{actionError}</p>
+        </div>
+      )}
+
+      {pullRequestUrl && (
+        <div className="border-t border-[var(--border)] p-2.5">
+          <a
+            href={pullRequestUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block truncate text-[12px] text-[var(--success)] hover:underline"
+          >
+            {t('ide.prCreated')} — {pullRequestUrl}
+          </a>
         </div>
       )}
     </div>

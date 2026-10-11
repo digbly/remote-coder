@@ -94,10 +94,41 @@ def test_git_status_reports_changes(client: TestClient, projects_root) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["branch"] == "main"
+    assert body["base"] == "main"
     assert [change["path"] for change in body["unstaged"]] == ["tracked.txt"]
     assert [change["path"] for change in body["staged"]] == ["staged.txt"]
     assert body["untracked"] == ["untracked.txt"]
     assert body["conflicted"] == []
+
+
+def test_git_status_caches_base_branch(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    base_calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        argv = list(command)
+        is_base_lookup = "symbolic-ref" in argv or (
+            "rev-parse" in argv and "--verify" in argv and argv[-1] in {"main", "master"}
+        )
+        if is_base_lookup:
+            base_calls.append(argv)
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    url = f"{PROJECTS_URL}/{project_id}/git/status"
+    assert client.get(url).status_code == 200
+    first = len(base_calls)
+    assert first > 0
+    assert client.get(url).status_code == 200
+    assert len(base_calls) == first
 
 
 def test_git_status_not_a_repository(client: TestClient, projects_root) -> None:
