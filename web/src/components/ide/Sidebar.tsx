@@ -88,12 +88,14 @@ function IconButton({
 
 function WorktreeItem({
   worktree,
+  active,
   busy,
   onOpen,
   onOpenVSCode,
   onContextMenu,
 }: {
   worktree: Worktree
+  active: boolean
   busy: boolean
   onOpen: () => void
   onOpenVSCode: () => void
@@ -107,7 +109,11 @@ function WorktreeItem({
         event.preventDefault()
         onContextMenu(event.clientX, event.clientY)
       }}
-      className="group flex w-full items-center rounded-md px-2 py-1.5 transition hover:bg-[var(--hover)]"
+      className={`group flex w-full items-center rounded-md px-2 py-1.5 transition ${
+        active
+          ? 'bg-[var(--hover-strong)] ring-1 ring-inset ring-[var(--border-strong-alt)]'
+          : 'hover:bg-[var(--hover)]'
+      }`}
     >
       <button
         type="button"
@@ -130,11 +136,17 @@ function WorktreeItem({
               worktree.is_primary
                 ? 'border-emerald-400/70 text-emerald-600 dark:text-emerald-400'
                 : 'border-amber-400/70 text-amber-600 dark:text-amber-400'
-            }`}
+            } ${active ? 'bg-emerald-500/15' : ''}`}
           >
             <BranchIcon width={9} height={9} />
           </span>
-          <span className="truncate text-[13px] text-[var(--fg-2)] group-hover:text-[var(--fg-strong)]">
+          <span
+            className={`truncate text-[13px] ${
+              active
+                ? 'font-medium text-[var(--fg-strong)]'
+                : 'text-[var(--fg-2)] group-hover:text-[var(--fg-strong)]'
+            }`}
+          >
             {worktree.branch ?? worktree.name}
           </span>
           {worktree.is_primary && (
@@ -167,6 +179,7 @@ function ProjectItem({
   project,
   accent,
   active,
+  activeWorktree,
   worktrees,
   busyWorktrees,
   onOpenProject,
@@ -179,6 +192,7 @@ function ProjectItem({
   project: Project
   accent: string
   active: boolean
+  activeWorktree: string | undefined
   worktrees: Worktree[] | undefined
   busyWorktrees: Set<string>
   onOpenProject: (project: Project) => void
@@ -226,6 +240,7 @@ function ProjectItem({
             <WorktreeItem
               key={worktree.path}
               worktree={worktree}
+              active={worktree.name === activeWorktree}
               busy={busyWorktrees.has(worktree.name)}
               onOpen={() => onOpenWorktree(project, worktree.name)}
               onOpenVSCode={() => onOpenVSCode(project, worktree.name)}
@@ -260,6 +275,7 @@ interface SidebarProps {
   onProjectDeleted: (projectId: number) => void
   onOpenSearch: () => void
   activeProjectId: number | null
+  activeWorktrees: Record<number, string>
   chatWorktrees: Record<number, string[]>
   width: number
   onClose: () => void
@@ -277,6 +293,7 @@ export function Sidebar({
   onProjectDeleted,
   onOpenSearch,
   activeProjectId,
+  activeWorktrees,
   chatWorktrees,
   width,
   onClose,
@@ -494,6 +511,7 @@ export function Sidebar({
             project={project}
             accent={projectAccent(index)}
             active={project.id === activeProjectId}
+            activeWorktree={activeWorktrees[project.id]}
             worktrees={worktrees[project.id]}
             busyWorktrees={
               new Set([

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { refreshSession, workspaceUrl } from './api'
 import { LAYOUT_DEFAULTS } from './layoutStore'
 import {
+  activeWorktreePatch,
   emptySyncedState,
   parseSyncedState,
   type ProjectWorkspace,
@@ -18,10 +19,20 @@ const MAX_EXPIRED_RECONNECTS = 3
 // are stripped from outgoing state and preserved locally when incoming state is
 // applied. Otherwise opening or closing a terminal on one client would overwrite
 // the sidebar visibility of every other client.
+//
+// The active worktree is different: it is persisted to the database so it
+// survives a reload, but it is not meant to move other clients around. We send
+// it so it is stored, and on merge we prefer the local value so a client that
+// has its own focus keeps it (only a freshly loaded client, with no local value,
+// picks up the persisted one).
 function stripLocalState(state: SyncedState): SyncedState {
   const workspaces: Record<number, ProjectWorkspace> = {}
   for (const [key, workspace] of Object.entries(state.workspaces)) {
-    workspaces[Number(key)] = { tabs: workspace.tabs, activeId: null }
+    workspaces[Number(key)] = {
+      tabs: workspace.tabs,
+      activeId: null,
+      ...activeWorktreePatch(workspace.activeWorktree),
+    }
   }
   return {
     workspaces,
@@ -44,7 +55,14 @@ function mergeLocalState(remote: SyncedState, local: SyncedState): SyncedState {
       localWorkspace && workspace.tabs.some((tab) => tab.id === localWorkspace.activeId)
         ? localWorkspace.activeId
         : workspace.activeId
-    workspaces[projectId] = { tabs: workspace.tabs, activeId }
+    // Keep our own focus if we have one; otherwise adopt the persisted value so
+    // a freshly loaded client restores the worktree it was last attached to.
+    const activeWorktree = localWorkspace?.activeWorktree ?? workspace.activeWorktree
+    workspaces[projectId] = {
+      tabs: workspace.tabs,
+      activeId,
+      ...activeWorktreePatch(activeWorktree),
+    }
   }
   return {
     workspaces,

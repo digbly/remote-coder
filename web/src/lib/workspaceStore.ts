@@ -21,6 +21,10 @@ export interface WorkspaceTab {
 export interface ProjectWorkspace {
   tabs: WorkspaceTab[]
   activeId: string | null
+  // Which worktree the user is attached to. Unlike activeId it is recorded even
+  // when a worktree-less tab (editor, diff) is focused, and it is persisted so
+  // it survives a reload.
+  activeWorktree?: string
 }
 
 export interface ActiveProjectRef {
@@ -87,7 +91,15 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
     typeof value.activeId === 'string' && scoped.some((tab) => tab.id === value.activeId)
       ? value.activeId
       : (scoped[scoped.length - 1]?.id ?? null)
-  return { tabs: scoped, activeId }
+  const activeWorktree =
+    typeof value.activeWorktree === 'string' ? value.activeWorktree : undefined
+  return { tabs: scoped, activeId, ...activeWorktreePatch(activeWorktree) }
+}
+
+// Build the optional `activeWorktree` field without ever setting it to
+// undefined, so spreading the result never produces an empty-looking key.
+export function activeWorktreePatch(worktree: string | undefined): { activeWorktree?: string } {
+  return worktree ? { activeWorktree: worktree } : {}
 }
 
 function countByLabel(tabs: WorkspaceTab[], label: string): number {
@@ -119,7 +131,11 @@ export function withNewTerminal(
   }
   return {
     ...workspaces,
-    [project.id]: { tabs: [...tabs, tab], activeId: id },
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(worktree),
+    },
   }
 }
 
@@ -145,7 +161,11 @@ export function withNewChat(
   }
   return {
     ...workspaces,
-    [project.id]: { tabs: [...tabs, tab], activeId: id },
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(worktree),
+    },
   }
 }
 
@@ -207,7 +227,8 @@ export function withOpenFile(
   path: string,
   line?: number,
 ): Record<number, ProjectWorkspace> {
-  const tabs = workspaces[project.id]?.tabs ?? []
+  const current = workspaces[project.id]
+  const tabs = current?.tabs ?? []
   const existing = tabs.find((tab) => tab.kind === 'editor' && tab.filePath === path)
   if (existing) {
     return {
@@ -215,6 +236,7 @@ export function withOpenFile(
       [project.id]: {
         tabs: tabs.map((tab) => (tab.id === existing.id ? { ...tab, line } : tab)),
         activeId: existing.id,
+        ...activeWorktreePatch(current?.activeWorktree),
       },
     }
   }
@@ -230,7 +252,11 @@ export function withOpenFile(
   }
   return {
     ...workspaces,
-    [project.id]: { tabs: [...tabs, tab], activeId: id },
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(current?.activeWorktree),
+    },
   }
 }
 
@@ -241,7 +267,8 @@ export function withOpenDiff(
   staged: boolean,
   origPath?: string | null,
 ): Record<number, ProjectWorkspace> {
-  const tabs = workspaces[project.id]?.tabs ?? []
+  const current = workspaces[project.id]
+  const tabs = current?.tabs ?? []
   const existing = tabs.find(
     (tab) => tab.kind === 'diff' && tab.filePath === path && Boolean(tab.diffStaged) === staged,
   )
@@ -253,6 +280,7 @@ export function withOpenDiff(
           tab.id === existing.id ? { ...tab, diffOrigPath: origPath ?? null } : tab,
         ),
         activeId: existing.id,
+        ...activeWorktreePatch(current?.activeWorktree),
       },
     }
   }
@@ -269,7 +297,11 @@ export function withOpenDiff(
   }
   return {
     ...workspaces,
-    [project.id]: { tabs: [...tabs, tab], activeId: id },
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(current?.activeWorktree),
+    },
   }
 }
 
@@ -283,7 +315,7 @@ export function withWorktreeTerminal(
   if (existing) {
     return {
       ...workspaces,
-      [project.id]: { tabs, activeId: existing.id },
+      [project.id]: { tabs, activeId: existing.id, activeWorktree: worktree },
     }
   }
 
@@ -300,7 +332,7 @@ export function withVSCodeTab(
   if (existing) {
     return {
       ...workspaces,
-      [project.id]: { tabs, activeId: existing.id },
+      [project.id]: { tabs, activeId: existing.id, activeWorktree: worktree },
     }
   }
 
@@ -316,7 +348,7 @@ export function withVSCodeTab(
   }
   return {
     ...workspaces,
-    [project.id]: { tabs: [...tabs, tab], activeId: id },
+    [project.id]: { tabs: [...tabs, tab], activeId: id, activeWorktree: worktree },
   }
 }
 
@@ -333,7 +365,19 @@ export function withFilteredTabs(
     workspace.activeId != null && tabs.some((tab) => tab.id === workspace.activeId)
       ? workspace.activeId
       : (tabs[tabs.length - 1]?.id ?? null)
-  return { ...workspaces, [projectId]: { tabs, activeId } }
+  const activeWorktree =
+    workspace.activeWorktree !== undefined &&
+    tabs.some((tab) => tab.worktree === workspace.activeWorktree)
+      ? workspace.activeWorktree
+      : undefined
+  return {
+    ...workspaces,
+    [projectId]: {
+      tabs,
+      activeId,
+      ...activeWorktreePatch(activeWorktree),
+    },
+  }
 }
 
 export function ensureWorkspace(

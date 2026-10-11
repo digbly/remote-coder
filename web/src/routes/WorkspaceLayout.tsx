@@ -5,6 +5,7 @@ import { useAuth } from '../lib/authContext'
 import { fetchProject, type Project } from '../lib/api'
 import { useWorkspaceSync } from '../lib/sync'
 import {
+  activeWorktreePatch,
   ensureWorkspace,
   withVSCodeTab,
   withWorktreeTerminal,
@@ -91,7 +92,14 @@ export function WorkspaceLayout() {
       if (!workspace || !workspace.tabs.some((item) => item.id === tab.id)) return prev
       return {
         ...prev,
-        workspaces: { ...prev.workspaces, [projectId]: { ...workspace, activeId: tab.id } },
+        workspaces: {
+          ...prev.workspaces,
+          [projectId]: {
+            ...workspace,
+            activeId: tab.id,
+            ...activeWorktreePatch(tab.worktree),
+          },
+        },
       }
     })
     if (projectId !== urlProjectId) navigate(`/projects/${projectId}`)

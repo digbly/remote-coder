@@ -99,6 +99,13 @@ export function IdeShell({
   const activeTabId = activeWorkspace?.activeId ?? null
   const allTabs = Object.values(workspaces).flatMap((workspace) => workspace.tabs)
 
+  const activeWorktrees: Record<number, string> = {}
+  for (const [key, workspace] of Object.entries(workspaces)) {
+    const activeTab = workspace.tabs.find((tab) => tab.id === workspace.activeId)
+    const worktree = activeTab?.worktree ?? workspace.activeWorktree
+    if (worktree) activeWorktrees[Number(key)] = worktree
+  }
+
   const chatWorktrees: Record<number, string[]> = {}
   for (const workspace of Object.values(workspaces)) {
     for (const tab of workspace.tabs) {
@@ -227,6 +234,7 @@ export function IdeShell({
             onProjectDeleted={handleProjectDeleted}
             onOpenSearch={() => setSearchOpen(true)}
             activeProjectId={activeProjectId}
+            activeWorktrees={activeWorktrees}
             chatWorktrees={chatWorktrees}
             width={layout.leftWidth}
             onClose={() => updateLayout({ leftOpen: false })}
