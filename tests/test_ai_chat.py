@@ -493,7 +493,9 @@ def test_chat_edit_and_resend_replaces_the_turn_and_later_messages(
     async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
         return [ProviderModel("gpt-test", "GPT Test")]
 
-    async def stream(self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None):
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
         seen_history.append([message.content for message in messages])
         yield TextDelta(f"Answer to: {messages[-1].content}")
         yield TurnComplete("completed")
@@ -610,6 +612,88 @@ def test_chat_edit_rejects_missing_or_assistant_message(
         f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
     ).json()["messages"]
     assert [message["content"] for message in unchanged] == ["Question", "Answer"]
+
+
+def test_chat_injects_user_and_project_instructions_into_the_system_prompt(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    (home / ".config" / "agents").mkdir(parents=True)
+    (home / ".config" / "agents" / "AGENTS.md").write_text(
+        "Always answer in Vietnamese.\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    (project_path / "AGENTS.md").write_text("Use tabs, not spaces.\n", encoding="utf-8")
+    captured: list[str] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, system, _messages, _tools, *, session_id=None
+    ):
+        captured.append(system)
+        yield TextDelta("ok")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Question"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert len(captured) == 1
+    assert "You are a code assistant" in captured[0]
+    assert "Always answer in Vietnamese." in captured[0]
+    assert "Use tabs, not spaces." in captured[0]
+
+
+def test_chat_final_round_keeps_agent_instructions(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    """Tools are disabled for the last round, but the conventions must still apply."""
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    (project_path / "AGENTS.md").write_text("Use tabs, not spaces.\n", encoding="utf-8")
+    systems: list[str] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, system, _messages, tools, *, session_id=None
+    ):
+        systems.append(system)
+        if tools:
+            yield ToolCall(f"call-{len(systems)}", "list_project_files", {})
+        else:
+            yield TextDelta("Final answer")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Question"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert len(systems) == MAX_TOOL_ROUNDS_PER_TURN
+    assert "Tool use is now disabled for this turn." in systems[-1]
+    assert all("Use tabs, not spaces." in system for system in systems)
 
 
 def test_chat_retries_transient_provider_error(
