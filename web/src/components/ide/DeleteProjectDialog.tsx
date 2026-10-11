@@ -11,7 +11,8 @@ interface DeleteProjectDialogProps {
 
 export function DeleteProjectDialog({ project, onClose, onDeleted }: DeleteProjectDialogProps) {
   const { t } = useTranslation()
-  const [deleteFiles, setDeleteFiles] = useState(true)
+  const managedClone = project.source === 'github'
+  const [deleteFiles, setDeleteFiles] = useState(managedClone)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -80,23 +81,29 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: DeleteProje
             {t('ide.deleteProjectConfirm', { name: project.name })}
           </p>
 
-          <label className="flex items-start gap-2.5 text-sm text-[var(--fg-2)]">
-            <input
-              type="checkbox"
-              checked={deleteFiles}
-              disabled={submitting}
-              onChange={(event) => setDeleteFiles(event.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-red-500"
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="text-[var(--fg)]">{t('ide.deleteProjectDialog.deleteFiles')}</span>
-              {deleteFiles && (
-                <span className="break-all text-xs text-[var(--muted-3)]">
-                  {t('ide.deleteProjectDialog.deleteFilesHint', { path: project.path })}
-                </span>
-              )}
-            </span>
-          </label>
+          {managedClone ? (
+            <p className="break-all text-xs text-[var(--muted-3)]">
+              {t('ide.deleteProjectDialog.deleteFilesHint', { path: project.path })}
+            </p>
+          ) : (
+            <label className="flex items-start gap-2.5 text-sm text-[var(--fg-2)]">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                disabled={submitting}
+                onChange={(event) => setDeleteFiles(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-red-500"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[var(--fg)]">{t('ide.deleteProjectDialog.deleteFiles')}</span>
+                {deleteFiles && (
+                  <span className="break-all text-xs text-[var(--muted-3)]">
+                    {t('ide.deleteProjectDialog.deleteFilesHint', { path: project.path })}
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button

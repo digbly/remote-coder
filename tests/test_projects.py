@@ -368,7 +368,9 @@ def test_delete_github_project_removes_clone(client: TestClient, monkeypatch) ->
     assert not clone_dir.exists()
 
 
-def test_delete_github_project_keeps_clone_by_default(client: TestClient, monkeypatch) -> None:
+def test_delete_github_project_removes_clone_without_delete_files(
+    client: TestClient, monkeypatch
+) -> None:
     _login(client)
 
     def fake_clone(repository, destination, branch, settings):
@@ -386,7 +388,7 @@ def test_delete_github_project_keeps_clone_by_default(client: TestClient, monkey
     response = client.delete(f"{PROJECTS_URL}/{body['id']}", headers=_csrf(client))
 
     assert response.status_code == 204
-    assert clone_dir.is_dir()
+    assert not clone_dir.exists()
 
 
 def test_browse_requires_auth(client: TestClient) -> None:

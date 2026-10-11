@@ -744,16 +744,15 @@ def delete_project(
 ) -> None:
     """Delete a project.
 
-    When ``delete_files`` is set the on-disk folder is removed as well: clones
-    created by the app are deleted outright, while local folders are only
-    removed when they are not a protected location.
+    Clones created by the app are always removed: keeping them would orphan the
+    folder and block re-cloning the same repository. Local folders belong to
+    the user, so they are only removed when ``delete_files`` is set.
     """
     project = get_project(db, owner, project_id)
-    if delete_files:
-        if project.source is ProjectSource.GITHUB:
-            _remove_clone(project.path, settings)
-        else:
-            _remove_local_directory(project.path, settings)
+    if project.source is ProjectSource.GITHUB:
+        _remove_clone(project.path, settings)
+    elif delete_files:
+        _remove_local_directory(project.path, settings)
     db.delete(project)
     db.commit()
 
