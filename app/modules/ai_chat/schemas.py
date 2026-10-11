@@ -30,14 +30,29 @@ class ChatTurnRequest(BaseModel):
     conversation_id: str | None = Field(default=None, min_length=1, max_length=36)
     provider_id: int = Field(gt=0)
     model_id: str = Field(min_length=1, max_length=255)
-    message: str = Field(min_length=1, max_length=16000)
+    message: str = Field(default="", max_length=16000)
+    skill: str | None = Field(default=None, min_length=1, max_length=64)
     edit_user_message_id: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _require_conversation_for_edit(self) -> "ChatTurnRequest":
         if self.edit_user_message_id is not None and self.conversation_id is None:
             raise ValueError("edit_user_message_id requires conversation_id")
+        if not self.message and not self.skill:
+            raise ValueError("message or skill is required")
         return self
+
+
+class SkillRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    name: str
+    description: str
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillRead]
 
 
 class ConversationRead(BaseModel):

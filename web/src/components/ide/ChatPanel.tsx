@@ -18,6 +18,7 @@ import {
   fetchAIProviderModels,
   fetchAIProposals,
   fetchAIProviders,
+  fetchAISkills,
   openAIChatStream,
   updateAIProposal,
   updateAICommandPermission,
@@ -27,6 +28,7 @@ import {
   type AIConversation,
   type AIProvider,
   type AIProviderModel,
+  type AISkill,
 } from '../../lib/chat'
 
 const BRAND_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D98A5B 100%)'
@@ -36,6 +38,7 @@ const MAX_TEXTAREA_HEIGHT = 192
 const MIN_TEXTAREA_HEIGHT = 24
 const MIN_EDIT_HEIGHT = 72
 const MAX_MESSAGE_CHARS = 16000
+const SKILL_QUERY_PATTERN = /^\/([A-Za-z0-9._-]*)$/
 
 const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
 const cardBg = 'bg-white dark:bg-[#1F1F1F]'
@@ -79,7 +82,7 @@ type ToolLabelKey =
 
 const TOOL_LABEL_KEYS: Record<string, ToolLabelKey> = {
   list_project_files: 'chat.toolList',
-  read_project_file: 'chat.toolRead',
+  read_file: 'chat.toolRead',
   search_project_files: 'chat.toolSearch',
   propose_file_change: 'chat.toolPropose',
   create_project_file: 'chat.toolCreate',
@@ -168,6 +171,9 @@ export function ChatPanel({
   const [modelId, setModelId] = useState('')
   const [conversations, setConversations] = useState<AIConversation[]>([])
   const [proposals, setProposals] = useState<AIChangeProposal[]>([])
+  const [skills, setSkills] = useState<AISkill[]>([])
+  const [selectedSkill, setSelectedSkill] = useState<AISkill | null>(null)
+  const [skillIndex, setSkillIndex] = useState(0)
   const [commandPermission, setCommandPermission] = useState<AICommandPermission>('manual')
   const [permissionSaving, setPermissionSaving] = useState(false)
   const [pendingCommand, setPendingCommand] = useState<{
@@ -229,6 +235,20 @@ export function ChatPanel({
       abortRef.current?.abort()
     }
   }, [projectId, t])
+
+  useEffect(() => {
+    let alive = true
+    fetchAISkills(projectId)
+      .then((result) => {
+        if (alive) setSkills(result)
+      })
+      .catch(() => {
+        if (alive) setSkills([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [projectId])
 
   useEffect(() => {
     if (!providerId) {
@@ -329,6 +349,7 @@ export function ChatPanel({
 
   async function selectConversation(id: string) {
     setSelectedConversation(id)
+    setSelectedSkill(null)
     setError('')
     if (!id) {
       setMessages([])
@@ -365,16 +386,30 @@ export function ChatPanel({
     await startTurn(content, message.id)
   }
 
+  function selectSkill(skill: AISkill) {
+    setSelectedSkill(skill)
+    setDraft('')
+    setSkillIndex(0)
+    textareaRef.current?.focus()
+  }
+
   function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = draft.trim()
-    if (!content || !providerId || !modelId || streaming) return
+    if ((!content && !selectedSkill) || !providerId || !modelId || streaming) return
+    const skill = selectedSkill
     setDraft('')
-    void startTurn(content)
+    setSelectedSkill(null)
+    void startTurn(content, undefined, skill)
   }
 
-  async function startTurn(content: string, editUserMessageId?: number) {
-    if (!content || !providerId || !modelId || streaming) return
+  async function startTurn(
+    content: string,
+    editUserMessageId?: number,
+    skill?: AISkill | null,
+  ) {
+    if ((!content && !skill) || !providerId || !modelId || streaming) return
+    const userContent = content || (skill ? `/${skill.slug}` : '')
     setError('')
     setLoadError('')
     setStreaming(true)
@@ -393,7 +428,7 @@ export function ChatPanel({
       {
         id: optimisticUserId,
         role: 'user',
-        content,
+        content: userContent,
         thinking: '',
         status: 'completed',
         created_at: new Date().toISOString(),
@@ -414,7 +449,8 @@ export function ChatPanel({
           conversation_id: selectedConversation || null,
           provider_id: providerId,
           model_id: modelId,
-          message: content,
+          message: userContent,
+          skill: skill?.slug ?? null,
           edit_user_message_id: editUserMessageId ?? null,
         },
         controller.signal,
@@ -546,7 +582,16 @@ export function ChatPanel({
   }
 
   const provider = providers.find((item) => item.id === providerId)
-  const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
+  const canSend = Boolean(
+    provider && modelId && (draft.trim() || selectedSkill) && !streaming,
+  )
+  const skillQuery = SKILL_QUERY_PATTERN.exec(draft)?.[1]?.toLowerCase() ?? null
+  const filteredSkills =
+    skillQuery === null
+      ? []
+      : skills.filter((skill) => skill.slug.toLowerCase().includes(skillQuery))
+  const skillMenuOpen = skillQuery !== null && !streaming && filteredSkills.length > 0
+  const activeSkillIndex = Math.min(skillIndex, Math.max(filteredSkills.length - 1, 0))
   const activeTitle =
     conversations.find((item) => item.id === selectedConversation)?.title ?? ''
   const pinnedMessage =
@@ -834,24 +879,100 @@ export function ChatPanel({
           </p>
         )}
         <form onSubmit={(event) => void send(event)} className="w-full">
-          <div className={composerShell}>
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  event.currentTarget.form?.requestSubmit()
-                }
-              }}
-              rows={1}
-              maxLength={MAX_MESSAGE_CHARS}
-              placeholder={t('chat.messagePlaceholder')}
-              style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
-              className={`min-h-9 w-full resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm leading-6 ${primaryText} outline-none ${placeholderText} disabled:opacity-50`}
-              disabled={loading || streaming}
-            />
+          <div className="relative">
+            {skillMenuOpen && (
+              <ul
+                role="listbox"
+                aria-label={t('chat.skills')}
+                className={`absolute bottom-full left-0 right-0 z-20 mb-2 max-h-64 overflow-y-auto rounded-2xl border ${cardBorder} ${cardBg} p-1 shadow-lg`}
+              >
+                {filteredSkills.map((skill, index) => (
+                  <li key={skill.slug}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={index === activeSkillIndex}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectSkill(skill)}
+                      className={`flex w-full flex-col items-start gap-0.5 rounded-xl px-3 py-2 text-left transition ${index === activeSkillIndex ? subtleBg : ''}`}
+                    >
+                      <span className={`text-xs font-semibold ${accentText}`}>/{skill.slug}</span>
+                      {skill.name && skill.name !== skill.slug && (
+                        <span className={`text-[11px] ${primaryText}`}>{skill.name}</span>
+                      )}
+                      {skill.description && (
+                        <span className={`line-clamp-2 text-[11px] ${mutedText}`}>
+                          {skill.description}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className={composerShell}>
+              {selectedSkill && (
+                <div
+                  className={`mb-2 inline-flex max-w-full items-center gap-1.5 self-start rounded-full ${subtleBg} px-2.5 py-1 text-[11px] ${primaryText}`}
+                >
+                  <span className={`shrink-0 font-semibold ${accentText}`}>
+                    /{selectedSkill.slug}
+                  </span>
+                  {selectedSkill.name && selectedSkill.name !== selectedSkill.slug && (
+                    <span className={`truncate ${mutedText}`}>{selectedSkill.name}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSkill(null)}
+                    aria-label={t('chat.removeSkill')}
+                    title={t('chat.removeSkill')}
+                    className="ml-0.5 shrink-0 rounded-full px-1 leading-none transition hover:bg-black/10 dark:hover:bg-white/10"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (skillMenuOpen) {
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault()
+                      setSkillIndex((index) => (index + 1) % filteredSkills.length)
+                      return
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      setSkillIndex(
+                        (index) => (index - 1 + filteredSkills.length) % filteredSkills.length,
+                      )
+                      return
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setDraft('')
+                      return
+                    }
+                    if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
+                      event.preventDefault()
+                      selectSkill(filteredSkills[activeSkillIndex])
+                      return
+                    }
+                  }
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+                rows={1}
+                maxLength={MAX_MESSAGE_CHARS}
+                placeholder={t('chat.messagePlaceholder')}
+                style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
+                className={`min-h-9 w-full resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm leading-6 ${primaryText} outline-none ${placeholderText} disabled:opacity-50`}
+                disabled={loading || streaming}
+              />
             <div className="mt-1 flex items-center gap-1">
               <button
                 type="button"
@@ -929,6 +1050,7 @@ export function ChatPanel({
                   <ArrowUpIcon className="h-4 w-4" />
                 </button>
               )}
+              </div>
             </div>
           </div>
 
@@ -937,6 +1059,12 @@ export function ChatPanel({
               <MonitorIcon className="h-3.5 w-3.5" />
               {t('chat.environmentLocal')}
             </span>
+            {skills.length > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <span className={`font-semibold ${accentText}`}>/</span>
+                {t('chat.skillsHint')}
+              </span>
+            )}
             <label
               className={`relative inline-flex cursor-pointer items-center gap-1.5 ${composerMetaItem}`}
             >

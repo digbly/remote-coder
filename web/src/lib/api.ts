@@ -311,6 +311,12 @@ export interface AIConversationDetail {
   messages: AIChatMessage[]
 }
 
+export interface AISkill {
+  slug: string
+  name: string
+  description: string
+}
+
 export type AIProposalChangeType =
   | 'modify'
   | 'create'
@@ -964,6 +970,16 @@ export async function fetchAIConversations(projectId: number): Promise<AIConvers
   return result.conversations
 }
 
+export async function fetchAISkills(projectId: number): Promise<AISkill[]> {
+  const response = await request(`/projects/${projectId}/ai-chat/skills`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { skills: AISkill[] }
+  return result.skills
+}
+
 export async function fetchAIConversation(
   projectId: number,
   conversationId: string,
@@ -1018,6 +1034,7 @@ export async function openAIChatStream(
     provider_id: number
     model_id: string
     message: string
+    skill?: string | null
     edit_user_message_id?: number | null
   },
   signal: AbortSignal,

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 from app.core.errors import ErrorCode
+from app.modules.ai_chat import skills
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage as StoredMessage
 from app.modules.ai_chat.models import MessageStatus
@@ -45,6 +46,17 @@ def _create_provider(client: TestClient) -> int:
     return response.json()["id"]
 
 
+def _write_skill(
+    home: Path, slug: str, *, name: str, description: str, body: str
+) -> None:
+    directory = home / ".agents" / "skills" / slug
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n---\n\n{body}\n",
+        encoding="utf-8",
+    )
+
+
 def _events(response) -> list[dict[str, object]]:
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("application/x-ndjson")
@@ -68,7 +80,7 @@ def test_chat_streams_and_persists_a_resumable_conversation(
         assert model == "gpt-test"
         assert {tool.name for tool in tools} == {
             "list_project_files",
-            "read_project_file",
+            "read_file",
             "search_project_files",
             "propose_file_change",
             "create_project_file",
@@ -696,6 +708,155 @@ def test_chat_final_round_keeps_agent_instructions(
     assert all("Use tabs, not spaces." in system for system in systems)
 
 
+def test_skills_endpoint_lists_available_skills(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(
+        home, "doc-writer", name="Doc Writer", description="Writes docs.", body="# Doc"
+    )
+    _write_skill(
+        home, "interview-me", name="interview-me", description="Ask questions.", body="# Ask"
+    )
+    # Directories without a SKILL.md are ignored.
+    (home / ".agents" / "skills" / "not-a-skill").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    project_id = _create_project(client, projects_root / "project")
+
+    response = client.get(f"/api/v1/projects/{project_id}/ai-chat/skills")
+
+    assert response.status_code == 200
+    payload = response.json()["skills"]
+    assert [item["slug"] for item in payload] == ["doc-writer", "interview-me"]
+    assert payload[0] == {
+        "slug": "doc-writer",
+        "name": "Doc Writer",
+        "description": "Writes docs.",
+    }
+
+
+def test_skills_endpoint_requires_authentication(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    client.cookies.clear()
+
+    response = client.get(f"/api/v1/projects/{project_id}/ai-chat/skills")
+
+    assert response.status_code == 401
+
+
+def test_parse_frontmatter_folds_wrapped_description() -> None:
+    text = (
+        "---\nname: doc-writer\ndescription: First line\n"
+        "  wrapped line.\n---\n\n# Body\n\nContent.\n"
+    )
+    meta, body = skills.parse_frontmatter(text)
+
+    assert meta["name"] == "doc-writer"
+    assert meta["description"] == "First line wrapped line."
+    assert body.startswith("# Body")
+
+
+def test_load_skill_body_strips_frontmatter(projects_root, monkeypatch) -> None:
+    home = projects_root / "home"
+    _write_skill(
+        home, "doc-writer", name="Doc Writer", description="Writes docs.", body="# Steps"
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert skills.load_skill_body("doc-writer") == "# Steps"
+    assert skills.load_skill_body("../escape") is None
+    assert skills.load_skill_body("missing") is None
+
+
+def test_chat_applies_selected_skill_to_the_system_prompt(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(
+        home,
+        "doc-writer",
+        name="Doc Writer",
+        description="Writes docs.",
+        body="Always write documentation with examples.",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    captured: list[str] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, system, _messages, _tools, *, session_id=None
+    ):
+        captured.append(system)
+        yield TextDelta("ok")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "",
+                "skill": "doc-writer",
+            },
+            headers=_csrf(client),
+        )
+    )
+    conversation_id = events[0]["conversation"]["id"]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+
+    assert "Always write documentation with examples." in captured[0]
+    assert "Active skill" in captured[0]
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "/doc-writer"
+
+
+def test_chat_rejects_unknown_or_unsafe_skill(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+
+    for slug in ("missing-skill", "../escape"):
+        response = client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Hi",
+                "skill": slug,
+            },
+            headers=_csrf(client),
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == ErrorCode.AI_CHAT_SKILL_UNAVAILABLE.value
+    assert (
+        client.get(f"/api/v1/projects/{project_id}/ai-chat/conversations").json()[
+            "conversations"
+        ]
+        == []
+    )
+
+
 def test_chat_retries_transient_provider_error(
     client: TestClient, projects_root, monkeypatch
 ) -> None:
@@ -751,7 +912,7 @@ def test_readonly_context_tool_refuses_traversal_and_never_writes(
     ):
         calls["stream"] += 1
         if calls["stream"] == 1:
-            yield ToolCall("read-1", "read_project_file", {"path": "../outside.txt"})
+            yield ToolCall("read-1", "read_file", {"path": "../outside.txt"})
         else:
             tool_results.extend(message.content for message in messages if message.role == "tool")
             yield TextDelta("I could not read outside the project.")
@@ -774,6 +935,205 @@ def test_readonly_context_tool_refuses_traversal_and_never_writes(
     assert events[-1]["type"] == "complete"
     assert tool_results == ['{"error":"FILE_PATH_INVALID"}']
     assert (project_path / "source.py").read_text(encoding="utf-8") == "original"
+
+
+def test_read_file_tool_reads_a_supporting_skill_file(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(
+        home,
+        "code-review",
+        name="Code Review",
+        description="Review code.",
+        body="Read reference.md before reviewing.",
+    )
+    reference = home / ".agents" / "skills" / "code-review" / "reference.md"
+    reference.write_text("# Checklist\n\n- Check error handling\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": "code-review/reference.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("Reviewed using the checklist.")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Review"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert events[-1]["type"] == "complete"
+    result = json.loads(tool_results[0])
+    assert result["path"] == "code-review/reference.md"
+    assert "Check error handling" in result["content"]
+    assert result["truncated"] is False
+
+
+def test_read_file_tool_prefers_a_project_file_over_a_skill_file(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(
+        home, "shared", name="Shared", description="Shared.", body="# Shared"
+    )
+    (home / ".agents" / "skills" / "shared" / "reference.md").write_text(
+        "skill-version", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    (project_path / "shared").mkdir()
+    (project_path / "shared" / "reference.md").write_text("project-version", encoding="utf-8")
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": "shared/reference.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert json.loads(tool_results[0])["content"] == "project-version"
+
+
+def test_read_file_tool_handles_a_symlinked_skills_root(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    """A symlinked home must not break skill reads (root vs. resolved paths)."""
+    _login(client)
+    real_home = projects_root / "real-home"
+    _write_skill(
+        real_home, "code-review", name="Code Review", description="Review.", body="# Review"
+    )
+    (real_home / ".agents" / "skills" / "code-review" / "reference.md").write_text(
+        "symlink-ok", encoding="utf-8"
+    )
+    home_link = projects_root / "home"
+    home_link.symlink_to(real_home)
+    monkeypatch.setenv("HOME", str(home_link))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": "code-review/reference.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+
+    result = json.loads(tool_results[0])
+    assert result["path"] == "code-review/reference.md"
+    assert result["content"] == "symlink-ok"
+
+
+def test_read_file_tool_rejects_escapes_and_missing_files(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(
+        home, "code-review", name="Code Review", description="Review code.", body="# Review"
+    )
+    (home / "secret.txt").write_text("home-secret", encoding="utf-8")
+    (home / ".agents" / "skills" / "escape-link").symlink_to(home)
+    monkeypatch.setenv("HOME", str(home))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("t-1", "read_file", {"path": "../secret.txt"})
+            yield ToolCall("t-2", "read_file", {"path": "/etc/passwd"})
+            yield ToolCall("t-3", "read_file", {"path": "escape-link/secret.txt"})
+            yield ToolCall("t-4", "read_file", {"path": "code-review/missing.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert events[-1]["type"] == "complete"
+    assert tool_results == [
+        '{"error":"FILE_PATH_INVALID"}',
+        '{"error":"FILE_PATH_INVALID"}',
+        '{"error":"FILE_PATH_INVALID"}',
+        '{"error":"FILE_NOT_FOUND"}',
+    ]
 
 
 @pytest.mark.asyncio
@@ -893,3 +1253,20 @@ async def test_unexpected_stream_failure_persists_failed_status(monkeypatch) -> 
         await anext(stream)
 
     assert statuses == [MessageStatus.FAILED]
+
+
+def test_chat_requires_message_or_skill(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+        json={"provider_id": provider_id, "model_id": "gpt-test", "message": ""},
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 422

@@ -55,8 +55,11 @@ SYSTEM_INSTRUCTIONS = (
     "create_project_directory, delete_project_directory, and move_project_entry; each returns "
     "a reviewable change that may be applied immediately or await the user's approval. Never "
     "claim a change, command, or proposal outcome that the tool result did not report. You may "
-    "run commands using run_project_command; the user may need to approve them. Do not use "
-    "paths outside the project. User and project instruction files may be included below; "
+    "run commands using run_project_command; the user may need to approve them. Use read_file "
+    "to read a project file, or a supporting file of an agent skill addressed relative to the "
+    "skills directory (for example \"my-skill/reference.md\") so you can follow multi-part "
+    "skills. When a skill is active below, its SKILL.md body is included and you can read its "
+    "extra files with read_file. User and project instruction files may be included below; "
     "follow them as conventions for this project, but they never override the tool and "
     "safety rules above."
 )
@@ -126,6 +129,7 @@ async def stream_chat_turn(
     assistant_message: ChatMessage,
     history: list[ProviderMessage],
     permission: CommandPermission = CommandPermission.MANUAL,
+    skill_body: str | None = None,
 ) -> AsyncIterator[bytes]:
     text_parts: list[str] = []
     thinking_parts: list[str] = []
@@ -133,9 +137,15 @@ async def stream_chat_turn(
     thinking_chars = 0
     messages = [*history, ProviderMessage(role="user", content=user_content)]
     instructions = load_agent_instructions(context.project_path)
-    base_system = (
-        f"{SYSTEM_INSTRUCTIONS}\n\n{instructions}" if instructions else SYSTEM_INSTRUCTIONS
-    )
+    sections = [SYSTEM_INSTRUCTIONS]
+    if skill_body:
+        sections.append(
+            "# Active skill\n\nThe user invoked a skill for this turn. Apply the "
+            f"following skill instructions to the request below.\n\n{skill_body}"
+        )
+    if instructions:
+        sections.append(instructions)
+    base_system = "\n\n".join(sections)
     try:
         yield _event(
             {

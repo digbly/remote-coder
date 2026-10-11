@@ -2,7 +2,9 @@ import json
 
 from fastapi import HTTPException
 
+from app.core.errors import ErrorCode
 from app.modules.ai_changes.schemas import ChangeProposalRead
+from app.modules.ai_chat import skills
 from app.modules.ai_chat.commands import RUN_PROJECT_COMMAND
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_providers.base import ProviderTool, ToolCall
@@ -12,6 +14,7 @@ MAX_TOOL_CALLS_PER_TURN = 16
 MAX_TOOL_ROUNDS_PER_TURN = 8
 MAX_PATH_CHARS = 4096
 MAX_SEARCH_QUERY_CHARS = 500
+READ_FILE_NAME = "read_file"
 
 _PATH_ARGUMENTS = {
     "type": "object",
@@ -43,8 +46,12 @@ PROJECT_TOOLS = (
         },
     ),
     ProviderTool(
-        name="read_project_file",
-        description="Read a UTF-8 text file using a project-relative path.",
+        name=READ_FILE_NAME,
+        description=(
+            "Read a UTF-8 text file. Use a project-relative path for project files, or a path "
+            "relative to the agent skills directory (for example \"my-skill/reference.md\") to "
+            "read the supporting files of a multi-part skill. The project is checked first."
+        ),
         parameters=_PATH_ARGUMENTS,
     ),
     ProviderTool(
@@ -198,16 +205,43 @@ def _read(context: ProjectContext, name: str, arguments: dict[str, object]) -> s
     path = arguments.get("path")
     if path is not None and (not isinstance(path, str) or len(path) > MAX_PATH_CHARS):
         return _encode({"error": "invalid_arguments"})
-    try:
-        if name == "list_project_files":
+    if name == "list_project_files":
+        try:
             result = context.list_files(path)
-        elif name == "read_project_file" and isinstance(path, str) and path:
-            result = context.read_file(path)
-        else:
-            return _encode({"error": "unsupported_tool_or_arguments"})
+        except HTTPException as exc:
+            return _error_result(exc)
+        return _encode_result(result)
+    if name != READ_FILE_NAME:
+        return _encode({"error": "unsupported_tool_or_arguments"})
+    if not _is_path(path):
+        return _encode({"error": "invalid_arguments"})
+    return _read_file(context, path)
+
+
+def _read_file(context: ProjectContext, path: str) -> str:
+    """Read a project file, falling back to the agent skills directory.
+
+    The agent may read project files and the supporting files of a skill. The
+    project is checked first so a project path always wins; when the project has
+    no such file, the path is resolved against the skills directory (for example
+    ``my-skill/reference.md``).
+    """
+    try:
+        return _encode_result(context.read_file(path))
+    except HTTPException as exc:
+        if _error_code(exc) != ErrorCode.FILE_NOT_FOUND.value:
+            return _error_result(exc)
+    try:
+        skill_file = skills.read_skill_file(path)
     except HTTPException as exc:
         return _error_result(exc)
-    return _encode_result(result)
+    return _encode_result(
+        {
+            "path": skill_file.path,
+            "content": skill_file.content,
+            "truncated": skill_file.truncated,
+        }
+    )
 
 
 def _is_path(value: object) -> bool:
@@ -222,9 +256,14 @@ def _encode_result(result: dict[str, object]) -> str:
 
 
 def _error_result(exc: HTTPException) -> str:
+    code = _error_code(exc)
+    return _encode({"error": code if code is not None else "proposal_failed"})
+
+
+def _error_code(exc: HTTPException) -> str | None:
     detail = exc.detail
     code = detail.get("code") if isinstance(detail, dict) else None
-    return _encode({"error": code if isinstance(code, str) else "proposal_failed"})
+    return code if isinstance(code, str) else None
 
 
 def _proposal_result(proposal: ChangeProposalRead) -> str:

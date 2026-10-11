@@ -58,6 +58,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "That message is no longer available to edit and resend"
         ),
         "AI_CHAT_MODEL_UNAVAILABLE": "The selected model is not available for this provider",
+        "AI_CHAT_SKILL_UNAVAILABLE": "The selected skill is no longer available",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "The assistant reached a safety limit for this reply. Send another message to continue"
         ),
@@ -138,6 +139,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Tin nhắn này không còn để sửa và gửi lại"
         ),
         "AI_CHAT_MODEL_UNAVAILABLE": "Model đã chọn không khả dụng với provider này",
+        "AI_CHAT_SKILL_UNAVAILABLE": "Skill đã chọn không còn khả dụng",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "Trợ lý đã đạt giới hạn an toàn cho phản hồi này. Hãy gửi thêm tin nhắn để tiếp tục"
         ),
