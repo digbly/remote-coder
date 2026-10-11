@@ -874,6 +874,36 @@ export function refreshAgents(): Promise<AgentDefinition[]> {
 export interface TerminalUrlOptions {
   worktree?: string
   agentId?: string
+  agentSessionId?: string
+}
+
+export type AgentSessionSource = 'chat' | 'cli'
+
+export interface AgentSession {
+  source: AgentSessionSource
+  id: string
+  title: string
+  agent_id: string | null
+  agent_label: string | null
+  updated_at: string
+}
+
+export async function fetchAgentSessions(
+  projectId: number,
+  worktree?: string,
+): Promise<AgentSession[]> {
+  const params = new URLSearchParams()
+  if (worktree) params.set('worktree', worktree)
+  const search = params.toString()
+  const response = await request(
+    `/projects/${projectId}/agent-sessions${search ? `?${search}` : ''}`,
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { sessions: AgentSession[] }
+  return result.sessions
 }
 
 export async function saveAgentSetting(
@@ -1075,6 +1105,7 @@ export function projectTerminalUrl(
   const params = new URLSearchParams()
   if (options.worktree) params.set('worktree', options.worktree)
   if (options.agentId) params.set('agent_id', options.agentId)
+  if (options.agentSessionId) params.set('session', options.agentSessionId)
   const search = params.toString()
   const query = search ? `?${search}` : ''
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`

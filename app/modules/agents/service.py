@@ -124,6 +124,16 @@ def agent_exists(agent_id: str) -> bool:
     return registry.get(agent_id) is not None
 
 
+def agent_label(agent_id: str) -> str | None:
+    """The catalog label for a registered agent, or ``None`` if unknown.
+
+    Unlike :func:`list_agents` this does not touch the database or probe the
+    host, so it is cheap enough for per-request display only.
+    """
+    agent = registry.get(agent_id)
+    return agent.spec.label if agent is not None else None
+
+
 def effective_config(db: Session, user: User, agent: Agent) -> tuple[str, str]:
     """Effective (command, args) for an agent, applying the user's override."""
     override = db.scalar(
@@ -142,6 +152,29 @@ def resolve_launch(db: Session, user: User, agent_id: str) -> str | None:
     if agent is None:
         return None
     return agent.build_launch(*effective_config(db, user, agent))
+
+
+# Session ids are supplied by the client and typed verbatim into the shell, so
+# only the conservative character set CLI agents use is accepted.
+_SESSION_ID_MAX = 128
+_SESSION_ID_RE = re.compile(rf"^[A-Za-z0-9._:-]{{1,{_SESSION_ID_MAX}}}$")
+
+
+def valid_session_id(session_id: str) -> bool:
+    """Whether ``session_id`` is safe to place on a shell launch line."""
+    return _SESSION_ID_RE.fullmatch(session_id) is not None
+
+
+def resolve_resume_launch(db: Session, user: User, agent_id: str, session_id: str) -> str | None:
+    """Build the line that resumes ``session_id`` for an agent, or ``None``.
+
+    Returns ``None`` for an unknown agent, an agent without a resume form, or an
+    unsafe session id, so callers simply skip launching.
+    """
+    agent = registry.get(agent_id)
+    if agent is None or not valid_session_id(session_id):
+        return None
+    return agent.build_resume_launch(*effective_config(db, user, agent), session_id)
 
 
 def get_default_agent_id(db: Session, user: User) -> str | None:

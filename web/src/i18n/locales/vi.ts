@@ -222,6 +222,7 @@ const vi = {
     sourceControl: 'Quản lý mã nguồn',
     explorer: 'Explorer',
     check: 'Kiểm tra',
+    sessions: 'Lịch sử phiên agent',
     panel: 'Bảng',
     menu: 'Menu',
     tabs: 'Tab đang mở',
@@ -441,6 +442,15 @@ const vi = {
     allowRead: 'Cho phép',
     runCommand: 'Chạy',
     cancelCommand: 'Hủy',
+  },
+  sessions: {
+    title: 'Lịch sử phiên agent',
+    cliSection: 'Phiên agent',
+    chatSection: 'Phiên chat',
+    empty: 'Chưa có phiên nào.',
+    loadFailed: 'Không thể tải danh sách phiên',
+    resume: 'Tiếp tục',
+    untitled: 'Phiên chưa đặt tên',
   },
 } as const
 

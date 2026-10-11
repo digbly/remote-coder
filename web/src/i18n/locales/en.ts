@@ -222,6 +222,7 @@ const en = {
     sourceControl: 'Source Control',
     explorer: 'Explorer',
     check: 'Check',
+    sessions: 'Agent Session History',
     panel: 'Panel',
     menu: 'Menu',
     tabs: 'Open tabs',
@@ -441,6 +442,15 @@ const en = {
     allowRead: 'Allow',
     runCommand: 'Run',
     cancelCommand: 'Cancel',
+  },
+  sessions: {
+    title: 'Agent Session History',
+    cliSection: 'Agent sessions',
+    chatSection: 'Chat sessions',
+    empty: 'No sessions yet.',
+    loadFailed: 'Could not load sessions',
+    resume: 'Resume',
+    untitled: 'Untitled session',
   },
 } as const
 

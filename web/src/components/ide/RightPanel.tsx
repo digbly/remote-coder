@@ -1,15 +1,18 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { loadPanelTab, savePanelTab, type PanelTab } from '../../lib/panelStore'
-import { BranchIcon, CheckIcon, CloseIcon, FileIcon } from './icons'
+import type { AgentSession } from '../../lib/api'
+import { BranchIcon, CheckIcon, CloseIcon, FileIcon, HistoryIcon } from './icons'
 import { ExplorerPanel } from './ExplorerPanel'
 import { SourceControlPanel } from './SourceControlPanel'
 import { CheckPanel } from './CheckPanel'
+import { AgentSessionPanel } from './AgentSessionPanel'
 
 const TABS = [
   { id: 'explorer', labelKey: 'ide.explorer', Icon: FileIcon },
   { id: 'sourceControl', labelKey: 'ide.sourceControl', Icon: BranchIcon },
   { id: 'check', labelKey: 'ide.check', Icon: CheckIcon },
+  { id: 'sessions', labelKey: 'ide.sessions', Icon: HistoryIcon },
 ] as const satisfies readonly {
   id: PanelTab
   labelKey: string
@@ -24,6 +27,8 @@ interface RightPanelProps {
   onOpenFile: (path: string, line?: number) => void
   onOpenDiff: (path: string, staged: boolean, origPath?: string | null, worktree?: string) => void
   onWorktreeDeleted?: (projectId: number, worktree: string) => void
+  onResumeChat: (conversationId: string, title: string) => void
+  onResumeSession: (session: AgentSession) => void
 }
 
 export function RightPanel({
@@ -34,6 +39,8 @@ export function RightPanel({
   onOpenFile,
   onOpenDiff,
   onWorktreeDeleted,
+  onResumeChat,
+  onResumeSession,
 }: RightPanelProps) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<PanelTab>(() => loadPanelTab(projectId))
@@ -125,6 +132,14 @@ export function RightPanel({
             projectId={projectId}
             worktree={worktree}
             onWorktreeDeleted={onWorktreeDeleted}
+          />
+        )}
+        {tab === 'sessions' && (
+          <AgentSessionPanel
+            projectId={projectId}
+            worktree={worktree}
+            onResumeChat={onResumeChat}
+            onResumeSession={onResumeSession}
           />
         )}
       </div>

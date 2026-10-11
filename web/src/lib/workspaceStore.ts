@@ -11,6 +11,7 @@ export interface WorkspaceTab {
   worktree?: string
   agentId?: string
   agentLabel?: string
+  agentSessionId?: string
   filePath?: string
   line?: number
   conversationId?: string
@@ -78,6 +79,7 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentId === undefined || typeof value.agentId === 'string') &&
     (value.agentLabel === undefined || typeof value.agentLabel === 'string') &&
+    (value.agentSessionId === undefined || typeof value.agentSessionId === 'string') &&
     (value.filePath === undefined || typeof value.filePath === 'string') &&
     (value.line === undefined || typeof value.line === 'number') &&
     (value.conversationId === undefined || typeof value.conversationId === 'string') &&
@@ -156,6 +158,46 @@ export function withNewTerminal(
   }
 }
 
+export interface AgentSessionResumeOptions {
+  agentId: string
+  agentLabel: string
+  sessionId: string
+  title?: string
+  worktree?: string
+}
+
+/**
+ * Open a terminal tab that resumes a CLI agent session. The server reads
+ * ``agentSessionId`` and types the agent's resume command into the shell.
+ */
+export function withAgentSessionTerminal(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  options: AgentSessionResumeOptions,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const id = newTerminalId()
+  const label = options.title?.trim() || options.agentLabel
+  const tab: WorkspaceTab = {
+    id,
+    title: label.slice(0, MAX_TAB_TITLE_LENGTH),
+    kind: 'terminal',
+    projectId: project.id,
+    agentId: options.agentId,
+    agentLabel: options.agentLabel,
+    agentSessionId: options.sessionId,
+    ...(options.worktree ? { worktree: options.worktree } : {}),
+  }
+  return {
+    ...workspaces,
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(options.worktree),
+    },
+  }
+}
+
 export function withNewChat(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
@@ -208,6 +250,51 @@ export function withChatConversation(
             }
           : tab,
       ),
+    },
+  }
+}
+
+/**
+ * Open the chat tab bound to ``conversationId``, reusing an existing tab if one
+ * already shows that conversation.
+ */
+export function withChatConversationTab(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  conversationId: string,
+  title: string,
+  worktree?: string,
+): Record<number, ProjectWorkspace> {
+  const current = workspaces[project.id]
+  const tabs = current?.tabs ?? []
+  const existing = tabs.find(
+    (tab) => tab.kind === 'chat' && tab.conversationId === conversationId,
+  )
+  if (existing) {
+    return {
+      ...workspaces,
+      [project.id]: {
+        tabs,
+        activeId: existing.id,
+        ...activeWorktreePatch(worktree ?? current?.activeWorktree),
+      },
+    }
+  }
+  const id = newTerminalId()
+  const tab: WorkspaceTab = {
+    id,
+    title: (title.trim() || 'Chat').slice(0, MAX_TAB_TITLE_LENGTH),
+    kind: 'chat',
+    projectId: project.id,
+    conversationId,
+    ...(worktree ? { worktree } : {}),
+  }
+  return {
+    ...workspaces,
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(worktree),
     },
   }
 }

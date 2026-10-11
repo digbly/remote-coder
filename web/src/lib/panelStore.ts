@@ -1,4 +1,4 @@
-const PANEL_TABS = ['explorer', 'sourceControl', 'check'] as const
+const PANEL_TABS = ['explorer', 'sourceControl', 'check', 'sessions'] as const
 
 export type PanelTab = (typeof PANEL_TABS)[number]
 

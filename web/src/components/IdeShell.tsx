@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { killTerminal, closeBrowserSession, type Project, type User } from '../lib/api'
+import { killTerminal, closeBrowserSession, type AgentSession, type Project, type User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
@@ -10,6 +10,8 @@ import {
   withOpenFile,
   withOpenDiff,
   withChatConversation,
+  withChatConversationTab,
+  withAgentSessionTerminal,
   withTabTitle,
   withTabPinned,
   withTabColor,
@@ -159,6 +161,37 @@ export function IdeShell({
     update((prev) => ({
       ...prev,
       workspaces: withBrowserTab(prev.workspaces, activeProject),
+    }))
+  }
+
+  function resumeChatSession(conversationId: string, title: string) {
+    if (!activeProject) return
+    const worktree = activeWorktrees[activeProject.id]
+    update((prev) => ({
+      ...prev,
+      workspaces: withChatConversationTab(
+        prev.workspaces,
+        activeProject,
+        conversationId,
+        title,
+        worktree,
+      ),
+    }))
+  }
+
+  function resumeAgentSession(session: AgentSession) {
+    if (!activeProject || !session.agent_id) return
+    const agentId = session.agent_id
+    const worktree = activeWorktrees[activeProject.id]
+    update((prev) => ({
+      ...prev,
+      workspaces: withAgentSessionTerminal(prev.workspaces, activeProject, {
+        agentId,
+        agentLabel: session.agent_label ?? agentId,
+        sessionId: session.id,
+        title: session.title,
+        worktree,
+      }),
     }))
   }
 
@@ -367,6 +400,7 @@ export function IdeShell({
                 terminalId={tab.id}
                 worktree={tab.worktree}
                 agentId={tab.agentId}
+                agentSessionId={tab.agentSessionId}
                 active={active}
                 onTitle={setTabTitle}
               />
@@ -402,6 +436,8 @@ export function IdeShell({
           chatWorktrees={chatWorktrees}
           onOpenFile={openFile}
           onOpenDiff={openDiff}
+          onResumeChat={resumeChatSession}
+          onResumeSession={resumeAgentSession}
         >
           {tabPanes}
         </MobileShell>
@@ -492,6 +528,8 @@ export function IdeShell({
                       onOpenFile={openFile}
                       onOpenDiff={openDiff}
                       onWorktreeDeleted={closeWorktreeTabs}
+                      onResumeChat={resumeChatSession}
+                      onResumeSession={resumeAgentSession}
                     />
                   </>
                 ) : (
