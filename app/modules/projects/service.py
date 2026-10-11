@@ -815,7 +815,17 @@ def _clone_repository(
     branch: str | None,
     settings: Settings,
 ) -> None:
-    command = ["gh", "repo", "clone", repository, str(destination), "--", "--depth", "1"]
+    command = [
+        "gh",
+        "repo",
+        "clone",
+        repository,
+        str(destination),
+        "--",
+        "--depth",
+        "1",
+        "--no-single-branch",
+    ]
     if branch:
         command += ["--branch", branch]
 

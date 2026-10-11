@@ -238,6 +238,7 @@ def test_clone_repository_uses_gh_cli_and_branch(monkeypatch, tmp_path) -> None:
         "--",
         "--depth",
         "1",
+        "--no-single-branch",
         "--branch",
         "feature/test",
     ]
