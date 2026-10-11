@@ -29,7 +29,6 @@ import {
 } from '../../lib/chat'
 
 const BRAND_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D98A5B 100%)'
-const USER_BUBBLE_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D88962 100%)'
 const brandStyle = { backgroundImage: BRAND_GRADIENT }
 
 const MAX_TEXTAREA_HEIGHT = 192
@@ -39,6 +38,7 @@ const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
 const cardBg = 'bg-white dark:bg-[#1F1F1F]'
 const subtleBg = 'bg-[#F2F2F2] dark:bg-[#272727]'
 const cardBorder = 'border-[#E5E7EB] dark:border-[#2E2E2E]'
+const userBubbleBg = 'bg-[#E8F0FE] dark:bg-[#1E2A3A]'
 const primaryText = 'text-[#0F0F0F] dark:text-[#F1F1F1]'
 const mutedText = 'text-[#6B6B6B] dark:text-[#AAAAAA]'
 const dangerText = 'text-[#DC2626] dark:text-[#F87171]'
@@ -586,11 +586,10 @@ export function ChatPanel({
           return (
             <article
               key={`${tabId}-${message.id}`}
-              style={isUser ? { backgroundImage: USER_BUBBLE_GRADIENT } : undefined}
               className={
                 isUser
-                  ? 'mx-auto w-full max-w-[1000px] rounded-2xl px-4 py-3 text-white shadow-none'
-                  : 'mx-auto w-full max-w-[1000px] rounded-none border-0 bg-transparent px-0 py-2'
+                  ? `ml-auto w-fit max-w-[85%] rounded-2xl px-4 py-3 ${userBubbleBg} ${primaryText}`
+                  : 'w-full rounded-none border-0 bg-transparent px-0 py-2'
               }
             >
               {!isUser && message.thinking && (
@@ -600,7 +599,7 @@ export function ChatPanel({
                 <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
               )}
               {isUser ? (
-                <div className="whitespace-pre-wrap break-words text-[15px] leading-7 text-white">
+                <div className={`whitespace-pre-wrap break-words text-[15px] leading-7 ${primaryText}`}>
                   {message.content}
                 </div>
               ) : message.content ? (
@@ -611,7 +610,7 @@ export function ChatPanel({
                 <div className={`text-[15px] leading-7 ${primaryText}`}>{t('chat.thinking')}</div>
               ) : null}
               {message.status === 'failed' && (
-                <p className={`mt-2 text-xs ${isUser ? 'text-white' : dangerText}`}>
+                <p className={`mt-2 text-xs ${dangerText}`}>
                   {message.error || t('chat.failedStatus')}
                 </p>
               )}
@@ -619,7 +618,7 @@ export function ChatPanel({
                 <p className={`mt-2 text-xs ${accentText}`}>{message.notice}</p>
               )}
               {message.status === 'interrupted' && (
-                <p className={`mt-2 text-xs ${isUser ? 'text-white' : mutedText}`}>
+                <p className={`mt-2 text-xs ${mutedText}`}>
                   {t('chat.interrupted')}
                 </p>
               )}
@@ -627,7 +626,7 @@ export function ChatPanel({
           )
         })}
         {pendingCommand && (
-          <article className={`mx-auto max-w-3xl rounded-2xl border border-[#F97316]/50 ${cardBg} px-4 py-3`}>
+          <article className={`w-full rounded-2xl border border-[#F97316]/50 ${cardBg} px-4 py-3`}>
             <h3 className={`text-sm font-semibold ${primaryText}`}>
               {t('chat.commandApprovalTitle')}
             </h3>
@@ -661,7 +660,7 @@ export function ChatPanel({
         {proposals.map((proposal) => (
           <article
             key={`proposal-${proposal.id}`}
-            className={`mx-auto max-w-3xl rounded-2xl border border-[#F97316]/40 ${cardBg} px-4 py-3`}
+            className={`w-full rounded-2xl border border-[#F97316]/40 ${cardBg} px-4 py-3`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -709,18 +708,18 @@ export function ChatPanel({
       </div>
 
       <div className={`border-t ${cardBorder} ${cardBg} px-4 pb-3 pt-4`}>
-        {error && <p className={`mx-auto mb-2 max-w-3xl text-sm ${dangerText}`}>{error}</p>}
+        {error && <p className={`mb-2 text-sm ${dangerText}`}>{error}</p>}
         {!provider && providers.length > 0 && (
-          <p className={`mx-auto mb-2 max-w-3xl text-xs ${mutedText}`}>
+          <p className={`mb-2 text-xs ${mutedText}`}>
             {t('chat.selectProvider')}
           </p>
         )}
         {provider && models.length === 0 && (
-          <p className={`mx-auto mb-2 max-w-3xl text-xs ${mutedText}`}>
+          <p className={`mb-2 text-xs ${mutedText}`}>
             {t('chat.modelsUnavailable')}
           </p>
         )}
-        <form onSubmit={(event) => void send(event)} className="mx-auto max-w-3xl">
+        <form onSubmit={(event) => void send(event)} className="w-full">
           <div className={composerShell}>
             <textarea
               ref={textareaRef}
