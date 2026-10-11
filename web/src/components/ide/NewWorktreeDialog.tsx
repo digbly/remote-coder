@@ -92,7 +92,7 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex flex-col bg-black/60 sm:items-center sm:justify-center sm:p-4"
       onClick={() => {
         if (!submitting) onClose()
       }}
@@ -101,10 +101,10 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-worktree-title"
-        className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+        className="flex h-full w-full flex-col overflow-hidden border-[var(--border)] bg-[var(--surface)] pt-[var(--safe-top)] sm:h-auto sm:max-h-[90vh] sm:max-w-md sm:rounded-xl sm:shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <h2 id="new-worktree-title" className="text-sm font-semibold text-[var(--fg-strong)]">
             {t('ide.newWorktreeDialog.title')}
           </h2>
@@ -119,7 +119,7 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
           </button>
         </div>
 
-        <div className="flex gap-1 px-4 pt-3">
+        <div className="flex shrink-0 gap-1 px-4 pt-3">
           {(['name', 'branch'] as const).map((value) => (
             <button
               key={value}
@@ -138,7 +138,7 @@ export function NewWorktreeDialog({ project, onClose, onCreated }: NewWorktreeDi
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-4 py-4">
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-[calc(1rem+var(--safe-bottom))]">
           {error && (
             <p
               role="alert"

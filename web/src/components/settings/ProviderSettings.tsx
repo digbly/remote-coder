@@ -10,6 +10,7 @@ import {
   type AIProviderKind,
   type AIProviderModel,
 } from '../../lib/api'
+import { useConfirm } from '../../lib/confirmContext'
 
 const inputClass =
   'mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-sm text-[var(--fg)] outline-none focus:border-indigo-500'
@@ -54,6 +55,7 @@ function ProviderCard({
   onDelete: (providerId: number) => void
 }) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [name, setName] = useState(provider.name)
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(provider.base_url ?? '')
@@ -108,7 +110,11 @@ function ProviderCard({
   }
 
   async function remove() {
-    if (!window.confirm(t('settings.providerDeleteConfirm', { name: provider.name }))) return
+    const approved = await confirm({
+      message: t('settings.providerDeleteConfirm', { name: provider.name }),
+      destructive: true,
+    })
+    if (!approved) return
     setBusy('delete')
     setError('')
     try {

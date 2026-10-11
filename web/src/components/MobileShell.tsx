@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Project, User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import type { WorkspaceTab } from '../lib/workspaceStore'
+import { useViewportHeight } from '../lib/useViewportHeight'
 import { MenuIcon, PanelRightIcon } from './ide/icons'
 import { NewTabMenu } from './ide/NewTabMenu'
 import { RightPanel } from './ide/RightPanel'
@@ -86,9 +87,14 @@ export function MobileShell({
   const { t } = useTranslation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
+  const viewportHeight = useViewportHeight()
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!drawerOpen && !panelOpen) return
+    const target = drawerOpen ? drawerRef.current : panelRef.current
+    target?.focus()
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setDrawerOpen(false)
@@ -117,7 +123,10 @@ export function MobileShell({
   }
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
+    <div
+      className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--fg)]"
+      style={viewportHeight != null ? { height: viewportHeight } : undefined}
+    >
       <header className="flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--surface)] pt-[var(--safe-top)]">
         <div className="flex h-12 items-center gap-1 px-1.5">
           <ShellIconButton label={t('ide.menu')} onClick={() => setDrawerOpen(true)}>
@@ -164,6 +173,7 @@ export function MobileShell({
                 type="button"
                 onClick={() => onSelectTab(tab)}
                 title={tab.title}
+                aria-current={active ? 'page' : undefined}
                 className={`flex min-h-11 max-w-[10rem] shrink-0 items-center gap-2 rounded-full px-3 text-[12px] transition ${
                   active
                     ? 'bg-[var(--hover-strong)] text-[var(--fg-strong)] ring-1 ring-inset ring-[var(--border-strong-alt)]'
@@ -176,17 +186,26 @@ export function MobileShell({
             )
           })}
         </div>
-        <NewTabMenu onSelect={onNewTerminal} onNewChat={onNewChat} />
+        {projectId != null && (
+          <NewTabMenu placement="up" onSelect={onNewTerminal} onNewChat={onNewChat} />
+        )}
       </nav>
 
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 flex" role="dialog" aria-modal="true">
+        <div
+          ref={drawerRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('ide.menu')}
+          className="fixed inset-0 z-40 flex outline-none"
+        >
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setDrawerOpen(false)}
             aria-hidden="true"
           />
-          <div className="relative z-10 h-full shadow-xl shadow-black/40">
+          <div className="relative z-10 flex h-full shadow-xl shadow-black/40">
             <Sidebar
               user={user}
               onLogout={onLogout}
@@ -210,7 +229,14 @@ export function MobileShell({
       )}
 
       {panelOpen && projectId != null && (
-        <div className="fixed inset-0 z-40 flex flex-col justify-end" role="dialog" aria-modal="true">
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('ide.panel')}
+          className="fixed inset-0 z-40 flex flex-col justify-end outline-none"
+        >
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setPanelOpen(false)}

@@ -9,16 +9,21 @@ type DetectionState =
   | { status: 'ready'; agents: AgentDefinition[] }
   | { status: 'error' }
 
+const MENU_WIDTH = 208
+const MENU_MARGIN = 8
+
 export function NewTabMenu({
   onSelect,
   onNewChat,
+  placement = 'down',
 }: {
   onSelect: (agent?: AgentDefinition) => void
   onNewChat: () => void
+  placement?: 'down' | 'up'
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null)
+  const [anchor, setAnchor] = useState<{ top?: number; bottom?: number; left: number } | null>(null)
   const [detection, setDetection] = useState<DetectionState>({ status: 'loading' })
   const buttonRef = useRef<HTMLButtonElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -73,7 +78,17 @@ export function NewTabMenu({
       return
     }
     const rect = buttonRef.current?.getBoundingClientRect()
-    if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left })
+    if (rect) {
+      const left = Math.min(
+        Math.max(MENU_MARGIN, rect.left),
+        Math.max(MENU_MARGIN, window.innerWidth - MENU_WIDTH - MENU_MARGIN),
+      )
+      setAnchor(
+        placement === 'up'
+          ? { bottom: window.innerHeight - rect.top + 4, left }
+          : { top: rect.bottom + 4, left },
+      )
+    }
     // Show cached agents immediately; only fall back to a loading state when
     // nothing has been loaded yet.
     if (!cachedAgents()) setDetection({ status: 'loading' })
@@ -102,8 +117,8 @@ export function NewTabMenu({
       {open && anchor && (
         <div
           role="menu"
-          style={{ top: anchor.top, left: anchor.left }}
-          className="fixed z-20 w-52 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
+          style={{ top: anchor.top, bottom: anchor.bottom, left: anchor.left }}
+          className="fixed z-20 max-h-[70vh] w-52 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
         >
           <button
             type="button"

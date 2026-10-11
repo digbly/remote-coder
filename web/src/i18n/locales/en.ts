@@ -2,6 +2,8 @@ const en = {
   common: {
     appName: 'Remote Coder',
     loading: 'Loading...',
+    confirm: 'Confirm',
+    cancel: 'Cancel',
   },
   language: {
     label: 'Language',
@@ -180,6 +182,7 @@ const en = {
     panel: 'Panel',
     menu: 'Menu',
     tabs: 'Open tabs',
+    more: 'More actions',
     noFiles: 'No files',
     filesError: 'Failed to load files',
     filesTruncated: 'Showing a partial listing — this folder has too many files.',

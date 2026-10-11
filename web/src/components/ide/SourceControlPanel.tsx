@@ -35,6 +35,7 @@ import {
 } from './icons'
 import { BranchMenu } from './BranchMenu'
 import { gitStatusColor, GIT_STATUS_REFRESH_INTERVAL_MS } from './gitStatus'
+import { useConfirm } from '../../lib/confirmContext'
 
 function PathRow({
   label,
@@ -56,7 +57,7 @@ function PathRow({
     </>
   )
   return (
-    <div className="group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition hover:bg-[var(--hover-subtle)]">
+    <div className="group flex items-center gap-2 rounded-md px-2.5 py-2.5 text-[12.5px] transition hover:bg-[var(--hover-subtle)] md:py-1.5">
       {onOpen ? (
         <button
           type="button"
@@ -115,7 +116,7 @@ function Section({
           {title} {count}
         </span>
         {action && (
-          <span className="ml-auto flex items-center gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+          <span className="ml-auto flex items-center gap-0.5 opacity-100 transition md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
             {action}
           </span>
         )}
@@ -143,7 +144,7 @@ function RowAction({
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="rounded p-2 md:p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
@@ -180,6 +181,7 @@ interface SourceControlPanelProps {
 
 export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanelProps) {
   const { t } = useTranslation()
+  const confirm = useConfirm()
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -284,9 +286,10 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     )
   }
 
-  function confirmDiscard(paths: string[]) {
-    if (paths.length === 0 || !window.confirm(t('ide.discardConfirm'))) return
-    handleDiscard(paths)
+  async function confirmDiscard(paths: string[]) {
+    if (paths.length === 0) return
+    const approved = await confirm({ message: t('ide.discardConfirm'), destructive: true })
+    if (approved) handleDiscard(paths)
   }
 
   function handlePush() {
@@ -444,7 +447,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
           onClick={handleToggleBranchMenu}
           aria-expanded={branchMenuOpen}
           title={t('ide.branches')}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-[13px] text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)]"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-2 text-[13px] text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)] md:py-0.5"
         >
           <BranchIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
           <span className="truncate">{status?.branch ?? t('ide.sourceControl')}</span>
@@ -463,7 +466,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
             title={t('ide.pull')}
             onClick={handlePull}
             disabled={disabled || !canPull}
-            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded p-2 md:p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CloudDownloadIcon width={14} height={14} />
           </button>
@@ -473,7 +476,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
             title={t('ide.push')}
             onClick={handlePush}
             disabled={disabled || status === null}
-            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded p-2 md:p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CloudUploadIcon width={14} height={14} />
           </button>
@@ -482,7 +485,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
             aria-label={t('ide.refresh')}
             title={t('ide.refresh')}
             onClick={reload}
-            className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
+            className="rounded p-2 md:p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
           >
             <RefreshIcon width={14} height={14} />
           </button>
@@ -509,7 +512,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                 placeholder={t('ide.commitMessagePlaceholder')}
                 aria-label={t('ide.commitMessagePlaceholder')}
                 rows={2}
-                className="w-full resize-none rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-2 pr-8 text-[12.5px] text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none"
+                className="w-full resize-none rounded-md border border-[var(--hover-strong-alt)] bg-[var(--input)] px-2.5 py-2 pr-8 text-base text-[var(--fg)] placeholder:text-[var(--muted-3)] focus:border-[var(--accent)] focus:outline-none md:text-[12.5px]"
               />
               <button
                 type="button"
@@ -522,7 +525,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                     ? t('ide.generatingCommitMessage')
                     : t('ide.generateCommitMessage')
                 }
-                className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="absolute right-1.5 top-1.5 cursor-pointer rounded p-2 md:p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {busy === 'generate' ? (
                   <SpinnerIcon width={14} height={14} className="animate-spin" />
@@ -535,7 +538,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
               type={primaryAction === 'commit' ? 'submit' : 'button'}
               onClick={primaryAction === 'commit' ? undefined : handlePrimaryAction}
               disabled={primaryDisabled}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-2.5 text-[12.5px] font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50 md:py-1.5"
             >
               {primary.icon}
               {primaryLabel}

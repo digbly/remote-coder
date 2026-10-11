@@ -38,7 +38,7 @@ function SectionNavItem({
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition ${
+        `flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition md:w-full ${
           isActive
             ? 'bg-[var(--hover)] text-[var(--fg-strong)]'
             : 'text-[var(--fg-3)] hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]'
@@ -335,7 +335,7 @@ export function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
-      <header className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-6 py-4">
+      <header className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3 pt-[calc(0.75rem+var(--safe-top))] md:px-6 md:py-4 md:pt-4">
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -346,9 +346,9 @@ export function SettingsPage() {
         </button>
         <h1 className="text-base font-semibold text-[var(--fg-strong)]">{t('settings.title')}</h1>
       </header>
-      <div className="mx-auto flex max-w-5xl gap-8 px-6 py-6">
-        <aside className="w-48 shrink-0">
-          <nav className="space-y-0.5">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 md:flex-row md:gap-8 md:px-6 md:py-6">
+        <aside className="w-full shrink-0 md:w-48">
+          <nav className="flex gap-1 overflow-x-auto md:flex-col md:space-y-0.5 md:overflow-visible">
             {sections.map((item) => (
               <SectionNavItem
                 key={item.id}

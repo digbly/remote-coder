@@ -4,6 +4,19 @@ import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { projectTerminalUrl, refreshSession } from '../../lib/api'
 import { useTheme, type ResolvedTheme } from '../../lib/themeContext'
+import { useIsMobile } from '../../lib/useMediaQuery'
+
+const MOBILE_KEY_BAR: { label: string; aria: string; data: string }[] = [
+  { label: 'Esc', aria: 'Escape', data: '\x1b' },
+  { label: 'Tab', aria: 'Tab', data: '\t' },
+  { label: 'Ctrl+C', aria: 'Control C', data: '\x03' },
+  { label: '←', aria: 'Left arrow', data: '\x1b[D' },
+  { label: '↑', aria: 'Up arrow', data: '\x1b[A' },
+  { label: '↓', aria: 'Down arrow', data: '\x1b[B' },
+  { label: '→', aria: 'Right arrow', data: '\x1b[C' },
+  { label: 'PgUp', aria: 'Page up', data: '\x1b[5~' },
+  { label: 'PgDn', aria: 'Page down', data: '\x1b[6~' },
+]
 
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
@@ -50,6 +63,11 @@ export const ProjectTerminal = memo(function ProjectTerminal({
   const onTitleRef = useRef(onTitle)
   const { resolved } = useTheme()
   const resolvedRef = useRef(resolved)
+  const isMobile = useIsMobile()
+
+  function sendKey(data: string) {
+    terminalRef.current?.input(data)
+  }
 
   useEffect(() => {
     onTitleRef.current = onTitle
@@ -259,5 +277,26 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     }
   }, [active])
 
-  return <div ref={containerRef} className="h-full w-full bg-[var(--bg)] px-2 py-1" />
+  return (
+    <div className="flex h-full w-full flex-col bg-[var(--bg)]">
+      {isMobile && (
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--surface)] px-1.5 py-1">
+          {MOBILE_KEY_BAR.map((key) => (
+            <button
+              key={key.label}
+              type="button"
+              tabIndex={-1}
+              aria-label={key.aria}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => sendKey(key.data)}
+              className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--btn)] px-2.5 py-1.5 text-xs text-[var(--fg-2)] transition active:bg-[var(--hover)]"
+            >
+              {key.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div ref={containerRef} className="min-h-0 w-full flex-1 px-2 py-1" />
+    </div>
+  )
 })

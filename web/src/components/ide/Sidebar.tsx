@@ -12,6 +12,7 @@ import {
   type Worktree,
 } from '../../lib/api'
 import { LanguageSwitcher } from '../LanguageSwitcher'
+import { useConfirm } from '../../lib/confirmContext'
 import {
   BellIcon,
   BranchIcon,
@@ -21,6 +22,7 @@ import {
   ExternalLinkIcon,
   FolderPlusIcon,
   HelpIcon,
+  MoreIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -167,9 +169,21 @@ function WorktreeItem({
         aria-label={t('ide.openInVSCode')}
         title={t('ide.openInVSCode')}
         onClick={onOpenVSCode}
-        className="ml-1 shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:opacity-100 focus:opacity-100"
+        className="ml-1 shrink-0 rounded p-2 text-[var(--muted)] opacity-100 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] md:p-1 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
       >
         <CodeIcon width={14} height={14} />
+      </button>
+      <button
+        type="button"
+        aria-label={t('ide.more')}
+        title={t('ide.more')}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          onContextMenu(rect.left, rect.bottom)
+        }}
+        className="shrink-0 rounded p-2 text-[var(--muted)] opacity-100 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] md:p-1 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+      >
+        <MoreIcon width={14} height={14} />
       </button>
     </div>
   )
@@ -228,9 +242,21 @@ function ProjectItem({
           aria-label={t('ide.createWorktree')}
           title={t('ide.createWorktree')}
           onClick={() => onOpenWorktreeDialog(project)}
-          className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] group-hover:opacity-100 focus:opacity-100"
+          className="shrink-0 rounded p-2 text-[var(--muted)] opacity-100 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] md:p-1 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
         >
           <PlusIcon width={13} height={13} />
+        </button>
+        <button
+          type="button"
+          aria-label={t('ide.more')}
+          title={t('ide.more')}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            onProjectContextMenu(rect.left, rect.bottom)
+          }}
+          className="shrink-0 rounded p-2 text-[var(--muted)] opacity-100 transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] md:p-1 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+        >
+          <MoreIcon width={13} height={13} />
         </button>
       </div>
 
@@ -300,6 +326,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
   const [runningTerminals, setRunningTerminals] = useState<Record<number, string[]>>({})
@@ -409,19 +436,17 @@ export function Sidebar({
     action(current.project, current.worktree.name)
   }
 
-  function handleDeleteWorktree() {
+  async function handleDeleteWorktree() {
     const current = menu
     if (!current?.worktree) return
     const worktree = current.worktree
     setMenu(null)
     if (worktree.is_primary) return
-    if (
-      !window.confirm(
-        t('ide.deleteWorktreeConfirm', { name: worktree.branch ?? worktree.name }),
-      )
-    ) {
-      return
-    }
+    const approved = await confirm({
+      message: t('ide.deleteWorktreeConfirm', { name: worktree.branch ?? worktree.name }),
+      destructive: true,
+    })
+    if (!approved) return
     setMenuError(null)
     deleteWorktree(current.project.id, worktree.name)
       .then(() => {

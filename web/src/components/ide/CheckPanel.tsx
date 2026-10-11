@@ -73,7 +73,7 @@ export function CheckPanel({ projectId }: CheckPanelProps) {
           aria-label={t('ide.refresh')}
           title={t('ide.refresh')}
           onClick={reload}
-          className="ml-auto rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]"
+          className="ml-auto rounded p-2 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] md:p-0.5"
         >
           <RefreshIcon width={14} height={14} />
         </button>

@@ -23,6 +23,25 @@ body {
   summary {
     cursor: pointer;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  a[href],
+  button,
+  [role='button'],
+  [role='menuitem'],
+  [role='tab'],
+  summary {
+    touch-action: manipulation;
+  }
 }
 
 :root {

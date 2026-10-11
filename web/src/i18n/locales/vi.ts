@@ -2,6 +2,8 @@ const vi = {
   common: {
     appName: 'Remote Coder',
     loading: 'Đang tải...',
+    confirm: 'Xác nhận',
+    cancel: 'Hủy',
   },
   language: {
     label: 'Ngôn ngữ',
@@ -180,6 +182,7 @@ const vi = {
     panel: 'Bảng',
     menu: 'Menu',
     tabs: 'Tab đang mở',
+    more: 'Thêm thao tác',
     noFiles: 'Không có tệp',
     filesError: 'Không tải được danh sách tệp',
     filesTruncated: 'Đang hiển thị một phần — thư mục này có quá nhiều tệp.',

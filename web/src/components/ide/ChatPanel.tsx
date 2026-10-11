@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useIsMobile } from '../../lib/useMediaQuery'
 import {
   decideAICommand,
   consumeChatStream,
@@ -19,9 +20,10 @@ import {
   type AIProvider,
   type AIProviderModel,
 } from '../../lib/chat'
+import { ChevronDownIcon, SettingsIcon } from './icons'
 
 const selectClass =
-  'rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-xs text-[var(--fg)] outline-none focus:border-indigo-500'
+  'rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-base text-[var(--fg)] outline-none focus:border-indigo-500 md:text-xs'
 
 type ToolLabelKey =
   | 'chat.toolList'
@@ -117,6 +119,7 @@ export function ChatPanel({
   onStreamingChange?: (streaming: boolean) => void
 }) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [providers, setProviders] = useState<AIProvider[]>([])
   const [providerId, setProviderId] = useState<number | null>(null)
   const [models, setModels] = useState<AIProviderModel[]>([])
@@ -137,6 +140,7 @@ export function ChatPanel({
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
+  const [controlsOpen, setControlsOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const optimisticIdRef = useRef(0)
@@ -462,6 +466,10 @@ export function ChatPanel({
 
   const provider = providers.find((item) => item.id === providerId)
   const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
+  const fieldLabelClass = `flex text-xs text-[var(--muted-2)] ${
+    isMobile ? 'flex-col gap-1' : 'items-center gap-2'
+  }`
+  const fieldSelectClass = `${selectClass} ${isMobile ? 'w-full' : ''}`
 
   function describeTool(name: string, path?: string): string {
     const labelKey = TOOL_LABEL_KEYS[name]
@@ -500,82 +508,112 @@ export function ChatPanel({
       data-active={active}
       className="flex h-full min-h-0 flex-col bg-[var(--bg)]"
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2.5">
-        <label className="text-xs text-[var(--muted-2)]">
-          {t('chat.provider')}
-          <select
-            className={`ml-2 ${selectClass}`}
-            value={providerId ?? ''}
-            onChange={(event) => {
-              const next = Number(event.target.value) || null
-              setProviderId(next)
-              setModels([])
-              setModelId('')
-            }}
-            disabled={loading || streaming || permissionSaving}
+      <div className="shrink-0 border-b border-[var(--border)] bg-[var(--surface)]">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={() => setControlsOpen((value) => !value)}
+            aria-expanded={controlsOpen}
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)]"
           >
-            <option value="">{t('chat.selectProvider')}</option>
-            {providers.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.kind})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-[var(--muted-2)]">
-          {t('chat.commandPermission')}
-          <select
-            className={`ml-2 ${selectClass}`}
-            value={commandPermission}
-            onChange={(event) => {
-              const mode = event.target.value
-              if (mode === 'manual' || mode === 'risky' || mode === 'allow_all') {
-                void changeCommandPermission(mode)
-              }
-            }}
-            disabled={loading || streaming || permissionSaving}
-            aria-label={t('chat.commandPermission')}
-          >
-            <option value="manual">{t('chat.permissionManual')}</option>
-            <option value="risky">{t('chat.permissionRisky')}</option>
-            <option value="allow_all">{t('chat.permissionAllowAll')}</option>
-          </select>
-        </label>
-        <label className="text-xs text-[var(--muted-2)]">
-          {t('chat.model')}
-          <select
-            className={`ml-2 ${selectClass}`}
-            value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-            disabled={!models.length || streaming}
-          >
-            <option value="">{t('chat.selectModel')}</option>
-            {(providerId ? models : []).map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.display_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="ml-auto text-xs text-[var(--muted-2)]">
-          {t('chat.history')}
-          <select
-            className={`ml-2 max-w-56 ${selectClass}`}
-            value={selectedConversation}
-            onChange={(event) => void selectConversation(event.target.value)}
-            disabled={streaming}
-          >
-            <option value="">{t('chat.newConversation')}</option>
-            {conversations.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SettingsIcon width={14} height={14} className="shrink-0 text-[var(--muted)]" />
+            <span className="min-w-0 flex-1 truncate">
+              {provider ? provider.name : t('chat.selectProvider')}
+              {' · '}
+              {modelId || t('chat.selectModel')}
+            </span>
+            <ChevronDownIcon
+              width={14}
+              height={14}
+              className={`shrink-0 text-[var(--muted)] transition-transform ${controlsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+        )}
+        <div
+          className={
+            isMobile
+              ? controlsOpen
+                ? 'flex flex-col items-stretch gap-3 px-4 py-3'
+                : 'hidden'
+              : 'flex flex-wrap items-center gap-2 px-4 py-2.5'
+          }
+        >
+          <label className={fieldLabelClass}>
+            {t('chat.provider')}
+            <select
+              className={fieldSelectClass}
+              value={providerId ?? ''}
+              onChange={(event) => {
+                const next = Number(event.target.value) || null
+                setProviderId(next)
+                setModels([])
+                setModelId('')
+              }}
+              disabled={loading || streaming || permissionSaving}
+            >
+              <option value="">{t('chat.selectProvider')}</option>
+              {providers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.kind})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={fieldLabelClass}>
+            {t('chat.commandPermission')}
+            <select
+              className={fieldSelectClass}
+              value={commandPermission}
+              onChange={(event) => {
+                const mode = event.target.value
+                if (mode === 'manual' || mode === 'risky' || mode === 'allow_all') {
+                  void changeCommandPermission(mode)
+                }
+              }}
+              disabled={loading || streaming || permissionSaving}
+              aria-label={t('chat.commandPermission')}
+            >
+              <option value="manual">{t('chat.permissionManual')}</option>
+              <option value="risky">{t('chat.permissionRisky')}</option>
+              <option value="allow_all">{t('chat.permissionAllowAll')}</option>
+            </select>
+          </label>
+          <label className={fieldLabelClass}>
+            {t('chat.model')}
+            <select
+              className={fieldSelectClass}
+              value={modelId}
+              onChange={(event) => setModelId(event.target.value)}
+              disabled={!models.length || streaming}
+            >
+              <option value="">{t('chat.selectModel')}</option>
+              {(providerId ? models : []).map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={`${fieldLabelClass} ${isMobile ? '' : 'ml-auto'}`}>
+            {t('chat.history')}
+            <select
+              className={`${selectClass} ${isMobile ? 'w-full' : 'max-w-56'}`}
+              value={selectedConversation}
+              onChange={(event) => void selectConversation(event.target.value)}
+              disabled={streaming}
+            >
+              <option value="">{t('chat.newConversation')}</option>
+              {conversations.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5">
+      <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4 md:px-4 md:py-5">
         {loading && <p className="text-center text-sm text-[var(--muted-2)]">{t('common.loading')}</p>}
         {!loading && providers.length === 0 && (
           <div className="mx-auto mt-12 max-w-lg text-center">
@@ -640,7 +678,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => void decideCommand(true)}
                 disabled={approvalBusy}
-                className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                className="rounded-md bg-emerald-700 px-3 py-2 text-xs md:py-1.5 font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
               >
                 {t('chat.runCommand')}
               </button>
@@ -648,7 +686,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => void decideCommand(false)}
                 disabled={approvalBusy}
-                className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--fg-2)] hover:bg-[var(--hover)] disabled:opacity-50"
+                className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-xs md:py-1.5 text-[var(--fg-2)] hover:bg-[var(--hover)] disabled:opacity-50"
               >
                 {t('chat.cancelCommand')}
               </button>
@@ -686,14 +724,14 @@ export function ChatPanel({
                 <button
                   type="button"
                   onClick={() => void actOnProposal(proposal, 'apply')}
-                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+                  className="rounded-md bg-emerald-700 px-3 py-2 text-xs md:py-1.5 font-medium text-white hover:bg-emerald-600"
                 >
                   {t('chat.applyChange')}
                 </button>
                 <button
                   type="button"
                   onClick={() => void actOnProposal(proposal, 'reject')}
-                  className="rounded-md border border-[var(--border-strong)] px-3 py-1.5 text-xs text-[var(--fg-2)] hover:bg-[var(--hover)]"
+                  className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-xs md:py-1.5 text-[var(--fg-2)] hover:bg-[var(--hover)]"
                 >
                   {t('chat.rejectChange')}
                 </button>
@@ -704,7 +742,7 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="border-t border-[var(--border)] bg-[var(--surface)] p-3 md:p-4">
         {error && <p className="mx-auto mb-2 max-w-3xl text-sm text-[var(--danger)]">{error}</p>}
         {!provider && providers.length > 0 && (
           <p className="mx-auto mb-2 max-w-3xl text-xs text-[var(--muted-2)]">
@@ -729,14 +767,14 @@ export function ChatPanel({
             rows={2}
             maxLength={16000}
             placeholder={t('chat.messagePlaceholder')}
-            className="min-h-12 flex-1 resize-y rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--fg)] outline-none focus:border-indigo-500"
+            className="min-h-12 flex-1 resize-y rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-base text-[var(--fg)] outline-none focus:border-indigo-500 md:text-sm"
             disabled={loading || streaming}
           />
           {streaming ? (
             <button
               type="button"
               onClick={() => abortRef.current?.abort()}
-              className="self-end rounded-md border border-[var(--border-strong)] px-4 py-2 text-sm text-[var(--fg-2)] transition hover:bg-[var(--hover)]"
+              className="self-end rounded-md border border-[var(--border-strong)] px-4 py-3 text-sm text-[var(--fg-2)] transition hover:bg-[var(--hover)] md:py-2"
             >
               {t('chat.stop')}
             </button>
@@ -744,7 +782,7 @@ export function ChatPanel({
             <button
               type="submit"
               disabled={!canSend}
-              className="self-end rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="self-end rounded-md bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 md:py-2"
             >
               {t('chat.send')}
             </button>

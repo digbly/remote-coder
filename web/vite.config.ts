@@ -22,6 +22,11 @@ export default defineConfig({
         theme_color: '#863bff',
         background_color: '#0f1012',
         display: 'standalone',
+        orientation: 'any',
+        lang: 'en',
+        dir: 'ltr',
+        categories: ['developer', 'productivity'],
+        prefer_related_applications: false,
         start_url: '/',
         scope: '/',
         icons: [
