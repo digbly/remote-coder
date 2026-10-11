@@ -16,6 +16,11 @@ export interface WorkspaceTab {
   conversationId?: string
   diffStaged?: boolean
   diffOrigPath?: string | null
+  pinned?: boolean
+  color?: string
+  // Set when the user renames the tab by hand; automatic titles (PTY OSC or
+  // chat conversation names) must not overwrite a name the user chose.
+  customTitle?: boolean
 }
 
 export interface ProjectWorkspace {
@@ -79,8 +84,18 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.diffStaged === undefined || typeof value.diffStaged === 'boolean') &&
     (value.diffOrigPath === undefined ||
       value.diffOrigPath === null ||
-      typeof value.diffOrigPath === 'string')
+      typeof value.diffOrigPath === 'string') &&
+    (value.pinned === undefined || typeof value.pinned === 'boolean') &&
+    (value.color === undefined || typeof value.color === 'string') &&
+    (value.customTitle === undefined || typeof value.customTitle === 'boolean')
   )
+}
+
+// Pinned tabs stay at the front of the strip; the relative order of both the
+// pinned and unpinned groups is preserved.
+function reorderPinned(tabs: WorkspaceTab[]): WorkspaceTab[] {
+  if (!tabs.some((tab) => tab.pinned)) return tabs
+  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)]
 }
 
 function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | null {
@@ -88,7 +103,7 @@ function parseWorkspace(value: unknown, projectId: number): ProjectWorkspace | n
   const tabs = value.tabs.filter(isTab)
   if (tabs.length !== value.tabs.length) return null
 
-  const scoped = tabs.map((tab) => ({ ...tab, projectId }))
+  const scoped = reorderPinned(tabs.map((tab) => ({ ...tab, projectId })))
   const activeId =
     typeof value.activeId === 'string' && scoped.some((tab) => tab.id === value.activeId)
       ? value.activeId
@@ -189,7 +204,7 @@ export function withChatConversation(
           ? {
               ...tab,
               ...(conversationId ? { conversationId } : { conversationId: undefined }),
-              title: title.slice(0, MAX_TAB_TITLE_LENGTH),
+              title: tab.customTitle ? tab.title : title.slice(0, MAX_TAB_TITLE_LENGTH),
             }
           : tab,
       ),
@@ -209,6 +224,7 @@ export function withTabTitle(
   if (!workspace) return workspaces
   const tab = workspace.tabs.find((item) => item.id === tabId)
   if (!tab) return workspaces
+  if (tab.customTitle) return workspaces
   const bounded = trimmed.slice(0, MAX_TAB_TITLE_LENGTH)
   const nextTitle = tab.agentLabel ? `${tab.agentLabel} | ${bounded}` : bounded
   if (nextTitle === tab.title) return workspaces
@@ -218,6 +234,69 @@ export function withTabTitle(
       ...workspace,
       tabs: workspace.tabs.map((item) =>
         item.id === tabId ? { ...item, title: nextTitle } : item,
+      ),
+    },
+  }
+}
+
+export function withTabPinned(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  tabId: string,
+  pinned: boolean,
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  const tab = workspace.tabs.find((item) => item.id === tabId)
+  if (!tab || Boolean(tab.pinned) === pinned) return workspaces
+  const tabs = reorderPinned(
+    workspace.tabs.map((item) => (item.id === tabId ? { ...item, pinned } : item)),
+  )
+  return { ...workspaces, [projectId]: { ...workspace, tabs } }
+}
+
+export function withTabColor(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  tabId: string,
+  color: string | undefined,
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  const tab = workspace.tabs.find((item) => item.id === tabId)
+  if (!tab || tab.color === color) return workspaces
+  return {
+    ...workspaces,
+    [projectId]: {
+      ...workspace,
+      tabs: workspace.tabs.map((item) =>
+        item.id === tabId ? { ...item, color: color ?? undefined } : item,
+      ),
+    },
+  }
+}
+
+// Manual rename sets the title verbatim (no agent prefix) because the user
+// typed exactly what they want to see.
+export function withRenamedTab(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  tabId: string,
+  title: string,
+): Record<number, ProjectWorkspace> {
+  const trimmed = title.trim()
+  if (trimmed.length === 0) return workspaces
+  const workspace = workspaces[projectId]
+  if (!workspace) return workspaces
+  const bounded = trimmed.slice(0, MAX_TAB_TITLE_LENGTH)
+  const tab = workspace.tabs.find((item) => item.id === tabId)
+  if (!tab || (tab.title === bounded && tab.customTitle)) return workspaces
+  return {
+    ...workspaces,
+    [projectId]: {
+      ...workspace,
+      tabs: workspace.tabs.map((item) =>
+        item.id === tabId ? { ...item, title: bounded, customTitle: true } : item,
       ),
     },
   }

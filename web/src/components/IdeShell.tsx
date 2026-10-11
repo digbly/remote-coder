@@ -11,6 +11,9 @@ import {
   withOpenDiff,
   withChatConversation,
   withTabTitle,
+  withTabPinned,
+  withTabColor,
+  withRenamedTab,
   withBrowserTab,
   type ActiveProjectRef,
   type SyncedState,
@@ -209,6 +212,70 @@ export function IdeShell({
     }))
   }
 
+  function closeTabsByIds(ids: string[]) {
+    if (activeProjectId == null || ids.length === 0) return
+    const projectId = activeProjectId
+    const remove = new Set(ids)
+    for (const tab of workspaces[projectId]?.tabs ?? []) {
+      if (remove.has(tab.id)) releaseTabResources(projectId, tab)
+    }
+    update((prev) => ({
+      ...prev,
+      workspaces: withFilteredTabs(prev.workspaces, projectId, (tab) => !remove.has(tab.id)),
+    }))
+  }
+
+  // Pinned tabs are immune to the bulk close actions below.
+  function closeOtherTabs(id: string) {
+    if (activeProjectId == null) return
+    const tabs = workspaces[activeProjectId]?.tabs ?? []
+    closeTabsByIds(tabs.filter((tab) => tab.id !== id && !tab.pinned).map((tab) => tab.id))
+  }
+
+  function closeTabsToRight(id: string) {
+    if (activeProjectId == null) return
+    const tabs = workspaces[activeProjectId]?.tabs ?? []
+    const index = tabs.findIndex((tab) => tab.id === id)
+    if (index === -1) return
+    closeTabsByIds(tabs.slice(index + 1).filter((tab) => !tab.pinned).map((tab) => tab.id))
+  }
+
+  function closeTabsToLeft(id: string) {
+    if (activeProjectId == null) return
+    const tabs = workspaces[activeProjectId]?.tabs ?? []
+    const index = tabs.findIndex((tab) => tab.id === id)
+    if (index === -1) return
+    closeTabsByIds(tabs.slice(0, index).filter((tab) => !tab.pinned).map((tab) => tab.id))
+  }
+
+  function toggleTabPin(id: string) {
+    if (activeProjectId == null) return
+    const projectId = activeProjectId
+    const pinned = workspaces[projectId]?.tabs.find((tab) => tab.id === id)?.pinned
+    update((prev) => ({
+      ...prev,
+      workspaces: withTabPinned(prev.workspaces, projectId, id, !pinned),
+    }))
+  }
+
+  function renameTab(id: string, title: string) {
+    if (activeProjectId == null) return
+    const projectId = activeProjectId
+    update((prev) => ({
+      ...prev,
+      workspaces: withRenamedTab(prev.workspaces, projectId, id, title),
+    }))
+  }
+
+  function setTabColor(id: string, color: string | undefined) {
+    if (activeProjectId == null) return
+    const projectId = activeProjectId
+    update((prev) => ({
+      ...prev,
+      workspaces: withTabColor(prev.workspaces, projectId, id, color),
+    }))
+  }
+
   function closeProjectTabs(projectId: number) {
     for (const tab of workspaces[projectId]?.tabs ?? []) {
       releaseTabResources(projectId, tab)
@@ -369,6 +436,12 @@ export function IdeShell({
               activeId={activeTabId}
               onSelect={onSelectTab}
               onClose={closeTab}
+              onCloseOthers={closeOtherTabs}
+              onCloseToRight={closeTabsToRight}
+              onCloseToLeft={closeTabsToLeft}
+              onTogglePin={toggleTabPin}
+              onRename={renameTab}
+              onSetColor={setTabColor}
               onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
               onNewChat={openChat}
               onNewBrowser={openBrowser}

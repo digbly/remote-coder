@@ -189,6 +189,51 @@ export function CloseIcon(props: IconProps) {
   )
 }
 
+export function PinIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 17v5" />
+      <path d="M5 17h14v-1.8a2 2 0 0 0-1.1-1.8l-1.8-.9A2 2 0 0 1 15 10.8V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.8a2 2 0 0 1-1.1 1.7l-1.8.9A2 2 0 0 0 5 15.2Z" />
+    </Svg>
+  )
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </Svg>
+  )
+}
+
+export function CloseOthersIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h10M4 12h6M4 17h10" />
+      <path d="m17 13 4 4M21 13l-4 4" />
+    </Svg>
+  )
+}
+
+export function CloseRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 5h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+      <path d="m16 9 3 3-3 3" />
+    </Svg>
+  )
+}
+
+export function CloseLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M20 5h-8a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z" />
+      <path d="m8 9-3 3 3 3" />
+    </Svg>
+  )
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Svg {...props}>
