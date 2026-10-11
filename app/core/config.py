@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr, model_validator
@@ -47,6 +48,7 @@ class Settings(BaseSettings):
 
     projects_root: str = "~/projects"
     worktrees_root: str = "~/remote-coder/workspaces"
+    remote_coder_data_root: str = "~/.remote-coder"
     github_clone_timeout_seconds: int = 120
     git_status_timeout_seconds: int = 30
     git_commit_timeout_seconds: int = 30
@@ -69,11 +71,17 @@ class Settings(BaseSettings):
     vscode_bind_host: str = "127.0.0.1"
     vscode_port_start: int = 8800
     vscode_port_end: int = 8900
-    vscode_user_data_root: str = "~/.remote-coder/vscode/cache"
+    vscode_user_data_root: str = ""
     vscode_start_timeout_seconds: int = 30
     vscode_session_ttl_seconds: int = 3600
     vscode_max_sessions: int = 4
     vscode_extra_args: str = ""
+
+    @model_validator(mode="after")
+    def _derive_vscode_user_data_root(self) -> "Settings":
+        if not self.vscode_user_data_root:
+            self.vscode_user_data_root = str(Path(self.remote_coder_data_root) / "vscode" / "cache")
+        return self
 
     @model_validator(mode="after")
     def _reject_insecure_production_defaults(self) -> "Settings":

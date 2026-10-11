@@ -13,7 +13,8 @@ ENV PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
     DEBUG=false \
     VENV_DIR=/opt/venv \
-    PROJECTS_ROOT=/home/remote-coder/projects
+    PROJECTS_ROOT=/home/remote-coder/projects \
+    REMOTE_CODER_DATA_ROOT=/home/remote-coder/.remote-coder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
