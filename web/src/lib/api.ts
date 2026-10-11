@@ -803,6 +803,14 @@ export async function fetchAgents(): Promise<AgentDefinition[]> {
   return loadAgents()
 }
 
+/**
+ * Force a fresh agent list from the server, bypassing the cached snapshot.
+ * Used by the settings "recheck" action to re-detect agents on the host PATH.
+ */
+export function refreshAgents(): Promise<AgentDefinition[]> {
+  return loadAgents()
+}
+
 export interface TerminalUrlOptions {
   worktree?: string
   agentId?: string

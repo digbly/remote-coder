@@ -101,6 +101,13 @@ const en = {
     defaultBadge: 'Default',
     setDefault: 'Set as default',
     defaultFailed: 'Could not set the default agent',
+    activatedBadge: 'Activated',
+    inactiveBadge: 'Not activated',
+    recheck: 'Recheck',
+    rechecking: 'Checking...',
+    recheckFound: 'CLI found at {{path}}',
+    recheckNotFound: 'CLI not found on the server',
+    recheckFailed: 'Could not recheck',
     providers: 'AI providers',
     providersDescription:
       'Add API credentials for OpenAI, Anthropic, or Gemini. Keys are encrypted on the server and never shown again.',

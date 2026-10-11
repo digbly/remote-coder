@@ -101,6 +101,13 @@ const vi = {
     defaultBadge: 'Mặc định',
     setDefault: 'Đặt làm mặc định',
     defaultFailed: 'Không thể đặt agent mặc định',
+    activatedBadge: 'Đã kích hoạt',
+    inactiveBadge: 'Chưa kích hoạt',
+    recheck: 'Kiểm tra lại',
+    rechecking: 'Đang kiểm tra...',
+    recheckFound: 'Đã tìm thấy CLI tại {{path}}',
+    recheckNotFound: 'Không tìm thấy CLI trên máy chủ',
+    recheckFailed: 'Không kiểm tra được',
     providers: 'AI provider',
     providersDescription:
       'Thêm thông tin API cho OpenAI, Anthropic hoặc Gemini. Khóa được mã hóa trên máy chủ và không hiển thị lại.',

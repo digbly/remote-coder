@@ -7,13 +7,16 @@ import {
   CommandIcon,
   GlobeIcon,
   PaletteIcon,
+  RefreshIcon,
   SparklesIcon,
+  SpinnerIcon,
 } from '../components/ide/icons'
 import { ProviderSettings } from '../components/settings/ProviderSettings'
 import {
   cachedAgents,
   fetchAgentSettings,
   fetchAgents,
+  refreshAgents,
   saveAgentSetting,
   setDefaultAgent,
   subscribeAgents,
@@ -22,6 +25,13 @@ import type { AgentDefinition } from '../lib/agents'
 import { useTheme, type ThemeMode } from '../lib/themeContext'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+type RecheckState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'found'; path: string }
+  | { status: 'missing' }
+  | { status: 'error' }
 
 const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system']
 
@@ -122,10 +132,18 @@ function AgentSettingRow({
   const [args, setArgs] = useState(agent.args)
   const [commitArgs, setCommitArgs] = useState(agent.commit_args)
   const [status, setStatus] = useState<SaveStatus>('idle')
+  const [recheck, setRecheck] = useState<RecheckState>({ status: 'idle' })
 
   const canSave = command.trim().length > 0 && status !== 'saving'
+  const rechecking = recheck.status === 'checking'
+
+  function resetFeedback() {
+    setStatus('idle')
+    setRecheck({ status: 'idle' })
+  }
 
   async function save() {
+    setRecheck({ status: 'idle' })
     setStatus('saving')
     try {
       await saveAgentSetting(agent.id, command.trim(), args, commitArgs)
@@ -136,21 +154,67 @@ function AgentSettingRow({
     }
   }
 
+  async function handleRecheck() {
+    setStatus('idle')
+    setRecheck({ status: 'checking' })
+    try {
+      const list = await refreshAgents()
+      const detected = list.find((item) => item.id === agent.id)
+      setRecheck(
+        detected?.installed && detected.path
+          ? { status: 'found', path: detected.path }
+          : { status: 'missing' },
+      )
+    } catch {
+      setRecheck({ status: 'error' })
+    }
+  }
+
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-medium text-[var(--fg-strong)]">
             {agent.label}
+            <span
+              title={agent.path ?? undefined}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                agent.installed
+                  ? 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300'
+                  : 'bg-[var(--chip)] text-[var(--muted-2)]'
+              }`}
+            >
+              {agent.installed ? t('settings.activatedBadge') : t('settings.inactiveBadge')}
+            </span>
             {isDefault && (
               <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
                 {t('settings.defaultBadge')}
               </span>
             )}
           </p>
-          <p className="text-xs text-[var(--muted-2)]">{agent.id}</p>
+          <p className="text-xs text-[var(--muted-2)]">
+            {agent.id}
+            {agent.installed && agent.path && (
+              <span className="text-[var(--muted-2)]"> · {agent.path}</span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRecheck}
+            disabled={rechecking}
+            title={t('settings.recheck')}
+            aria-label={t('settings.recheck')}
+            className="flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-2.5 py-1 text-[12px] text-[var(--fg-2)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {rechecking ? (
+              <SpinnerIcon width={13} height={13} className="animate-spin" />
+            ) : (
+              <RefreshIcon width={13} height={13} />
+            )}
+            {rechecking ? t('settings.rechecking') : t('settings.recheck')}
+          </button>
           <button
             type="button"
             onClick={() => onSetDefault(agent.id)}
@@ -177,7 +241,7 @@ function AgentSettingRow({
             spellCheck={false}
             onChange={(event) => {
               setCommand(event.target.value)
-              setStatus('idle')
+              resetFeedback()
             }}
             className={inputClass}
             placeholder="claude"
@@ -190,7 +254,7 @@ function AgentSettingRow({
             spellCheck={false}
             onChange={(event) => {
               setArgs(event.target.value)
-              setStatus('idle')
+              resetFeedback()
             }}
             className={inputClass}
             placeholder="--model opus"
@@ -204,7 +268,7 @@ function AgentSettingRow({
           spellCheck={false}
           onChange={(event) => {
             setCommitArgs(event.target.value)
-            setStatus('idle')
+            resetFeedback()
           }}
           className={inputClass}
           placeholder="--auto"
@@ -214,6 +278,17 @@ function AgentSettingRow({
       <p className="mt-2 h-4 text-xs">
         {status === 'saved' && <span className="text-emerald-600 dark:text-emerald-400">{t('settings.saved')}</span>}
         {status === 'error' && <span className="text-[var(--danger)]">{t('settings.saveFailed')}</span>}
+        {recheck.status === 'found' && (
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {t('settings.recheckFound', { path: recheck.path })}
+          </span>
+        )}
+        {recheck.status === 'missing' && (
+          <span className="text-amber-600 dark:text-amber-400">{t('settings.recheckNotFound')}</span>
+        )}
+        {recheck.status === 'error' && (
+          <span className="text-[var(--danger)]">{t('settings.recheckFailed')}</span>
+        )}
       </p>
     </div>
   )
