@@ -11,10 +11,12 @@ import {
 } from '../components/ide/icons'
 import { ProviderSettings } from '../components/settings/ProviderSettings'
 import {
+  cachedAgents,
   fetchAgentSettings,
   fetchAgents,
   saveAgentSetting,
   setDefaultAgent,
+  subscribeAgents,
 } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import { useTheme, type ThemeMode } from '../lib/themeContext'
@@ -219,20 +221,22 @@ function AgentSettingRow({
 
 function AgentsSection() {
   const { t } = useTranslation()
-  const [agents, setAgents] = useState<AgentDefinition[] | null>(null)
+  const [agents, setAgents] = useState<AgentDefinition[] | null>(() => cachedAgents())
   const [defaultAgentId, setDefaultAgentId] = useState<string | null>(null)
   const [defaultError, setDefaultError] = useState(false)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     let active = true
-    fetchAgents()
-      .then((result) => {
-        if (active) setAgents(result)
-      })
-      .catch(() => {
-        if (active) setError(true)
-      })
+    // The state initializer already rendered any cached list; the subscription
+    // delivers the loaded list (first load and background refreshes), and the
+    // promise is only used to surface a hard failure.
+    const unsubscribe = subscribeAgents((result) => {
+      if (active) setAgents(result)
+    })
+    fetchAgents().catch(() => {
+      if (active && !cachedAgents()) setError(true)
+    })
     fetchAgentSettings()
       .then((result) => {
         if (active) setDefaultAgentId(result.default_agent_id)
@@ -242,6 +246,7 @@ function AgentsSection() {
       })
     return () => {
       active = false
+      unsubscribe()
     }
   }, [])
 

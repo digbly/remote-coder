@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchAgents } from '../../lib/api'
+import { cachedAgents, fetchAgents, subscribeAgents } from '../../lib/api'
 import type { AgentDefinition } from '../../lib/agents'
 import { ChatIcon, CommandIcon, PlusIcon, TerminalIcon } from './icons'
 
@@ -40,25 +40,32 @@ export function NewTabMenu({
   }, [open])
 
   useEffect(() => {
-    if (!open || detection.status !== 'loading') return
+    if (!open) return
     let cancelled = false
 
-    async function load() {
-      const agents = await fetchAgents()
-      return agents.filter((agent) => agent.installed)
+    function apply(agents: AgentDefinition[]) {
+      if (!cancelled) {
+        setDetection({ status: 'ready', agents: agents.filter((agent) => agent.installed) })
+      }
     }
 
-    load()
-      .then((agents) => {
-        if (!cancelled) setDetection({ status: 'ready', agents })
-      })
-      .catch(() => {
-        if (!cancelled) setDetection({ status: 'error' })
-      })
+    // Show the cached list instantly and stay subscribed so a background
+    // refresh (newly installed agents) lands without reopening the menu.
+    const cached = cachedAgents()
+    if (cached) apply(cached)
+    // The subscription delivers the loaded list (both the first load and
+    // background refreshes), so only the failure path needs handling here.
+    const unsubscribe = subscribeAgents(apply)
+
+    fetchAgents().catch(() => {
+      if (!cancelled && !cached) setDetection({ status: 'error' })
+    })
+
     return () => {
       cancelled = true
+      unsubscribe()
     }
-  }, [open, detection.status])
+  }, [open])
 
   function toggle() {
     if (open) {
@@ -67,9 +74,9 @@ export function NewTabMenu({
     }
     const rect = buttonRef.current?.getBoundingClientRect()
     if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left })
-    // Re-detect on every open: newly installed agents show up and an earlier
-    // failure can be retried.
-    setDetection({ status: 'loading' })
+    // Show cached agents immediately; only fall back to a loading state when
+    // nothing has been loaded yet.
+    if (!cachedAgents()) setDetection({ status: 'loading' })
     setOpen(true)
   }
 

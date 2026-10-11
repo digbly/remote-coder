@@ -469,7 +469,13 @@ export async function fetchMe(): Promise<User> {
 }
 
 export async function logout(): Promise<void> {
-  await request('/auth/logout', { method: 'POST' })
+  try {
+    await request('/auth/logout', { method: 'POST' })
+  } finally {
+    // Agent definitions are per-user (command/args overrides); drop the cache
+    // so a different account never renders the previous user's list.
+    resetAgentsCache()
+  }
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -717,14 +723,65 @@ export async function deleteProject(projectId: number, deleteFiles: boolean): Pr
   }
 }
 
-export async function fetchAgents(): Promise<AgentDefinition[]> {
-  const response = await request('/agents')
-  if (!response.ok) {
-    const data = await response.json().catch(() => null)
-    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+let agentsSnapshot: AgentDefinition[] | null = null
+let agentsRequest: Promise<AgentDefinition[]> | null = null
+const agentsListeners = new Set<(agents: AgentDefinition[]) => void>()
+
+function publishAgents(agents: AgentDefinition[]): void {
+  for (const listener of agentsListeners) listener(agents)
+}
+
+function loadAgents(): Promise<AgentDefinition[]> {
+  // Dedupe concurrent requests so a burst of opens hits the API once.
+  agentsRequest ??= (async () => {
+    try {
+      const response = await request('/agents')
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+      }
+      const data = (await response.json()) as { agents: AgentDefinition[] }
+      agentsSnapshot = data.agents
+      publishAgents(data.agents)
+      return data.agents
+    } finally {
+      agentsRequest = null
+    }
+  })()
+  return agentsRequest
+}
+
+/** The last successfully loaded agent list, or `null` before the first load. */
+export function cachedAgents(): AgentDefinition[] | null {
+  return agentsSnapshot
+}
+
+/** Subscribe to agent-list updates (background refreshes included). */
+export function subscribeAgents(listener: (agents: AgentDefinition[]) => void): () => void {
+  agentsListeners.add(listener)
+  return () => {
+    agentsListeners.delete(listener)
   }
-  const data = (await response.json()) as { agents: AgentDefinition[] }
-  return data.agents
+}
+
+function resetAgentsCache(): void {
+  agentsSnapshot = null
+  agentsRequest = null
+}
+
+/**
+ * Stale-while-revalidate agent list. Returns the cached snapshot immediately
+ * when present while refreshing in the background, otherwise awaits the first
+ * request.
+ */
+export async function fetchAgents(): Promise<AgentDefinition[]> {
+  if (agentsSnapshot) {
+    void loadAgents().catch(() => {
+      /* keep serving the cached snapshot if the refresh fails */
+    })
+    return agentsSnapshot
+  }
+  return loadAgents()
 }
 
 export interface TerminalUrlOptions {
