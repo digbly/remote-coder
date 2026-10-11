@@ -65,6 +65,8 @@ class OpenAIAdapter(ProviderAdapterBase):
         system: str,
         messages: Sequence[ChatMessage],
         tools: Sequence[ProviderTool],
+        *,
+        session_id: str | None = None,
     ) -> AsyncIterator[ProviderEvent]:
         payload: dict[str, object] = {
             "model": model,

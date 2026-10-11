@@ -238,7 +238,7 @@ export interface AgentSettingsInfo {
   default_agent_id: string | null
 }
 
-export type AIProviderKind = 'openai' | 'anthropic' | 'gemini'
+export type AIProviderKind = 'openai' | 'anthropic' | 'gemini' | 'opencode' | 'custom'
 
 export interface AIProvider {
   id: number
@@ -246,6 +246,7 @@ export interface AIProvider {
   kind: AIProviderKind
   shared: boolean
   credential_configured: boolean
+  base_url: string | null
   created_at: string
 }
 
@@ -263,11 +264,13 @@ export interface AIProviderPayload {
   name: string
   kind: AIProviderKind
   api_key: string
+  base_url?: string
 }
 
 export interface AIProviderUpdate {
   name?: string
   api_key?: string
+  base_url?: string
 }
 
 export interface AIChatMessage {

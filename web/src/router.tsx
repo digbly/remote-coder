@@ -10,7 +10,6 @@ export const router = createBrowserRouter([
     element: <RequireAuth />,
     children: [
       { path: '/', element: <WorkspaceLayout /> },
-      { path: '/projects/:projectId', element: <WorkspaceLayout /> },
       { path: '/settings', element: <Navigate to="/settings/appearance" replace /> },
       { path: '/settings/:section', element: <SettingsPage /> },
     ],

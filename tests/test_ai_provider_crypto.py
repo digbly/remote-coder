@@ -27,7 +27,7 @@ def test_encrypt_and_decrypt_secret() -> None:
 
 def test_encrypt_requires_configured_key() -> None:
     with pytest.raises(CredentialEncryptionError, match="AI_CREDENTIAL_ENCRYPTION_KEY"):
-        encrypt_secret("provider-api-key", Settings())
+        encrypt_secret("provider-api-key", Settings(_env_file=None))
 
 
 def test_decrypt_rejects_wrong_key_without_leaking_ciphertext() -> None:

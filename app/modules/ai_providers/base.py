@@ -105,6 +105,10 @@ class ProviderAdapter(Protocol):
         system: str,
         messages: Sequence[ChatMessage],
         tools: Sequence[ProviderTool],
+        *,
+        # Optional stable session id (e.g. the conversation id) for providers that
+        # need request affinity/routing; adapters that do not need it may ignore it.
+        session_id: str | None = None,
     ) -> AsyncIterator[ProviderEvent]: ...
 
 

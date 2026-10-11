@@ -239,6 +239,14 @@ export function TerminalIcon(props: IconProps) {
   )
 }
 
+export function ChatIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.5-4.5A8 8 0 1 1 21 12Z" />
+    </Svg>
+  )
+}
+
 export function CommandIcon(props: IconProps) {
   return (
     <Svg {...props}>

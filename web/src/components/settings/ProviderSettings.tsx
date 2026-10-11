@@ -14,12 +14,33 @@ import {
 const inputClass =
   'mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-sm text-[var(--fg)] outline-none focus:border-indigo-500'
 
-const PROVIDER_KINDS: AIProviderKind[] = ['openai', 'anthropic', 'gemini']
+const PROVIDER_KINDS: AIProviderKind[] = ['openai', 'anthropic', 'gemini', 'opencode', 'custom']
 const PROVIDER_KIND_LABELS = {
   openai: 'settings.providerOpenAI',
   anthropic: 'settings.providerAnthropic',
   gemini: 'settings.providerGemini',
+  opencode: 'settings.providerOpencode',
+  custom: 'settings.providerCustom',
 } as const
+
+const OPENCODE_PRESETS = {
+  go: 'https://opencode.ai/zen/go/v1',
+  zen: 'https://opencode.ai/zen/v1',
+} as const
+type OpenCodePreset = keyof typeof OPENCODE_PRESETS | 'custom'
+
+function needsBaseUrl(kind: AIProviderKind): boolean {
+  return kind === 'opencode' || kind === 'custom'
+}
+
+function isValidBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 function ProviderCard({
   provider,
@@ -35,24 +56,35 @@ function ProviderCard({
   const { t } = useTranslation()
   const [name, setName] = useState(provider.name)
   const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState(provider.base_url ?? '')
   const [models, setModels] = useState<AIProviderModel[] | null>(null)
   const [busy, setBusy] = useState<'save' | 'test' | 'delete' | null>(null)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
 
+  const requiresBaseUrl = needsBaseUrl(provider.kind)
+  const baseUrlValid = !requiresBaseUrl || isValidBaseUrl(baseUrl)
+
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || !baseUrlValid) return
     setBusy('save')
     setError('')
     setSaved(false)
     try {
       const updated = await updateAIProvider(
         provider.id,
-        { name: name.trim(), ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}) },
+        {
+          name: name.trim(),
+          ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
+          ...(requiresBaseUrl && baseUrl.trim() !== (provider.base_url ?? '')
+            ? { base_url: baseUrl.trim() }
+            : {}),
+        },
         provider.shared,
       )
       setName(updated.name)
       setApiKey('')
+      setBaseUrl(updated.base_url ?? '')
       setSaved(true)
       onUpdate(updated)
     } catch (reason) {
@@ -139,13 +171,32 @@ function ProviderCard({
                 placeholder={t('settings.providerKeyPlaceholder')}
               />
             </label>
+            {requiresBaseUrl && (
+              <label className="block text-xs text-[var(--text-2)] sm:col-span-2">
+                {t('settings.providerBaseUrl')}
+                <input
+                  value={baseUrl}
+                  onChange={(event) => {
+                    setBaseUrl(event.target.value)
+                    setSaved(false)
+                  }}
+                  className={inputClass}
+                  placeholder={t('settings.providerBaseUrlPlaceholder')}
+                />
+              </label>
+            )}
           </div>
           <p className="mt-1 text-xs text-[var(--muted-2)]">{t('settings.providerKeyHint')}</p>
+          {requiresBaseUrl && !baseUrlValid && (
+            <p className="mt-1 text-xs text-[var(--danger)]">
+              {t('settings.providerBaseUrlInvalid')}
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={save}
-              disabled={!name.trim() || busy !== null}
+              disabled={!name.trim() || !baseUrlValid || busy !== null}
               className="rounded-md bg-[var(--hover)] px-3 py-1.5 text-xs text-[var(--fg-2)] transition hover:bg-[var(--hover-strong)] disabled:opacity-50"
             >
               {busy === 'save' ? t('settings.saving') : t('settings.save')}
@@ -208,9 +259,21 @@ export function ProviderSettings() {
   const [name, setName] = useState('')
   const [kind, setKind] = useState<AIProviderKind>('openai')
   const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [opencodePreset, setOpencodePreset] = useState<OpenCodePreset>('zen')
   const [shared, setShared] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+
+  const resolvedBaseUrl =
+    kind === 'opencode'
+      ? opencodePreset === 'custom'
+        ? baseUrl.trim()
+        : OPENCODE_PRESETS[opencodePreset]
+      : kind === 'custom'
+        ? baseUrl.trim()
+        : ''
+  const baseUrlValid = !needsBaseUrl(kind) || isValidBaseUrl(resolvedBaseUrl)
 
   useEffect(() => {
     let active = true
@@ -230,17 +293,23 @@ export function ProviderSettings() {
 
   async function addProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!name.trim() || !apiKey.trim()) return
+    if (!name.trim() || !apiKey.trim() || !baseUrlValid) return
     setCreating(true)
     setCreateError('')
     try {
       const created = await createAIProvider(
-        { name: name.trim(), kind, api_key: apiKey.trim() },
+        {
+          name: name.trim(),
+          kind,
+          api_key: apiKey.trim(),
+          ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
+        },
         shared,
       )
       setProviders((current) => [...(current ?? []), created])
       setName('')
       setApiKey('')
+      setBaseUrl('')
     } catch (reason) {
       setCreateError(
         reason instanceof Error ? reason.message : t('settings.providerActionFailed'),
@@ -263,22 +332,21 @@ export function ProviderSettings() {
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block text-xs text-[var(--text-2)]">
-            {t('settings.providerName')}
-            <input
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className={inputClass}
-              maxLength={100}
-            />
-          </label>
-          <label className="block text-xs text-[var(--text-2)]">
             {t('settings.providerKind')}
             <select
               value={kind}
               onChange={(event) => {
                 const selected = PROVIDER_KINDS.find((item) => item === event.target.value)
-                if (selected) setKind(selected)
+                if (selected) {
+                  const previousLabel = t(PROVIDER_KIND_LABELS[kind])
+                  const nextLabel = t(PROVIDER_KIND_LABELS[selected])
+                  setName((current) =>
+                    current.trim() === '' || current === previousLabel ? nextLabel : current,
+                  )
+                  setKind(selected)
+                  setBaseUrl('')
+                  setOpencodePreset('zen')
+                }
               }}
               className={inputClass}
             >
@@ -288,6 +356,16 @@ export function ProviderSettings() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block text-xs text-[var(--text-2)]">
+            {t('settings.providerName')}
+            <input
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className={inputClass}
+              maxLength={100}
+            />
           </label>
           <label className="block text-xs text-[var(--text-2)]">
             {t('settings.providerApiKey')}
@@ -301,6 +379,54 @@ export function ProviderSettings() {
             />
           </label>
         </div>
+        {kind === 'opencode' && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs text-[var(--text-2)]">
+              {t('settings.providerEndpoint')}
+              <select
+                value={opencodePreset}
+                onChange={(event) => {
+                  setOpencodePreset(event.target.value as OpenCodePreset)
+                  setBaseUrl('')
+                }}
+                className={inputClass}
+              >
+                <option value="go">{t('settings.providerOpencodeGo')}</option>
+                <option value="zen">{t('settings.providerOpencodeZen')}</option>
+                <option value="custom">{t('settings.providerOpencodeCustom')}</option>
+              </select>
+            </label>
+            {opencodePreset === 'custom' && (
+              <label className="block text-xs text-[var(--text-2)]">
+                {t('settings.providerBaseUrl')}
+                <input
+                  required
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.target.value)}
+                  className={inputClass}
+                  placeholder={t('settings.providerBaseUrlPlaceholder')}
+                />
+              </label>
+            )}
+          </div>
+        )}
+        {kind === 'custom' && (
+          <label className="mt-3 block text-xs text-[var(--text-2)]">
+            {t('settings.providerBaseUrl')}
+            <input
+              required
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              className={inputClass}
+              placeholder={t('settings.providerBaseUrlPlaceholder')}
+            />
+          </label>
+        )}
+        {needsBaseUrl(kind) && !baseUrlValid && (
+          <p className="mt-1 text-xs text-[var(--danger)]">
+            {t('settings.providerBaseUrlInvalid')}
+          </p>
+        )}
         {canManageShared && (
           <label className="mt-3 flex w-fit items-center gap-2 text-xs text-[var(--text-2)]">
             <input
@@ -314,7 +440,7 @@ export function ProviderSettings() {
         <div className="mt-3 flex items-center gap-3">
           <button
             type="submit"
-            disabled={creating || !name.trim() || !apiKey.trim()}
+            disabled={creating || !name.trim() || !apiKey.trim() || !baseUrlValid}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50"
           >
             {creating ? t('settings.providerAdding') : t('settings.providerAdd')}

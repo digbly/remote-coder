@@ -87,7 +87,7 @@ async def _provider_events(
         received = False
         try:
             async for provider_event in adapter.stream(
-                client, api_key, model_id, system, messages, tools
+                client, api_key, model_id, system, messages, tools, session_id=conversation_id
             ):
                 received = True
                 yield provider_event

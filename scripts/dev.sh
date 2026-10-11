@@ -78,7 +78,7 @@ setsid bash -c "cd '$ROOT_DIR' && exec '$VENV_DIR/bin/uvicorn' app.main:app --re
 pids+=("$!")
 
 echo "Web -> see Vite output below"
-setsid bash -c "cd '$WEB_DIR' && exec npm run dev -- --host '$WEB_HOST'" &
+setsid bash -c "cd '$WEB_DIR' && exec env VITE_API_PROXY_TARGET='http://$API_HOST:$API_PORT' npm run dev -- --host '$WEB_HOST'" &
 pids+=("$!")
 
 wait -n "${pids[@]}" || true
