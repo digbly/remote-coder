@@ -35,6 +35,7 @@ export interface ActiveProjectRef {
 export interface SyncedState {
   workspaces: Record<number, ProjectWorkspace>
   layout: LayoutState
+  activeProjectId: number | null
 }
 
 export interface NewTerminalOptions {
@@ -390,7 +391,7 @@ export function ensureWorkspace(
 }
 
 export function emptySyncedState(): SyncedState {
-  return { workspaces: {}, layout: normalizeLayout(undefined) }
+  return { workspaces: {}, layout: normalizeLayout(undefined), activeProjectId: null }
 }
 
 export function parseSyncedState(value: unknown): SyncedState | null {
@@ -405,8 +406,16 @@ export function parseSyncedState(value: unknown): SyncedState | null {
     workspaces[projectId] = workspace
   }
 
+  const activeProjectId =
+    typeof value.activeProjectId === 'number' &&
+    Number.isInteger(value.activeProjectId) &&
+    value.activeProjectId > 0
+      ? value.activeProjectId
+      : null
+
   return {
     workspaces,
     layout: normalizeLayout(value.layout),
+    activeProjectId,
   }
 }

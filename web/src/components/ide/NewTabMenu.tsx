@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchAgents } from '../../lib/api'
 import type { AgentDefinition } from '../../lib/agents'
-import { CommandIcon, PlusIcon, TerminalIcon } from './icons'
+import { ChatIcon, CommandIcon, PlusIcon, TerminalIcon } from './icons'
 
 type DetectionState =
   | { status: 'loading' }
@@ -116,6 +116,7 @@ export function NewTabMenu({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
           >
+            <ChatIcon width={13} height={13} />
             {t('chat.tabTitle')}
           </button>
           <div className="my-1 border-t border-[var(--border)]" />

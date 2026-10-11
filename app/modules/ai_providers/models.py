@@ -15,6 +15,11 @@ class ProviderKind(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+    OPENCODE = "opencode"
+    CUSTOM = "custom"
+
+
+BASE_URL_PROVIDER_KINDS = frozenset({ProviderKind.OPENCODE, ProviderKind.CUSTOM})
 
 
 class AIProvider(Base):
@@ -37,6 +42,7 @@ class AIProvider(Base):
         )
     )
     secret_ciphertext: Mapped[str] = mapped_column(Text)
+    base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
