@@ -25,7 +25,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew, onNewChat }:
           return (
             <div
               key={tab.id}
-              className={`group relative flex w-[180px] shrink-0 items-stretch border-r border-[var(--border)] text-[12px] ${
+              className={`group relative flex min-w-[120px] flex-1 items-stretch border-r border-[var(--border)] text-[12px] ${
                 active
                   ? 'border-t-2 border-t-indigo-500 bg-[var(--active)] text-[var(--fg-strong)]'
                   : 'text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'
