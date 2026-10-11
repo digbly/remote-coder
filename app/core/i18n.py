@@ -69,7 +69,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "AI_CHAT_EMPTY_RESPONSE": (
             "The model returned an empty response. Send another message to retry"
         ),
-        "AI_COMMAND_APPROVAL_NOT_FOUND": "Command approval expired or is no longer available",
+        "AI_APPROVAL_NOT_FOUND": "This approval expired or is no longer available",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Change proposal not found",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Change proposal is no longer pending",
         "AI_CHANGE_PROPOSAL_STALE": "The file changed after the proposal was created",
@@ -148,7 +148,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Hãy gửi thêm tin nhắn để tiếp tục"
         ),
         "AI_CHAT_EMPTY_RESPONSE": ("Model trả về nội dung rỗng. Hãy gửi lại tin nhắn để thử lại"),
-        "AI_COMMAND_APPROVAL_NOT_FOUND": "Yêu cầu duyệt lệnh đã hết hạn hoặc không còn khả dụng",
+        "AI_APPROVAL_NOT_FOUND": "Yêu cầu duyệt đã hết hạn hoặc không còn khả dụng",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Không tìm thấy đề xuất thay đổi",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Đề xuất thay đổi không còn ở trạng thái chờ duyệt",
         "AI_CHANGE_PROPOSAL_STALE": "Tệp đã thay đổi sau khi đề xuất được tạo",

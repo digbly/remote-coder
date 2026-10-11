@@ -1,5 +1,5 @@
 export {
-  decideAICommand,
+  decideAIApproval,
   fetchAICommandPermission,
   fetchAIConversation,
   fetchAIConversations,

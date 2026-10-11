@@ -15,6 +15,8 @@ export type ChatStreamEvent =
       reason: string
     }
   | { type: 'command_approval_expired'; approval_id: string }
+  | { type: 'read_approval'; approval_id: string; path: string }
+  | { type: 'read_approval_expired'; approval_id: string }
   | {
       type: 'proposal'
       id: string
@@ -95,6 +97,19 @@ function parseEvent(line: string): ChatStreamEvent {
     typeof event.approval_id === 'string' &&
     typeof event.command === 'string' &&
     typeof event.reason === 'string'
+  ) {
+    return event as ChatStreamEvent
+  }
+  if (
+    event.type === 'read_approval' &&
+    typeof event.approval_id === 'string' &&
+    typeof event.path === 'string'
+  ) {
+    return event as ChatStreamEvent
+  }
+  if (
+    event.type === 'read_approval_expired' &&
+    typeof event.approval_id === 'string'
   ) {
     return event as ChatStreamEvent
   }

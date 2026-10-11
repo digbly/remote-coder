@@ -55,7 +55,7 @@ const ERROR_CODE_KEYS = {
   AI_CHAT_CONVERSATION_NOT_FOUND: 'apiErrors.aiChatConversationNotFound',
   AI_CHAT_MODEL_UNAVAILABLE: 'apiErrors.aiChatModelUnavailable',
   AI_CHAT_LIMIT_EXCEEDED: 'apiErrors.aiChatLimitExceeded',
-  AI_COMMAND_APPROVAL_NOT_FOUND: 'apiErrors.aiCommandApprovalNotFound',
+  AI_APPROVAL_NOT_FOUND: 'apiErrors.aiApprovalNotFound',
   AI_CHANGE_PROPOSAL_NOT_FOUND: 'apiErrors.aiChangeProposalNotFound',
   AI_CHANGE_PROPOSAL_NOT_PENDING: 'apiErrors.aiChangeProposalNotPending',
   AI_CHANGE_PROPOSAL_STALE: 'apiErrors.aiChangeProposalStale',
@@ -366,13 +366,13 @@ export async function updateAICommandPermission(
   return result.mode
 }
 
-export async function decideAICommand(
+export async function decideAIApproval(
   projectId: number,
   approvalId: string,
   approved: boolean,
 ): Promise<void> {
   const response = await request(
-    `/projects/${projectId}/ai-chat/commands/${encodeURIComponent(approvalId)}`,
+    `/projects/${projectId}/ai-chat/approvals/${encodeURIComponent(approvalId)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

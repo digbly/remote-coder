@@ -51,11 +51,11 @@ def update_command_permission(
 
 
 @router.post(
-    "/commands/{approval_id}",
+    "/approvals/{approval_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(401, 403, 404),
 )
-async def decide_command_approval(
+async def decide_approval(
     project_id: int,
     approval_id: str,
     payload: CommandApprovalDecision,
@@ -70,7 +70,7 @@ async def decide_command_approval(
         project_id,
         payload.approved,
     ):
-        raise api_error(ErrorCode.AI_COMMAND_APPROVAL_NOT_FOUND, status_code=404)
+        raise api_error(ErrorCode.AI_APPROVAL_NOT_FOUND, status_code=404)
 
 
 @router.get("/skills", response_model=SkillListResponse, responses=error_responses(401, 403, 404))
@@ -79,11 +79,11 @@ def list_skills(
     current_user: CurrentUser,
     db: DbDep,
 ) -> SkillListResponse:
-    project_service.get_project(db, current_user, project_id)
+    project = project_service.get_project(db, current_user, project_id)
     return SkillListResponse(
         skills=[
             SkillRead(slug=skill.slug, name=skill.name, description=skill.description)
-            for skill in skills.list_skills()
+            for skill in skills.list_skills(Path(project.path))
         ]
     )
 
@@ -134,7 +134,7 @@ async def stream_message(
         raise api_error(ErrorCode.AI_CHAT_MODEL_UNAVAILABLE, status_code=422)
     skill_body: str | None = None
     if payload.skill is not None:
-        skill_body = skills.load_skill_body(payload.skill)
+        skill_body = skills.load_skill_body(payload.skill, Path(project.path))
         if skill_body is None:
             raise api_error(ErrorCode.AI_CHAT_SKILL_UNAVAILABLE, status_code=422)
     user_content = payload.message or f"/{payload.skill}"

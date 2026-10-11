@@ -13,7 +13,7 @@ from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage as StoredMessage
 from app.modules.ai_chat.models import MessageStatus
 from app.modules.ai_chat.streaming import ChatTurnLimitError, stream_chat_turn
-from app.modules.ai_chat.tools import MAX_TOOL_ROUNDS_PER_TURN
+from app.modules.ai_chat.tools import MAX_TOOL_ROUNDS_PER_TURN, execute_project_tool
 from app.modules.ai_providers.base import (
     ProviderAPIError,
     ProviderModel,
@@ -61,6 +61,48 @@ def _events(response) -> list[dict[str, object]]:
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("application/x-ndjson")
     return [json.loads(line) for line in response.text.splitlines()]
+
+
+def _set_permission(client: TestClient, project_id: int, mode: str) -> None:
+    response = client.put(
+        f"/api/v1/projects/{project_id}/ai-chat/command-permission",
+        json={"mode": mode},
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200, response.text
+
+
+def _stream_read(
+    client: TestClient, project_id: int, provider_id: int, path: str, monkeypatch
+) -> tuple[list[dict[str, object]], list[str]]:
+    """Drive one chat turn whose only tool call is ``read_file(path)``."""
+    results: list[str] = []
+    calls = {"n": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": path})
+        else:
+            results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["n"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+    return events, results
 
 
 def test_chat_streams_and_persists_a_resumable_conversation(
@@ -857,6 +899,280 @@ def test_chat_rejects_unknown_or_unsafe_skill(
     )
 
 
+def test_skills_endpoint_merges_project_and_user_skills(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(home, "user-only", name="User Only", description="From user.", body="# U")
+    _write_skill(home, "shared", name="User Shared", description="User version.", body="# US")
+    monkeypatch.setenv("HOME", str(home))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    _write_skill(
+        project_path, "project-only", name="Project Only", description="From project.", body="# P"
+    )
+    _write_skill(
+        project_path, "shared", name="Project Shared", description="Project version.", body="# PS"
+    )
+
+    response = client.get(f"/api/v1/projects/{project_id}/ai-chat/skills")
+
+    assert response.status_code == 200
+    payload = response.json()["skills"]
+    assert [item["slug"] for item in payload] == ["project-only", "shared", "user-only"]
+    # The project skill shadows the user skill with the same slug.
+    shared = next(item for item in payload if item["slug"] == "shared")
+    assert shared["name"] == "Project Shared"
+
+
+def test_chat_applies_a_project_skill_to_the_system_prompt(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    _write_skill(
+        project_path,
+        "project-doc",
+        name="Project Doc",
+        description="Docs.",
+        body="Follow the project documentation rules.",
+    )
+    captured: list[str] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, system, _messages, _tools, *, session_id=None
+    ):
+        captured.append(system)
+        yield TextDelta("ok")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "",
+                "skill": "project-doc",
+            },
+            headers=_csrf(client),
+        )
+    )
+
+    assert "Follow the project documentation rules." in captured[0]
+
+
+def test_read_file_tool_reads_a_project_skill_supporting_file(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    _write_skill(
+        project_path, "code-review", name="Code Review", description="Review.", body="# Review"
+    )
+    (project_path / ".agents" / "skills" / "code-review" / "reference.md").write_text(
+        "project-skill-ref", encoding="utf-8"
+    )
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": "code-review/reference.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+
+    result = json.loads(tool_results[0])
+    assert result["path"] == "code-review/reference.md"
+    assert result["content"] == "project-skill-ref"
+    assert result["source"] == "skill"
+
+
+def test_read_file_tool_prefers_a_project_skill_file_over_a_user_skill_file(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    home = projects_root / "home"
+    _write_skill(home, "shared", name="Shared", description="Shared.", body="# Shared")
+    (home / ".agents" / "skills" / "shared" / "reference.md").write_text(
+        "user-version", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(home))
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    _write_skill(project_path, "shared", name="Shared", description="Shared.", body="# Shared")
+    (project_path / ".agents" / "skills" / "shared" / "reference.md").write_text(
+        "project-version", encoding="utf-8"
+    )
+    tool_results: list[str] = []
+    calls = {"stream": 0}
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(
+        self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None
+    ):
+        calls["stream"] += 1
+        if calls["stream"] == 1:
+            yield ToolCall("read-1", "read_file", {"path": "shared/reference.md"})
+        else:
+            tool_results.extend(message.content for message in messages if message.role == "tool")
+            yield TextDelta("done")
+        yield TurnComplete("tool_calls" if calls["stream"] == 1 else "completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Read"},
+            headers=_csrf(client),
+        )
+    )
+
+    assert json.loads(tool_results[0])["content"] == "project-version"
+
+
+def test_execute_project_tool_refuses_absolute_read_paths() -> None:
+    """Absolute reads must go through the streaming approval layer, never here."""
+    context = Mock()
+    result = execute_project_tool(
+        context, ToolCall("read-1", "read_file", {"path": "/etc/passwd"})
+    )
+    assert json.loads(result) == {"error": "invalid_arguments"}
+
+
+def test_read_file_tool_reads_an_absolute_project_path_without_approval(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_path = projects_root / "project"
+    project_id = _create_project(client, project_path)
+    provider_id = _create_provider(client)
+    target = project_path / "note.txt"
+    target.write_text("absolute-inside", encoding="utf-8")
+
+    events, results = _stream_read(client, project_id, provider_id, str(target), monkeypatch)
+
+    assert all(event["type"] != "read_approval" for event in events)
+    result = json.loads(results[0])
+    assert result["content"] == "absolute-inside"
+    assert result["source"] == "project"
+
+
+def test_read_file_tool_reads_an_outside_path_when_permission_is_allow_all(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    _set_permission(client, project_id, "allow_all")
+    outside = projects_root / "outside.txt"
+    outside.write_text("outside-content", encoding="utf-8")
+
+    events, results = _stream_read(client, project_id, provider_id, str(outside), monkeypatch)
+
+    assert all(event["type"] != "read_approval" for event in events)
+    result = json.loads(results[0])
+    assert result["content"] == "outside-content"
+    assert result["source"] == "external"
+
+
+def test_read_file_tool_reads_an_outside_path_after_approval(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    outside = projects_root / "approved.txt"
+    outside.write_text("approved-content", encoding="utf-8")
+
+    async def approve(_pending) -> bool:
+        return True
+
+    monkeypatch.setattr("app.modules.ai_chat.approvals.wait_for_decision", approve)
+
+    events, results = _stream_read(client, project_id, provider_id, str(outside), monkeypatch)
+
+    assert any(event["type"] == "read_approval" for event in events)
+    assert json.loads(results[0])["content"] == "approved-content"
+
+
+def test_read_file_tool_denies_an_outside_path_when_the_user_declines(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    outside = projects_root / "declined.txt"
+    outside.write_text("declined-content", encoding="utf-8")
+
+    async def decline(_pending) -> bool:
+        return False
+
+    monkeypatch.setattr("app.modules.ai_chat.approvals.wait_for_decision", decline)
+
+    events, results = _stream_read(client, project_id, provider_id, str(outside), monkeypatch)
+
+    assert any(event["type"] == "read_approval" for event in events)
+    assert all(event["type"] != "read_approval_expired" for event in events)
+    assert json.loads(results[0])["error"] == "read_cancelled"
+    assert "declined-content" not in "".join(results)
+
+
+def test_read_file_tool_requires_approval_for_an_outside_path(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    outside = projects_root / "outside-secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    monkeypatch.setattr("app.modules.ai_chat.approvals.APPROVAL_TIMEOUT_SECONDS", 0.05)
+
+    events, results = _stream_read(client, project_id, provider_id, str(outside), monkeypatch)
+
+    types = [event["type"] for event in events]
+    assert "read_approval" in types
+    assert "read_approval_expired" in types
+    approval = next(event for event in events if event["type"] == "read_approval")
+    assert approval["path"] == str(outside)
+    assert json.loads(results[0])["error"] == "approval_timed_out"
+    assert "secret" not in "".join(results)
+
+
 def test_chat_retries_transient_provider_error(
     client: TestClient, projects_root, monkeypatch
 ) -> None:
@@ -986,6 +1302,7 @@ def test_read_file_tool_reads_a_supporting_skill_file(
     assert result["path"] == "code-review/reference.md"
     assert "Check error handling" in result["content"]
     assert result["truncated"] is False
+    assert result["source"] == "skill"
 
 
 def test_read_file_tool_prefers_a_project_file_over_a_skill_file(
@@ -1032,7 +1349,9 @@ def test_read_file_tool_prefers_a_project_file_over_a_skill_file(
         )
     )
 
-    assert json.loads(tool_results[0])["content"] == "project-version"
+    result = json.loads(tool_results[0])
+    assert result["content"] == "project-version"
+    assert result["source"] == "project"
 
 
 def test_read_file_tool_handles_a_symlinked_skills_root(
@@ -1109,9 +1428,8 @@ def test_read_file_tool_rejects_escapes_and_missing_files(
         calls["stream"] += 1
         if calls["stream"] == 1:
             yield ToolCall("t-1", "read_file", {"path": "../secret.txt"})
-            yield ToolCall("t-2", "read_file", {"path": "/etc/passwd"})
-            yield ToolCall("t-3", "read_file", {"path": "escape-link/secret.txt"})
-            yield ToolCall("t-4", "read_file", {"path": "code-review/missing.md"})
+            yield ToolCall("t-2", "read_file", {"path": "escape-link/secret.txt"})
+            yield ToolCall("t-3", "read_file", {"path": "code-review/missing.md"})
         else:
             tool_results.extend(message.content for message in messages if message.role == "tool")
             yield TextDelta("done")
@@ -1129,7 +1447,6 @@ def test_read_file_tool_rejects_escapes_and_missing_files(
 
     assert events[-1]["type"] == "complete"
     assert tool_results == [
-        '{"error":"FILE_PATH_INVALID"}',
         '{"error":"FILE_PATH_INVALID"}',
         '{"error":"FILE_PATH_INVALID"}',
         '{"error":"FILE_NOT_FOUND"}',

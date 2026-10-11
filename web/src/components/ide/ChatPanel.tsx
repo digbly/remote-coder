@@ -10,7 +10,7 @@ import {
 } from './icons'
 import { MarkdownMessage } from './MarkdownMessage'
 import {
-  decideAICommand,
+  decideAIApproval,
   consumeChatStream,
   fetchAICommandPermission,
   fetchAIConversation,
@@ -176,9 +176,10 @@ export function ChatPanel({
   const [skillIndex, setSkillIndex] = useState(0)
   const [commandPermission, setCommandPermission] = useState<AICommandPermission>('manual')
   const [permissionSaving, setPermissionSaving] = useState(false)
-  const [pendingCommand, setPendingCommand] = useState<{
+  const [pendingApproval, setPendingApproval] = useState<{
     approvalId: string
-    command: string
+    kind: 'command' | 'read'
+    detail: string
   } | null>(null)
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(conversationId ?? '')
@@ -298,7 +299,7 @@ export function ChatPanel({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [messages, pendingCommand])
+  }, [messages, pendingApproval])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -332,13 +333,13 @@ export function ChatPanel({
     }
   }
 
-  async function decideCommand(approved: boolean) {
-    if (!pendingCommand || approvalBusy) return
+  async function decideApproval(approved: boolean) {
+    if (!pendingApproval || approvalBusy) return
     setApprovalBusy(true)
     setError('')
     try {
-      await decideAICommand(projectId, pendingCommand.approvalId, approved)
-      setPendingCommand(null)
+      await decideAIApproval(projectId, pendingApproval.approvalId, approved)
+      setPendingApproval(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('chat.commandDecisionFailed'))
       abortRef.current?.abort()
@@ -490,13 +491,23 @@ export function ChatPanel({
             ),
           )
         } else if (streamEvent.type === 'command_approval') {
-          setPendingCommand({
+          setPendingApproval({
             approvalId: streamEvent.approval_id,
-            command: streamEvent.command,
+            kind: 'command',
+            detail: streamEvent.command,
           })
         } else if (streamEvent.type === 'command_approval_expired') {
-          setPendingCommand(null)
+          setPendingApproval(null)
           setError(t('chat.commandApprovalExpired'))
+        } else if (streamEvent.type === 'read_approval') {
+          setPendingApproval({
+            approvalId: streamEvent.approval_id,
+            kind: 'read',
+            detail: streamEvent.path,
+          })
+        } else if (streamEvent.type === 'read_approval_expired') {
+          setPendingApproval(null)
+          setError(t('chat.readApprovalExpired'))
         } else if (streamEvent.type === 'proposal') {
           const proposal: AIChangeProposal = {
             id: streamEvent.id,
@@ -576,7 +587,7 @@ export function ChatPanel({
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null
-      setPendingCommand(null)
+      setPendingApproval(null)
       setStreaming(false)
     }
   }
@@ -784,30 +795,38 @@ export function ChatPanel({
             </article>
           )
         })}
-        {pendingCommand && (
+        {pendingApproval && (
           <article className={`w-full rounded-2xl border border-[#F97316]/50 ${cardBg} px-4 py-3`}>
             <h3 className={`text-sm font-semibold ${primaryText}`}>
-              {t('chat.commandApprovalTitle')}
+              {t(
+                pendingApproval.kind === 'read'
+                  ? 'chat.readApprovalTitle'
+                  : 'chat.commandApprovalTitle',
+              )}
             </h3>
             <p className={`mt-1 text-xs ${mutedText}`}>
-              {t('chat.commandApprovalHint')}
+              {t(
+                pendingApproval.kind === 'read'
+                  ? 'chat.readApprovalHint'
+                  : 'chat.commandApprovalHint',
+              )}
             </p>
             <pre className={`mt-3 max-h-48 overflow-auto rounded-xl ${subtleBg} p-3 text-xs leading-5 ${primaryText}`}>
-              <code>{pendingCommand.command}</code>
+              <code>{pendingApproval.detail}</code>
             </pre>
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                onClick={() => void decideCommand(true)}
+                onClick={() => void decideApproval(true)}
                 disabled={approvalBusy}
                 style={brandStyle}
                 className={`${gradientButton} px-3 py-1.5 text-xs`}
               >
-                {t('chat.runCommand')}
+                {t(pendingApproval.kind === 'read' ? 'chat.allowRead' : 'chat.runCommand')}
               </button>
               <button
                 type="button"
-                onClick={() => void decideCommand(false)}
+                onClick={() => void decideApproval(false)}
                 disabled={approvalBusy}
                 className={ghostButton}
               >
