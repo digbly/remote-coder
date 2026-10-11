@@ -26,6 +26,7 @@ const en = {
     projectNotFound: 'Project not found',
     invalidGithubUrl: 'Not a valid GitHub repository URL',
     projectPathInvalid: 'Path must be an existing, accessible directory',
+    projectPathUnsafe: 'This folder is protected and cannot be deleted',
     projectPathExists: 'A project already uses this path',
     projectNameExists: 'A project with this name already exists',
     projectCloneFailed: 'Could not clone the repository',
@@ -241,7 +242,14 @@ const en = {
     deleteWorktreeFailed: 'Could not delete the worktree',
     deleteProject: 'Delete project',
     deleteProjectConfirm: 'Delete project "{{name}}"? This cannot be undone.',
-    deleteProjectFailed: 'Could not delete the project',
+    deleteProjectDialog: {
+      title: 'Delete project',
+      deleteFiles: 'Also delete the folder on disk',
+      deleteFilesHint: 'The folder {{path}} will be permanently removed.',
+      confirm: 'Delete',
+      deleting: 'Deleting...',
+      cancel: 'Cancel',
+    },
     newWorktreeDialog: {
       title: 'New worktree',
       nameTab: 'New branch',

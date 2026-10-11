@@ -15,6 +15,7 @@ const ERROR_CODE_KEYS = {
   PROJECT_NOT_FOUND: 'apiErrors.projectNotFound',
   INVALID_GITHUB_URL: 'apiErrors.invalidGithubUrl',
   PROJECT_PATH_INVALID: 'apiErrors.projectPathInvalid',
+  PROJECT_PATH_UNSAFE: 'apiErrors.projectPathUnsafe',
   PROJECT_PATH_EXISTS: 'apiErrors.projectPathExists',
   PROJECT_NAME_EXISTS: 'apiErrors.projectNameExists',
   PROJECT_CLONE_FAILED: 'apiErrors.projectCloneFailed',
@@ -685,8 +686,9 @@ export async function deleteWorktree(projectId: number, name: string): Promise<v
   }
 }
 
-export async function deleteProject(projectId: number): Promise<void> {
-  const response = await request(`/projects/${projectId}`, { method: 'DELETE' })
+export async function deleteProject(projectId: number, deleteFiles: boolean): Promise<void> {
+  const query = deleteFiles ? '?delete_files=true' : ''
+  const response = await request(`/projects/${projectId}${query}`, { method: 'DELETE' })
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))

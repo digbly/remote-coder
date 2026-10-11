@@ -294,6 +294,57 @@ def test_delete_project(client: TestClient, projects_root) -> None:
     assert folder.is_dir()
 
 
+def test_delete_local_project_keeps_folder_by_default(client: TestClient, projects_root) -> None:
+    _login(client)
+    folder = projects_root / "myrepo"
+    folder.mkdir()
+    project_id = _register_local(client, folder)["id"]
+
+    response = client.delete(f"{PROJECTS_URL}/{project_id}", headers=_csrf(client))
+
+    assert response.status_code == 204
+    assert folder.is_dir()
+
+
+def test_delete_local_project_removes_folder(client: TestClient, projects_root) -> None:
+    _login(client)
+    folder = projects_root / "myrepo"
+    folder.mkdir()
+    project_id = _register_local(client, folder)["id"]
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}?delete_files=true", headers=_csrf(client)
+    )
+
+    assert response.status_code == 204
+    assert not folder.exists()
+    assert client.get(f"{PROJECTS_URL}/{project_id}").status_code == 404
+
+
+def test_delete_local_project_protected_path_rejected(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _register_local(client, projects_root)["id"]
+
+    response = client.delete(
+        f"{PROJECTS_URL}/{project_id}?delete_files=true", headers=_csrf(client)
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "PROJECT_PATH_UNSAFE"
+    assert projects_root.is_dir()
+    assert client.get(f"{PROJECTS_URL}/{project_id}").status_code == 200
+
+
+def test_is_protected_path_guards_critical_directories(projects_root) -> None:
+    settings = Settings(projects_root=str(projects_root))
+
+    assert service._is_protected_path(Path("/"), settings)
+    assert service._is_protected_path(Path.home().resolve(), settings)
+    assert service._is_protected_path(Path.cwd().resolve(), settings)
+    assert service._is_protected_path(projects_root, settings)
+    assert not service._is_protected_path(projects_root / "myrepo", settings)
+
+
 def test_delete_github_project_removes_clone(client: TestClient, monkeypatch) -> None:
     _login(client)
 
@@ -310,9 +361,32 @@ def test_delete_github_project_removes_clone(client: TestClient, monkeypatch) ->
     clone_dir = Path(body["path"])
     assert clone_dir.is_dir()
 
-    response = client.delete(f"{PROJECTS_URL}/{body['id']}", headers=_csrf(client))
+    response = client.delete(
+        f"{PROJECTS_URL}/{body['id']}?delete_files=true", headers=_csrf(client)
+    )
     assert response.status_code == 204
     assert not clone_dir.exists()
+
+
+def test_delete_github_project_keeps_clone_by_default(client: TestClient, monkeypatch) -> None:
+    _login(client)
+
+    def fake_clone(repository, destination, branch, settings):
+        destination.mkdir(parents=True)
+
+    monkeypatch.setattr(service, "_clone_repository", fake_clone)
+
+    body = client.post(
+        GITHUB_URL,
+        json={"repo_url": "https://github.com/owner/repo"},
+        headers=_csrf(client),
+    ).json()
+    clone_dir = Path(body["path"])
+
+    response = client.delete(f"{PROJECTS_URL}/{body['id']}", headers=_csrf(client))
+
+    assert response.status_code == 204
+    assert clone_dir.is_dir()
 
 
 def test_browse_requires_auth(client: TestClient) -> None:

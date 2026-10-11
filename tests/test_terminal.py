@@ -275,7 +275,9 @@ def test_running_terminals_requires_authentication(client: TestClient) -> None:
     assert client.get("/api/v1/terminals/running").status_code == 401
 
 
-def test_running_terminals_reports_worktree(client: TestClient, projects_root: Path) -> None:
+def test_running_terminals_reports_worktree_while_command_runs(
+    client: TestClient, projects_root: Path
+) -> None:
     _login(client)
     repo = projects_root / "wt-main"
     _init_repo(repo)
@@ -286,13 +288,47 @@ def test_running_terminals_reports_worktree(client: TestClient, projects_root: P
     url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=wt-agent"
     with client.websocket_connect(url) as websocket:
         websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
-        websocket.send_text(json.dumps({"type": "input", "data": "pwd\n"}))
-        _read_until(websocket, "wt-agent")
+        websocket.send_text(json.dumps({"type": "input", "data": "echo START; sleep 30\n"}))
+        _read_until(websocket, "START")
 
-    # Detaching keeps the shell alive, so the worktree is still reported as running.
-    running = client.get("/api/v1/terminals/running")
-    assert running.status_code == 200, running.text
-    assert "wt-agent" in running.json()["projects"].get(str(project_id), [])
+    # The command keeps the worktree in the foreground after the client detaches.
+    deadline = time.monotonic() + 5
+    names: list[str] = []
+    while time.monotonic() < deadline:
+        running = client.get("/api/v1/terminals/running")
+        assert running.status_code == 200, running.text
+        names = running.json()["projects"].get(str(project_id), [])
+        if "wt-agent" in names:
+            break
+        time.sleep(0.1)
+    assert "wt-agent" in names
+
+
+def test_running_terminals_ignores_idle_shell(client: TestClient, projects_root: Path) -> None:
+    _login(client)
+    repo = projects_root / "wt-main"
+    _init_repo(repo)
+    _git(repo, "worktree", "add", "-b", "agent", str(projects_root / "wt-agent"))
+    response = client.post(LOCAL_URL, json={"path": str(repo)}, headers=_csrf(client))
+    project_id = response.json()["id"]
+
+    url = f"{_terminal_url(project_id, uuid4().hex)}?worktree=wt-agent"
+    with client.websocket_connect(url) as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        websocket.send_text(json.dumps({"type": "input", "data": "echo IDLE_MARKER\n"}))
+        _read_until(websocket, "IDLE_MARKER")
+
+    # The shell is back at its prompt, so no command is running in the worktree.
+    deadline = time.monotonic() + 5
+    names: list[str] = ["?"]
+    while time.monotonic() < deadline:
+        running = client.get("/api/v1/terminals/running")
+        assert running.status_code == 200, running.text
+        names = running.json()["projects"].get(str(project_id), [])
+        if "wt-agent" not in names:
+            break
+        time.sleep(0.1)
+    assert "wt-agent" not in names
 
 
 def test_subscriber_queue_drops_oldest_when_full() -> None:

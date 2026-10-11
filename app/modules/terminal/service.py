@@ -240,6 +240,25 @@ class TerminalSession:
         self._rows = rows
         _set_winsize(fd, cols, rows)
 
+    def foreground_running(self) -> bool:
+        """Whether a command (rather than the idle shell) owns the terminal.
+
+        The shell holds the terminal's foreground process group while it waits
+        at its prompt; a spawned command takes that group over for the duration
+        it runs. ``tcgetpgrp`` reports the current foreground group, so a value
+        differing from the shell's own process group means a command is
+        actually executing.
+        """
+        fd = self._master_fd
+        process = self._process
+        if fd < 0 or process is None:
+            return False
+        try:
+            foreground = os.tcgetpgrp(fd)
+        except OSError:
+            return False
+        return foreground != process.pid
+
     def kill(self) -> None:
         process = self._process
         self._process = None
@@ -294,11 +313,17 @@ class TerminalManager:
             return session, True
 
     def running_worktrees_by_project(self, user_id: int) -> dict[int, list[str]]:
-        """Return, per project, the worktrees that have a live terminal session."""
+        """Return, per project, the worktrees with a foreground command running.
+
+        A live shell sitting at its prompt is not "running": only sessions
+        whose terminal is currently owned by a command are reported.
+        """
         with self._lock:
             grouped: dict[int, set[str]] = {}
             for (uid, pid, _), session in self._sessions.items():
                 if uid != user_id or session.worktree is None or session.exited:
+                    continue
+                if not session.foreground_running():
                     continue
                 grouped.setdefault(pid, set()).add(session.worktree)
         return {pid: sorted(names) for pid, names in grouped.items()}

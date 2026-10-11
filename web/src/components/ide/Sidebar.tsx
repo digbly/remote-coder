@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import {
-  deleteProject,
   deleteWorktree,
   fetchProjects,
   fetchRunningTerminals,
@@ -29,6 +28,7 @@ import {
   TerminalIcon,
   TrashIcon,
 } from './icons'
+import { DeleteProjectDialog } from './DeleteProjectDialog'
 import { NewProjectDialog } from './NewProjectDialog'
 import { NewWorktreeDialog } from './NewWorktreeDialog'
 
@@ -289,6 +289,7 @@ export function Sidebar({
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [worktreeTarget, setWorktreeTarget] = useState<Project | null>(null)
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   const [menuError, setMenuError] = useState<string | null>(null)
 
@@ -423,25 +424,19 @@ export function Sidebar({
     const current = menu
     if (!current) return
     setMenu(null)
-    if (!window.confirm(t('ide.deleteProjectConfirm', { name: current.project.name }))) {
-      return
-    }
     setMenuError(null)
-    deleteProject(current.project.id)
-      .then(() => {
-        setProjects((prev) =>
-          prev ? prev.filter((project) => project.id !== current.project.id) : prev,
-        )
-        setWorktrees((prev) => {
-          const next = { ...prev }
-          delete next[current.project.id]
-          return next
-        })
-        onProjectDeleted(current.project.id)
-      })
-      .catch((err) => {
-        setMenuError(err instanceof Error ? err.message : t('ide.deleteProjectFailed'))
-      })
+    setProjectToDelete(current.project)
+  }
+
+  function handleProjectDeleted(projectId: number) {
+    setProjectToDelete(null)
+    setProjects((prev) => (prev ? prev.filter((project) => project.id !== projectId) : prev))
+    setWorktrees((prev) => {
+      const next = { ...prev }
+      delete next[projectId]
+      return next
+    })
+    onProjectDeleted(projectId)
   }
 
   return (
@@ -555,6 +550,14 @@ export function Sidebar({
           project={worktreeTarget}
           onClose={() => setWorktreeTarget(null)}
           onCreated={(worktree) => handleWorktreeCreated(worktreeTarget, worktree)}
+        />
+      )}
+
+      {projectToDelete && (
+        <DeleteProjectDialog
+          project={projectToDelete}
+          onClose={() => setProjectToDelete(null)}
+          onDeleted={() => handleProjectDeleted(projectToDelete.id)}
         />
       )}
 

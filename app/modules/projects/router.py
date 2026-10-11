@@ -160,7 +160,7 @@ def write_project_file(
 @router.delete(
     "/{project_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses=error_responses(401, 403, 404),
+    responses=error_responses(400, 401, 403, 404),
 )
 def delete_project(
     project_id: int,
@@ -168,5 +168,6 @@ def delete_project(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    delete_files: bool = Query(False),
 ) -> None:
-    service.delete_project(db, current_user, project_id, settings)
+    service.delete_project(db, current_user, project_id, settings, delete_files=delete_files)

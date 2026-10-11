@@ -734,10 +734,26 @@ def get_project(db: Session, owner: User, project_id: int) -> Project:
     return project
 
 
-def delete_project(db: Session, owner: User, project_id: int, settings: Settings) -> None:
+def delete_project(
+    db: Session,
+    owner: User,
+    project_id: int,
+    settings: Settings,
+    *,
+    delete_files: bool = False,
+) -> None:
+    """Delete a project.
+
+    When ``delete_files`` is set the on-disk folder is removed as well: clones
+    created by the app are deleted outright, while local folders are only
+    removed when they are not a protected location.
+    """
     project = get_project(db, owner, project_id)
-    if project.source is ProjectSource.GITHUB:
-        _remove_clone(project.path, settings)
+    if delete_files:
+        if project.source is ProjectSource.GITHUB:
+            _remove_clone(project.path, settings)
+        else:
+            _remove_local_directory(project.path, settings)
     db.delete(project)
     db.commit()
 
@@ -840,6 +856,30 @@ def _remove_clone(path: str, settings: Settings) -> None:
     target = Path(path).resolve()
     if target.is_relative_to(_projects_root(settings)):
         _remove_directory(target)
+
+
+def _remove_local_directory(path: str, settings: Settings) -> None:
+    """Remove a local project folder, refusing protected locations."""
+    target = Path(path).resolve()
+    if _is_protected_path(target, settings):
+        raise api_error(ErrorCode.PROJECT_PATH_UNSAFE, status_code=status.HTTP_400_BAD_REQUEST)
+    _remove_directory(target)
+
+
+def _is_protected_path(target: Path, settings: Settings) -> bool:
+    """Whether ``target`` must never be removed by a project deletion.
+
+    Guards against removing the filesystem root, the user's home directory, the
+    projects root, the server's working directory, or any directory that
+    contains one of those.
+    """
+    if target == Path(target.anchor):
+        return True
+    anchors = (Path.home().resolve(), Path.cwd().resolve(), _projects_root(settings))
+    for anchor in anchors:
+        if anchor.is_relative_to(target):
+            return True
+    return False
 
 
 def _remove_directory(path: Path) -> None:

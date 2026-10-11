@@ -26,6 +26,7 @@ const vi = {
     projectNotFound: 'Không tìm thấy dự án',
     invalidGithubUrl: 'URL repository GitHub không hợp lệ',
     projectPathInvalid: 'Đường dẫn phải là thư mục tồn tại và có quyền truy cập',
+    projectPathUnsafe: 'Thư mục này được bảo vệ, không thể xoá',
     projectPathExists: 'Đã có dự án sử dụng đường dẫn này',
     projectNameExists: 'Đã tồn tại dự án với tên này',
     projectCloneFailed: 'Không thể clone repository',
@@ -241,7 +242,14 @@ const vi = {
     deleteWorktreeFailed: 'Không thể xoá worktree',
     deleteProject: 'Xoá dự án',
     deleteProjectConfirm: 'Xoá dự án "{{name}}"? Không thể hoàn tác.',
-    deleteProjectFailed: 'Không thể xoá dự án',
+    deleteProjectDialog: {
+      title: 'Xoá dự án',
+      deleteFiles: 'Xoá cả thư mục trên ổ đĩa',
+      deleteFilesHint: 'Thư mục {{path}} sẽ bị xoá vĩnh viễn.',
+      confirm: 'Xoá',
+      deleting: 'Đang xoá...',
+      cancel: 'Hủy',
+    },
     newWorktreeDialog: {
       title: 'Worktree mới',
       nameTab: 'Nhánh mới',
