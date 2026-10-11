@@ -735,6 +735,35 @@ def test_branches_list_create_and_checkout(client: TestClient, projects_root) ->
     assert switched.json()["branch"] == "main"
 
 
+def test_create_branch_is_scoped_to_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/base", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    created = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/branches?worktree=myrepo-feature",
+        json={"name": "feature/next"},
+        headers=_csrf(client),
+    )
+
+    assert created.status_code == 200
+    assert created.json()["branch"] == "feature/next"
+    primary = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert primary == "main"
+
+
 def test_parse_worktrees_marks_primary_and_sorts_first(tmp_path: Path) -> None:
     primary = tmp_path / "repo"
     linked = tmp_path / "zzz-agent"
@@ -833,7 +862,12 @@ def test_current_pull_request_without_remote(client: TestClient, projects_root) 
     response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request")
 
     assert response.status_code == 200
-    assert response.json() == {"pull_request": None}
+    assert response.json() == {
+        "branch": "main",
+        "is_default_branch": True,
+        "is_primary_worktree": True,
+        "pull_request": None,
+    }
 
 
 def test_current_pull_request_returns_summary(
@@ -843,6 +877,7 @@ def test_current_pull_request_returns_summary(
     repo = projects_root / "myrepo"
     _init_repo(repo)
     _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    _git(repo, "checkout", "-q", "-b", "feature/x")
     project_id = _register_local(client, repo)["id"]
 
     real_run = subprocess.run
@@ -867,6 +902,9 @@ def test_current_pull_request_returns_summary(
 
     assert response.status_code == 200
     assert response.json() == {
+        "branch": "feature/x",
+        "is_default_branch": False,
+        "is_primary_worktree": True,
         "pull_request": {
             "number": 7,
             "title": "Add feature",
@@ -875,7 +913,7 @@ def test_current_pull_request_returns_summary(
             "is_draft": False,
             "head": "feature/x",
             "base": "main",
-        }
+        },
     }
 
 
@@ -886,6 +924,7 @@ def test_current_pull_request_absent_when_gh_fails(
     repo = projects_root / "myrepo"
     _init_repo(repo)
     _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    _git(repo, "checkout", "-q", "-b", "feature/x")
     project_id = _register_local(client, repo)["id"]
 
     real_run = subprocess.run
@@ -900,7 +939,152 @@ def test_current_pull_request_absent_when_gh_fails(
     response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request")
 
     assert response.status_code == 200
-    assert response.json() == {"pull_request": None}
+    body = response.json()
+    assert body["pull_request"] is None
+    assert body["branch"] == "feature/x"
+    assert body["is_default_branch"] is False
+
+
+def test_current_pull_request_is_scoped_to_worktree(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    project_id = _register_local(client, repo)["id"]
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if command[0] == "gh":
+            payload = {
+                "number": 9,
+                "title": "Feature work",
+                "url": "https://github.com/example/myrepo/pull/9",
+                "state": "OPEN",
+                "isDraft": False,
+                "headRefName": "feature/x",
+                "baseRefName": "main",
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request?worktree=myrepo-feature"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["branch"] == "feature/x"
+    assert body["is_default_branch"] is False
+    assert body["is_primary_worktree"] is False
+    assert body["pull_request"]["number"] == 9
+
+
+def test_current_pull_request_unknown_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request?worktree=missing")
+
+    assert response.status_code == 404
+    assert _error_code(response) == "GIT_WORKTREE_NOT_FOUND"
+
+
+def test_merge_pull_request_requires_github_remote(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request/merge",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_REMOTE_MISSING"
+
+
+def test_merge_pull_request_merges_current_branch(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    _git(repo, "checkout", "-q", "-b", "feature/x")
+    project_id = _register_local(client, repo)["id"]
+
+    real_run = subprocess.run
+    calls: list[list[str]] = []
+
+    def fake_run(command, *args, **kwargs):
+        if command[0] == "gh":
+            calls.append(list(command))
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                return subprocess.CompletedProcess(command, 0, "", "")
+            payload = {
+                "number": 5,
+                "title": "Feature",
+                "url": "https://github.com/example/myrepo/pull/5",
+                "state": "MERGED",
+                "isDraft": False,
+                "headRefName": "feature/x",
+                "baseRefName": "main",
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request/merge",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pull_request"]["state"] == "MERGED"
+    assert ["gh", "pr", "merge", "--merge"] in calls
+
+
+def test_merge_pull_request_reports_failure(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    _git(repo, "remote", "add", "origin", "https://github.com/example/myrepo.git")
+    _git(repo, "checkout", "-q", "-b", "feature/x")
+    project_id = _register_local(client, repo)["id"]
+
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        if command[0] == "gh":
+            return subprocess.CompletedProcess(command, 1, "", "not mergeable")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
+
+    response = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/pull-request/merge",
+        headers=_csrf(client),
+    )
+
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_PULL_REQUEST_FAILED"
 
 
 AGENTS_DEFAULT_URL = "/api/v1/agents/default"

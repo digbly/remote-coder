@@ -456,10 +456,15 @@ def delete_worktree(
 
 
 def create_branch(
-    db: Session, owner: User, project_id: int, name: str, settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    name: str,
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitStatusRead:
     """Create and check out a new branch."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     _checkout(path, name.strip(), create=True, settings=settings)
     return _read_status(path, settings)
 
@@ -630,10 +635,15 @@ def _commit_message_changes(path: Path, repo_status: GitStatusRead, settings: Se
 
 
 def create_pull_request(
-    db: Session, owner: User, project_id: int, payload: GitPullRequestCreate, settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    payload: GitPullRequestCreate,
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitPullRequestRead:
     """Push a branch and open a GitHub pull request for it via the ``gh`` CLI."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
 
     if _github_remote(path, settings) is None:
         raise api_error(ErrorCode.GIT_REMOTE_MISSING, status_code=status.HTTP_400_BAD_REQUEST)
@@ -679,7 +689,11 @@ def create_pull_request(
 
 
 def get_current_pull_request(
-    db: Session, owner: User, project_id: int, settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitPullRequestStatusRead:
     """Return the pull request for the current branch, or ``None`` when absent.
 
@@ -687,12 +701,22 @@ def get_current_pull_request(
     pull request) resolves to an empty result so the UI can show an empty state
     instead of an error.
     """
-    path = _project_repository(db, owner, project_id, settings)
-    if _github_remote(path, settings) is None:
-        return GitPullRequestStatusRead()
+    primary = _project_repository(db, owner, project_id, settings)
+    path = _path_for_worktree(primary, worktree, settings)
 
-    if not _current_branch(path, settings):
-        return GitPullRequestStatusRead()
+    branch = _current_branch(path, settings)
+    base = _cached_default_branch(path, settings)
+    status_read = GitPullRequestStatusRead(
+        branch=branch or None,
+        is_default_branch=bool(branch) and branch == base,
+        is_primary_worktree=path.resolve() == primary.resolve(),
+    )
+
+    if _github_remote(path, settings) is None:
+        return status_read
+
+    if not branch:
+        return status_read
 
     result = _try_run_gh(
         path,
@@ -705,30 +729,60 @@ def get_current_pull_request(
         timeout=settings.github_pr_timeout_seconds,
     )
     if result is None or result.returncode != 0:
-        return GitPullRequestStatusRead()
+        return status_read
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return GitPullRequestStatusRead()
+        return status_read
     if not isinstance(data, dict) or "number" not in data:
-        return GitPullRequestStatusRead()
+        return status_read
     try:
         number = int(data["number"])
     except (TypeError, ValueError):
-        return GitPullRequestStatusRead()
+        return status_read
 
-    return GitPullRequestStatusRead(
-        pull_request=GitPullRequestSummary(
-            number=number,
-            title=str(data.get("title", "")),
-            url=str(data.get("url", "")),
-            state=str(data.get("state", "")),
-            is_draft=bool(data.get("isDraft", False)),
-            head=data.get("headRefName") or None,
-            base=data.get("baseRefName") or None,
-        )
+    status_read.pull_request = GitPullRequestSummary(
+        number=number,
+        title=str(data.get("title", "")),
+        url=str(data.get("url", "")),
+        state=str(data.get("state", "")),
+        is_draft=bool(data.get("isDraft", False)),
+        head=data.get("headRefName") or None,
+        base=data.get("baseRefName") or None,
     )
+    return status_read
+
+
+def merge_pull_request(
+    db: Session,
+    owner: User,
+    project_id: int,
+    settings: Settings,
+    worktree: str | None = None,
+) -> GitPullRequestStatusRead:
+    """Merge the open pull request for the current branch via the ``gh`` CLI."""
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
+
+    if _github_remote(path, settings) is None:
+        raise api_error(ErrorCode.GIT_REMOTE_MISSING, status_code=status.HTTP_400_BAD_REQUEST)
+
+    if not _current_branch(path, settings):
+        raise api_error(
+            ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    merged = _run_gh(
+        path,
+        ["pr", "merge", "--merge"],
+        timeout=settings.github_pr_timeout_seconds,
+    )
+    if merged.returncode != 0:
+        raise api_error(
+            ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    return get_current_pull_request(db, owner, project_id, settings, worktree)
 
 
 def parse_status(output: str) -> GitStatusRead:
@@ -805,6 +859,31 @@ def _project_repository(db: Session, owner: User, project_id: int, settings: Set
     if inside.returncode != 0:
         raise api_error(ErrorCode.GIT_NOT_A_REPOSITORY, status_code=status.HTTP_400_BAD_REQUEST)
     return path
+
+
+def _resolve_repository(
+    db: Session,
+    owner: User,
+    project_id: int,
+    settings: Settings,
+    worktree: str | None = None,
+) -> Path:
+    """Resolve the repository path for a project, honoring an optional worktree.
+
+    ``worktree`` is matched against git's own worktree registry; an unknown name
+    is treated as a missing resource rather than a filesystem path.
+    """
+    primary = _project_repository(db, owner, project_id, settings)
+    return _path_for_worktree(primary, worktree, settings)
+
+
+def _path_for_worktree(primary: Path, worktree: str | None, settings: Settings) -> Path:
+    if not worktree:
+        return primary
+    target = find_worktree(primary, worktree.strip(), settings)
+    if target is None:
+        raise api_error(ErrorCode.GIT_WORKTREE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
+    return target
 
 
 def _validate_paths(paths: list[str]) -> None:

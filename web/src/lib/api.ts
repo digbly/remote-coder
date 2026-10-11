@@ -164,6 +164,9 @@ export interface GitPullRequestSummary {
 }
 
 export interface GitPullRequestStatus {
+  branch: string | null
+  is_default_branch: boolean
+  is_primary_worktree: boolean
   pull_request: GitPullRequestSummary | null
 }
 
@@ -624,8 +627,13 @@ export async function fetchBranches(projectId: number): Promise<GitBranches> {
   return (await response.json()) as GitBranches
 }
 
-export function createBranch(projectId: number, name: string): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/branches`, { name })
+export function createBranch(
+  projectId: number,
+  name: string,
+  worktree?: string,
+): Promise<GitStatus> {
+  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  return postJson(`/projects/${projectId}/git/branches${query}`, { name })
 }
 
 export function checkoutBranch(projectId: number, name: string): Promise<GitStatus> {
@@ -643,12 +651,26 @@ export function generateCommitMessage(projectId: number): Promise<GitCommitMessa
 export function createPullRequest(
   projectId: number,
   branch: string,
+  worktree?: string,
 ): Promise<GitPullRequestResult> {
-  return postJson(`/projects/${projectId}/git/pull-request`, { branch })
+  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  return postJson(`/projects/${projectId}/git/pull-request${query}`, { branch })
 }
 
-export async function fetchCurrentPullRequest(projectId: number): Promise<GitPullRequestStatus> {
-  const response = await request(`/projects/${projectId}/git/pull-request`)
+export function mergePullRequest(
+  projectId: number,
+  worktree?: string,
+): Promise<GitPullRequestStatus> {
+  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  return postJson(`/projects/${projectId}/git/pull-request/merge${query}`, {})
+}
+
+export async function fetchCurrentPullRequest(
+  projectId: number,
+  worktree?: string,
+): Promise<GitPullRequestStatus> {
+  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
+  const response = await request(`/projects/${projectId}/git/pull-request${query}`)
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))

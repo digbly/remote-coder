@@ -234,8 +234,9 @@ def create_branch(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: str | None = Query(default=None, max_length=255),
 ) -> GitStatusRead:
-    return service.create_branch(db, current_user, project_id, payload.name, settings)
+    return service.create_branch(db, current_user, project_id, payload.name, settings, worktree)
 
 
 @router.post(
@@ -298,8 +299,25 @@ def create_pull_request(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: str | None = Query(default=None, max_length=255),
 ) -> GitPullRequestRead:
-    return service.create_pull_request(db, current_user, project_id, payload, settings)
+    return service.create_pull_request(db, current_user, project_id, payload, settings, worktree)
+
+
+@router.post(
+    "/{project_id}/git/pull-request/merge",
+    response_model=GitPullRequestStatusRead,
+    responses=error_responses(400, 401, 403, 404, 422, 500),
+)
+def merge_pull_request(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+    worktree: str | None = Query(default=None, max_length=255),
+) -> GitPullRequestStatusRead:
+    return service.merge_pull_request(db, current_user, project_id, settings, worktree)
 
 
 @router.get(
@@ -312,5 +330,6 @@ def read_current_pull_request(
     current_user: CurrentUser,
     db: DbDep,
     settings: SettingsDep,
+    worktree: str | None = Query(default=None, max_length=255),
 ) -> GitPullRequestStatusRead:
-    return service.get_current_pull_request(db, current_user, project_id, settings)
+    return service.get_current_pull_request(db, current_user, project_id, settings, worktree)

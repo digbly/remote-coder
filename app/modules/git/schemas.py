@@ -65,6 +65,9 @@ class GitPullRequestSummary(BaseModel):
 
 
 class GitPullRequestStatusRead(BaseModel):
+    branch: str | None = None
+    is_default_branch: bool = False
+    is_primary_worktree: bool = True
     pull_request: GitPullRequestSummary | None = None
 
 

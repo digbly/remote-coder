@@ -18,18 +18,22 @@ const TABS = [
 
 interface RightPanelProps {
   projectId: number
+  worktree?: string
   width: number
   onClose: () => void
   onOpenFile: (path: string, line?: number) => void
   onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
+  onWorktreeDeleted?: (projectId: number, worktree: string) => void
 }
 
 export function RightPanel({
   projectId,
+  worktree,
   width,
   onClose,
   onOpenFile,
   onOpenDiff,
+  onWorktreeDeleted,
 }: RightPanelProps) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<PanelTab>(() => loadPanelTab(projectId))
@@ -110,7 +114,13 @@ export function RightPanel({
         {tab === 'sourceControl' && (
           <SourceControlPanel projectId={projectId} onOpenDiff={onOpenDiff} />
         )}
-        {tab === 'check' && <CheckPanel projectId={projectId} />}
+        {tab === 'check' && (
+          <CheckPanel
+            projectId={projectId}
+            worktree={worktree}
+            onWorktreeDeleted={onWorktreeDeleted}
+          />
+        )}
       </div>
     </aside>
   )

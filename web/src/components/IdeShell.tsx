@@ -401,10 +401,12 @@ export function IdeShell({
                     <RightPanel
                       key={activeProjectId}
                       projectId={activeProjectId}
+                      worktree={activeWorktrees[activeProjectId]}
                       width={layout.rightWidth}
                       onClose={() => updateLayout({ rightOpen: false })}
                       onOpenFile={openFile}
                       onOpenDiff={openDiff}
+                      onWorktreeDeleted={closeWorktreeTabs}
                     />
                   </>
                 ) : (
