@@ -22,8 +22,8 @@ import {
 } from '../../lib/chat'
 import { ArrowUpIcon, ChevronDownIcon, SettingsIcon } from './icons'
 
-const BRAND_GRADIENT = 'linear-gradient(90deg, #DC2626 0%, #F97316 100%)'
-const USER_BUBBLE_GRADIENT = 'linear-gradient(90deg, #DC2626 0%, #C2410C 100%)'
+const BRAND_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D98A5B 100%)'
+const USER_BUBBLE_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D88962 100%)'
 const brandStyle = { backgroundImage: BRAND_GRADIENT }
 
 const MAX_TEXTAREA_HEIGHT = 192
@@ -35,11 +35,11 @@ const cardBorder = 'border-[#E5E7EB] dark:border-[#2E2E2E]'
 const primaryText = 'text-[#0F0F0F] dark:text-[#F1F1F1]'
 const mutedText = 'text-[#6B6B6B] dark:text-[#AAAAAA]'
 const dangerText = 'text-[#DC2626] dark:text-[#F87171]'
-const accentText = 'text-[#F97316]'
-const accentBg = 'bg-[#F97316]'
+const accentText = 'text-[#C25C49]'
+const accentBg = 'bg-[#C25C49]'
 const dotIdle = 'bg-[#B8B8B8] dark:bg-[#555555]'
 const focusRing =
-  'focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/30'
+  'focus:border-[#C25C49] focus:ring-2 focus:ring-[#C25C49]/30'
 const placeholderText = 'placeholder:text-[#6B6B6B] dark:placeholder:text-[#AAAAAA]'
 
 const selectClass = `rounded-lg border ${cardBorder} ${subtleBg} px-2.5 py-1.5 text-base ${primaryText} outline-none transition ${focusRing} disabled:opacity-50 md:text-xs`
@@ -669,17 +669,10 @@ export function ChatPanel({
               style={isUser ? { backgroundImage: USER_BUBBLE_GRADIENT } : undefined}
               className={
                 isUser
-                  ? 'mx-auto max-w-3xl rounded-2xl border border-transparent px-4 py-3 text-white shadow-sm'
-                  : `mx-auto max-w-3xl rounded-2xl border ${cardBorder} ${cardBg} px-4 py-3`
+                  ? 'mx-auto w-full max-w-[1000px] rounded-2xl px-4 py-3 text-white shadow-none'
+                  : 'mx-auto w-full max-w-[1000px] rounded-none border-0 bg-transparent px-0 py-2'
               }
             >
-              <p
-                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
-                  isUser ? 'text-white' : mutedText
-                }`}
-              >
-                {isUser ? t('chat.you') : t('chat.assistant')}
-              </p>
               {!isUser && message.thinking && (
                 <ThinkingBlock text={message.thinking} streaming={message.status === 'streaming'} />
               )}
@@ -687,7 +680,7 @@ export function ChatPanel({
                 <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
               )}
               <div
-                className={`whitespace-pre-wrap break-words text-sm leading-6 ${
+                className={`whitespace-pre-wrap break-words text-[15px] leading-7 ${
                   isUser ? 'text-white' : primaryText
                 }`}
               >

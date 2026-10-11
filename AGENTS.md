@@ -1,3 +1,0 @@
-- After submit code:
-  - Run `pylint $(git ls-files '*.py')`, `eslint` and `vite build` make sure everything pass.
-  - Fix all `pytest` make sure everything works.
