@@ -332,22 +332,17 @@ export function ProviderSettings() {
       >
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block text-xs text-[var(--text-2)]">
-            {t('settings.providerName')}
-            <input
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className={inputClass}
-              maxLength={100}
-            />
-          </label>
-          <label className="block text-xs text-[var(--text-2)]">
             {t('settings.providerKind')}
             <select
               value={kind}
               onChange={(event) => {
                 const selected = PROVIDER_KINDS.find((item) => item === event.target.value)
                 if (selected) {
+                  const previousLabel = t(PROVIDER_KIND_LABELS[kind])
+                  const nextLabel = t(PROVIDER_KIND_LABELS[selected])
+                  setName((current) =>
+                    current.trim() === '' || current === previousLabel ? nextLabel : current,
+                  )
                   setKind(selected)
                   setBaseUrl('')
                   setOpencodePreset('zen')
@@ -361,6 +356,16 @@ export function ProviderSettings() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block text-xs text-[var(--text-2)]">
+            {t('settings.providerName')}
+            <input
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className={inputClass}
+              maxLength={100}
+            />
           </label>
           <label className="block text-xs text-[var(--text-2)]">
             {t('settings.providerApiKey')}
