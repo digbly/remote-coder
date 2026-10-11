@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cachedAgents, fetchAgents, subscribeAgents } from '../../lib/api'
 import type { AgentDefinition } from '../../lib/agents'
-import { ChatIcon, CommandIcon, PlusIcon, TerminalIcon } from './icons'
+import { ChatIcon, CommandIcon, GlobeIcon, PlusIcon, TerminalIcon } from './icons'
 
 type DetectionState =
   | { status: 'loading' }
@@ -15,10 +15,12 @@ const MENU_MARGIN = 8
 export function NewTabMenu({
   onSelect,
   onNewChat,
+  onNewBrowser,
   placement = 'down',
 }: {
   onSelect: (agent?: AgentDefinition) => void
   onNewChat: () => void
+  onNewBrowser?: () => void
   placement?: 'down' | 'up'
 }) {
   const { t } = useTranslation()
@@ -141,6 +143,20 @@ export function NewTabMenu({
             <ChatIcon width={13} height={13} />
             {t('chat.tabTitle')}
           </button>
+          {onNewBrowser && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onNewBrowser()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--fg-2)] hover:bg-[var(--active)]"
+            >
+              <GlobeIcon width={13} height={13} />
+              {t('ide.newBrowser')}
+            </button>
+          )}
           <div className="my-1 border-t border-[var(--border)]" />
           <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-3)]">
             {t('ide.agents')}

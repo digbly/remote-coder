@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { killTerminal, type Project, type User } from '../lib/api'
+import { killTerminal, closeBrowserSession, type Project, type User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import { LEFT_MAX, LEFT_MIN, RIGHT_MAX, RIGHT_MIN, type LayoutState } from '../lib/layoutStore'
 import {
@@ -11,6 +11,7 @@ import {
   withOpenDiff,
   withChatConversation,
   withTabTitle,
+  withBrowserTab,
   type ActiveProjectRef,
   type SyncedState,
   type WorkspaceTab,
@@ -19,6 +20,7 @@ import { Sidebar } from './ide/Sidebar'
 import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { ChatTab } from './ide/ChatTab'
+import { BrowserTab } from './ide/BrowserTab'
 import { FileEditor } from './ide/FileEditor'
 import { GitDiffView } from './ide/GitDiffView'
 import { TopTabs } from './ide/TopTabs'
@@ -148,6 +150,14 @@ export function IdeShell({
     }))
   }
 
+  function openBrowser() {
+    if (!activeProject) return
+    update((prev) => ({
+      ...prev,
+      workspaces: withBrowserTab(prev.workspaces, activeProject),
+    }))
+  }
+
   function openFile(path: string, line?: number) {
     if (!activeProject) return
     update((prev) => ({
@@ -174,15 +184,25 @@ export function IdeShell({
     [update],
   )
 
+  // Release whatever backend resources a closing tab owns (a PTY or a live
+  // browser session). Best-effort: the resource may already be gone.
+  function releaseTabResources(projectId: number, tab: WorkspaceTab) {
+    if (tab.kind === 'terminal') {
+      void killTerminal(projectId, tab.id).catch(() => {
+        /* the terminal may already be gone */
+      })
+    } else if (tab.kind === 'browser') {
+      void closeBrowserSession(projectId, tab.id).catch(() => {
+        /* the session may already be gone */
+      })
+    }
+  }
+
   function closeTab(id: string) {
     if (activeProjectId == null) return
     const projectId = activeProjectId
     const closing = workspaces[projectId]?.tabs.find((tab) => tab.id === id)
-    if (closing?.kind === 'terminal') {
-      void killTerminal(projectId, id).catch(() => {
-        /* the terminal may already be gone */
-      })
-    }
+    if (closing) releaseTabResources(projectId, closing)
     update((prev) => ({
       ...prev,
       workspaces: withFilteredTabs(prev.workspaces, projectId, (tab) => tab.id !== id),
@@ -190,13 +210,8 @@ export function IdeShell({
   }
 
   function closeProjectTabs(projectId: number) {
-    const removed = workspaces[projectId]?.tabs ?? []
-    for (const tab of removed) {
-      if (tab.kind === 'terminal') {
-        void killTerminal(projectId, tab.id).catch(() => {
-          /* the terminal may already be gone */
-        })
-      }
+    for (const tab of workspaces[projectId]?.tabs ?? []) {
+      releaseTabResources(projectId, tab)
     }
     update((prev) => {
       const next = { ...prev.workspaces }
@@ -213,11 +228,7 @@ export function IdeShell({
   function closeWorktreeTabs(projectId: number, worktree: string) {
     const removed = (workspaces[projectId]?.tabs ?? []).filter((tab) => tab.worktree === worktree)
     for (const tab of removed) {
-      if (tab.kind === 'terminal') {
-        void killTerminal(projectId, tab.id).catch(() => {
-          /* the terminal may already be gone */
-        })
-      }
+      releaseTabResources(projectId, tab)
     }
     update((prev) => ({
       ...prev,
@@ -270,6 +281,8 @@ export function IdeShell({
               />
             ) : tab.kind === 'vscode' && tab.worktree ? (
               <VSCodePanel projectId={projectId} worktree={tab.worktree} title={tab.title} />
+            ) : tab.kind === 'browser' ? (
+              <BrowserTab projectId={projectId} sessionId={tab.id} />
             ) : (
               <ProjectTerminal
                 projectId={projectId}
@@ -357,6 +370,7 @@ export function IdeShell({
               onClose={closeTab}
               onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
               onNewChat={openChat}
+              onNewBrowser={openBrowser}
             />
             <div className="flex min-h-0 min-w-0 flex-1">
               <div className="relative min-h-0 min-w-0 flex-1">

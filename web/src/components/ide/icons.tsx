@@ -106,6 +106,38 @@ export function ArrowUpIcon(props: IconProps) {
   )
 }
 
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m15 5-7 7 7 7" />
+    </Svg>
+  )
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m9 5 7 7-7 7" />
+    </Svg>
+  )
+}
+
+export function MaximizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3" />
+    </Svg>
+  )
+}
+
+export function MinimizeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 3v3a2 2 0 0 1-2 2H3M16 3v3a2 2 0 0 0 2 2h3M21 16h-3a2 2 0 0 0-2 2v3M3 16h3a2 2 0 0 1 2 2v3" />
+    </Svg>
+  )
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Svg {...props}>

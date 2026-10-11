@@ -6,4 +6,5 @@ export const TAB_DOT_COLORS: Record<TabKind, string> = {
   vscode: 'bg-blue-400',
   chat: 'bg-emerald-400',
   diff: 'bg-amber-400',
+  browser: 'bg-rose-400',
 }

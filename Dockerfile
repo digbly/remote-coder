@@ -29,6 +29,14 @@ RUN apt-get update \
 
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
+# agent-browser drives a real Chrome (For Testing) for the live browser tab.
+# Chrome is downloaded into the runtime user's home so the server can launch it.
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g agent-browser \
+    && HOME=/home/remote-coder agent-browser install --with-deps \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --create-home --shell /bin/bash remote-coder \
     && mkdir -p \
         /app/database \

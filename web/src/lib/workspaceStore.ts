@@ -1,7 +1,7 @@
 import type { AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
-export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat' | 'diff'
+export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat' | 'diff' | 'browser'
 
 export interface WorkspaceTab {
   id: string
@@ -67,6 +67,7 @@ function isTab(value: unknown): value is WorkspaceTab {
       value.kind === 'editor' ||
       value.kind === 'vscode' ||
       value.kind === 'chat' ||
+      value.kind === 'browser' ||
       value.kind === 'diff') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
@@ -350,6 +351,31 @@ export function withVSCodeTab(
   return {
     ...workspaces,
     [project.id]: { tabs: [...tabs, tab], activeId: id, activeWorktree: worktree },
+  }
+}
+
+export function withBrowserTab(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+): Record<number, ProjectWorkspace> {
+  const current = workspaces[project.id]
+  const tabs = current?.tabs ?? []
+  const label = 'Browser'
+  const count = countByLabel(tabs, label)
+  const id = newTerminalId()
+  const tab: WorkspaceTab = {
+    id,
+    title: count === 0 ? label : `${label} (${count + 1})`,
+    kind: 'browser',
+    projectId: project.id,
+  }
+  return {
+    ...workspaces,
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(current?.activeWorktree),
+    },
   }
 }
 

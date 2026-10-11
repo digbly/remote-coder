@@ -57,6 +57,35 @@ If the binary lives outside `PATH`, point the app at it via `.env`:
 VSCODE_BINARY=/absolute/path/to/code-server
 ```
 
+## 1b. Install agent-browser
+
+The live Browser tab streams a real Chrome session driven by
+[`agent-browser`](https://github.com/vercel-labs/agent-browser). Install the
+CLI and download Chrome for Testing:
+
+```bash
+npm install -g agent-browser
+agent-browser install --with-deps   # Linux: also installs required libraries
+```
+
+`--with-deps` runs the system package manager, so it needs root (use `sudo`).
+`npm install -g` only needs root when npm's global prefix is system-owned (it
+does not under nvm). Run `agent-browser install` as the **same user that runs
+the API** so Chrome lands in that user's home; otherwise the server cannot find
+it.
+
+Verify the install:
+
+```bash
+agent-browser --version
+```
+
+If the binary lives outside `PATH`, point the app at it via `.env`:
+
+```
+BROWSER_BINARY=/absolute/path/to/agent-browser
+```
+
 ## 2. Set up the API
 
 ```bash
@@ -133,6 +162,40 @@ Other things to check:
 - Ports `8800-8900` (or `VSCODE_PORT_START`/`VSCODE_PORT_END`) are free.
 - `code-server` has write access to its data dir
   (`~/.remote-coder/vscode/cache` by default).
+
+### `BROWSER_START_FAILED` / the Browser tab is blank
+
+The live Browser tab streams a real Chrome session driven by `agent-browser`.
+When the binary or Chrome is missing the session cannot start, and the tab
+reports **"Could not start the browser"** (error code `BROWSER_START_FAILED`).
+
+Install it (see step 1b):
+
+```bash
+npm install -g agent-browser
+agent-browser install --with-deps   # downloads Chrome for Testing + libs
+```
+
+Confirm the install (step 1b):
+
+```bash
+agent-browser --version
+agent-browser stream status --json   # expect {"enabled": true, ...}
+```
+
+Other things to check:
+
+- Restart the API after installing `agent-browser` so the new binary is picked
+  up from `PATH` (or point at it with `BROWSER_BINARY`).
+- Chrome for Testing is present; re-run `agent-browser install --with-deps`.
+- The API log shows `browser stream connect failed at ws://127.0.0.1:<port>/...`
+  when it cannot reach the session's stream server; the port comes from
+  `agent-browser stream status --json`.
+- To disable the feature entirely, set `BROWSER_ENABLED=false`.
+
+The tab and the AI agent share one browser per project, so the address bar
+navigates that shared session. Use `BROWSER_ALLOWED_DOMAINS` (comma-separated)
+to restrict which hosts the browser may reach.
 
 ### `uvicorn not found`
 
