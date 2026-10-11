@@ -1,0 +1,152 @@
+/* Styles for MarkdownMessage — agent chat responses rendered as Markdown.
+   Uses the app's CSS variables so it follows the light/dark theme. */
+.markdown-body {
+  font-size: 15px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0.5rem 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg-strong);
+}
+
+.markdown-body h1 {
+  font-size: 1.4rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.2rem;
+}
+
+.markdown-body h3 {
+  font-size: 1.05rem;
+}
+
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 1rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ol {
+  list-style: decimal;
+}
+
+.markdown-body li {
+  margin: 0.25rem 0;
+}
+
+.markdown-body li::marker {
+  color: var(--muted-3);
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.25rem 0;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85em;
+  background: var(--chip);
+  border-radius: 0.35rem;
+  padding: 0.12rem 0.35rem;
+}
+
+.markdown-body pre {
+  margin: 0.65rem 0;
+  padding: 0.85rem 1rem;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  display: block;
+  background: none;
+  padding: 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.markdown-body blockquote {
+  margin: 0.65rem 0;
+  padding: 0.15rem 0 0.15rem 0.9rem;
+  border-left: 3px solid var(--border-strong);
+  color: var(--muted);
+}
+
+.markdown-body table {
+  display: block;
+  width: 100%;
+  margin: 0.65rem 0;
+  border-collapse: collapse;
+  overflow-x: auto;
+  font-size: 0.9em;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.65rem;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--surface-inset);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.markdown-body hr {
+  margin: 1rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+}

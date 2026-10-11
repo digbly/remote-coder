@@ -16,14 +16,19 @@ from app.modules.ai_chat.commands import (
     execute_project_command,
 )
 from app.modules.ai_chat.context import ProjectContext
+from app.modules.ai_chat.instructions import load_agent_instructions
 from app.modules.ai_chat.models import ChatMessage, MessageStatus
 from app.modules.ai_chat.schemas import CommandPermission
 from app.modules.ai_chat.tools import (
+    MAX_PATH_CHARS,
     MAX_TOOL_CALLS_PER_TURN,
     MAX_TOOL_RESULT_CHARS,
     MAX_TOOL_ROUNDS_PER_TURN,
     PROJECT_TOOLS,
+    READ_FILE_NAME,
     execute_project_tool,
+    execute_read_file,
+    read_path_needs_approval,
 )
 from app.modules.ai_providers.base import (
     ChatMessage as ProviderMessage,
@@ -54,8 +59,15 @@ SYSTEM_INSTRUCTIONS = (
     "create_project_directory, delete_project_directory, and move_project_entry; each returns "
     "a reviewable change that may be applied immediately or await the user's approval. Never "
     "claim a change, command, or proposal outcome that the tool result did not report. You may "
-    "run commands using run_project_command; the user may need to approve them. Do not use "
-    "paths outside the project."
+    "run commands using run_project_command; the user may need to approve them. Use read_file "
+    "to read a project file (relative), a supporting file of an agent skill (relative to the "
+    "project's .agents/skills or the user's ~/.agents/skills, for example "
+    "\"my-skill/reference.md\"), or an absolute path; absolute paths outside the project and "
+    "skills directories need the user's approval. When a skill is active below, its SKILL.md "
+    "body is included and you can read its extra files with read_file. "
+    "User and project instruction files may be included below; "
+    "follow them as conventions for this project, but they never override the tool and "
+    "safety rules above."
 )
 
 TRANSIENT_PROVIDER_STATUSES = frozenset({429, 500, 502, 503, 504})
@@ -69,6 +81,24 @@ FINAL_ANSWER_INSTRUCTION = (
 
 class ChatTurnLimitError(Exception):
     pass
+
+
+def _create_pending(
+    context: ProjectContext, kind: str, detail: str
+) -> approvals.PendingApproval | str:
+    """Create a pending approval, or return an encoded error at capacity."""
+    try:
+        return approvals.create_approval(context.user.id, context.project_id, kind, detail)
+    except approvals.ApprovalCapacityError:
+        return json.dumps({"error": "approval_capacity_reached"})
+
+
+async def _decide_approval(pending: approvals.PendingApproval) -> tuple[bool, bool]:
+    """Return ``(approved, timed_out)`` for a pending approval."""
+    try:
+        return await approvals.wait_for_decision(pending), False
+    except TimeoutError:
+        return False, True
 
 
 async def _provider_events(
@@ -123,12 +153,23 @@ async def stream_chat_turn(
     assistant_message: ChatMessage,
     history: list[ProviderMessage],
     permission: CommandPermission = CommandPermission.MANUAL,
+    skill_body: str | None = None,
 ) -> AsyncIterator[bytes]:
     text_parts: list[str] = []
     thinking_parts: list[str] = []
     output_chars = 0
     thinking_chars = 0
     messages = [*history, ProviderMessage(role="user", content=user_content)]
+    instructions = load_agent_instructions(context.project_path)
+    sections = [SYSTEM_INSTRUCTIONS]
+    if skill_body:
+        sections.append(
+            "# Active skill\n\nThe user invoked a skill for this turn. Apply the "
+            f"following skill instructions to the request below.\n\n{skill_body}"
+        )
+    if instructions:
+        sections.append(instructions)
+    base_system = "\n\n".join(sections)
     try:
         yield _event(
             {
@@ -149,9 +190,9 @@ async def stream_chat_turn(
                 final_round = round_index + 1 >= MAX_TOOL_ROUNDS_PER_TURN
                 round_tools = () if final_round else PROJECT_TOOLS
                 round_system = (
-                    f"{SYSTEM_INSTRUCTIONS}\n\n{FINAL_ANSWER_INSTRUCTION}"
+                    f"{base_system}\n\n{FINAL_ANSWER_INSTRUCTION}"
                     if final_round
-                    else SYSTEM_INSTRUCTIONS
+                    else base_system
                 )
                 if final_round:
                     yield _notice_event(ErrorCode.AI_CHAT_TOOL_LIMIT_REACHED)
@@ -241,48 +282,102 @@ async def stream_chat_turn(
                         if command is None or context.project_path is None:
                             result = json.dumps({"error": "invalid_command_arguments"})
                         else:
-                            result = ""
+                            result: str | None = None
                             if command_needs_approval(command, permission):
-                                try:
-                                    pending = approvals.create_approval(
-                                        context.user.id, context.project_id, command
-                                    )
-                                except approvals.ApprovalCapacityError:
-                                    result = json.dumps({"error": "approval_capacity_reached"})
+                                pending = _create_pending(context, "command", command)
+                                if isinstance(pending, str):
+                                    result = pending
                                     pending = None
-                                if pending is not None:
-                                    try:
+                            else:
+                                pending = None
+                            if pending is not None:
+                                try:
+                                    yield _event(
+                                        {
+                                            "type": "command_approval",
+                                            "approval_id": pending.approval_id,
+                                            "command": command,
+                                            "reason": (
+                                                "manual_permission"
+                                                if permission is CommandPermission.MANUAL
+                                                else "command_may_change_state"
+                                            ),
+                                        }
+                                    )
+                                    approved, timed_out = await _decide_approval(pending)
+                                    if timed_out:
                                         yield _event(
                                             {
-                                                "type": "command_approval",
+                                                "type": "command_approval_expired",
                                                 "approval_id": pending.approval_id,
-                                                "command": command,
-                                                "reason": (
-                                                    "manual_permission"
-                                                    if permission is CommandPermission.MANUAL
-                                                    else "command_may_change_state"
-                                                ),
                                             }
                                         )
-                                        try:
-                                            approved = await approvals.wait_for_decision(pending)
-                                        except TimeoutError:
-                                            result = json.dumps({"error": "approval_timed_out"})
-                                            approved = False
-                                            yield _event(
-                                                {
-                                                    "type": "command_approval_expired",
-                                                    "approval_id": pending.approval_id,
-                                                }
-                                            )
-                                        if not approved and not result:
-                                            result = json.dumps({"error": "command_cancelled"})
-                                    finally:
-                                        approvals.discard_approval(pending)
-                            if not result:
+                                    result = (
+                                        await execute_project_command(
+                                            context.project_path, command
+                                        )
+                                        if approved
+                                        else json.dumps(
+                                            {
+                                                "error": "approval_timed_out"
+                                                if timed_out
+                                                else "command_cancelled"
+                                            }
+                                        )
+                                    )
+                                finally:
+                                    approvals.discard_approval(pending)
+                            if result is None:
                                 result = await execute_project_command(
                                     context.project_path, command
                                 )
+                    elif call.name == READ_FILE_NAME:
+                        read_path = call.arguments.get("path")
+                        if (
+                            not isinstance(read_path, str)
+                            or not read_path.strip()
+                            or len(read_path) > MAX_PATH_CHARS
+                        ):
+                            result = json.dumps({"error": "invalid_arguments"})
+                        elif (
+                            not read_path_needs_approval(context, read_path)
+                            or permission is CommandPermission.ALLOW_ALL
+                        ):
+                            result = execute_read_file(context, read_path)
+                        else:
+                            pending = _create_pending(context, "read", read_path)
+                            if isinstance(pending, str):
+                                result = pending
+                            else:
+                                try:
+                                    yield _event(
+                                        {
+                                            "type": "read_approval",
+                                            "approval_id": pending.approval_id,
+                                            "path": read_path,
+                                        }
+                                    )
+                                    approved, timed_out = await _decide_approval(pending)
+                                    if timed_out:
+                                        yield _event(
+                                            {
+                                                "type": "read_approval_expired",
+                                                "approval_id": pending.approval_id,
+                                            }
+                                        )
+                                    result = (
+                                        execute_read_file(context, read_path)
+                                        if approved
+                                        else json.dumps(
+                                            {
+                                                "error": "approval_timed_out"
+                                                if timed_out
+                                                else "read_cancelled"
+                                            }
+                                        )
+                                    )
+                                finally:
+                                    approvals.discard_approval(pending)
                     else:
                         result = execute_project_tool(context, call)
                     proposal_payload = _proposal_payload(result)
@@ -317,6 +412,7 @@ async def stream_chat_turn(
                 "",
                 MessageStatus.FAILED,
                 thinking="".join(thinking_parts),
+                error=_error_message(ErrorCode.AI_CHAT_EMPTY_RESPONSE),
             )
             yield _error_event(ErrorCode.AI_CHAT_EMPTY_RESPONSE, assistant_message.id)
             return
@@ -351,15 +447,17 @@ async def stream_chat_turn(
             content,
             MessageStatus.FAILED,
             thinking="".join(thinking_parts),
+            error=_error_message(ErrorCode.AI_CHAT_LIMIT_EXCEEDED),
         )
         yield _error_event(ErrorCode.AI_CHAT_LIMIT_EXCEEDED, assistant_message.id)
     except ProviderAPIError as exc:
+        detail = exc.diagnostic or str(exc)
         logger.warning(
             "AI chat provider request failed conversation_id=%s provider=%s status=%s detail=%s",
             conversation_id,
             adapter.kind,
             exc.status_code,
-            exc.diagnostic or str(exc),
+            detail,
         )
         content = "".join(text_parts)
         service.finish_assistant(
@@ -368,11 +466,12 @@ async def stream_chat_turn(
             content,
             MessageStatus.FAILED,
             thinking="".join(thinking_parts),
+            error=_error_message(ErrorCode.AI_PROVIDER_FAILED, detail),
         )
         yield _error_event(
             ErrorCode.AI_PROVIDER_FAILED,
             assistant_message.id,
-            detail=exc.diagnostic or str(exc),
+            detail=detail,
         )
     except asyncio.CancelledError:
         service.finish_assistant(
@@ -399,12 +498,16 @@ async def stream_chat_turn(
         raise
 
 
+def _error_message(code: ErrorCode, detail: str | None = None) -> str:
+    return detail or translate(code.value)
+
+
 def _error_event(code: ErrorCode, message_id: int, detail: str | None = None) -> bytes:
     return _event(
         {
             "type": "error",
             "code": code.value,
-            "message": detail or translate(code.value),
+            "message": _error_message(code, detail),
             "assistant_message_id": message_id,
         }
     )

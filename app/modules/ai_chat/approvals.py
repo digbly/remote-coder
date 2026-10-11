@@ -15,22 +15,24 @@ class PendingApproval:
     approval_id: str
     user_id: int
     project_id: int
-    command: str
+    kind: str
+    detail: str
     decision: asyncio.Future[bool]
 
 
 _pending: dict[str, PendingApproval] = {}
 
 
-def create_approval(user_id: int, project_id: int, command: str) -> PendingApproval:
+def create_approval(user_id: int, project_id: int, kind: str, detail: str) -> PendingApproval:
     if len(_pending) >= MAX_PENDING_APPROVALS:
-        raise ApprovalCapacityError("too many pending command approvals")
+        raise ApprovalCapacityError("too many pending approvals")
     approval_id = uuid4().hex
     pending = PendingApproval(
         approval_id=approval_id,
         user_id=user_id,
         project_id=project_id,
-        command=command,
+        kind=kind,
+        detail=detail,
         decision=asyncio.get_running_loop().create_future(),
     )
     _pending[approval_id] = pending

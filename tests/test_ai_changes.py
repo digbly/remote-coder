@@ -105,6 +105,44 @@ def test_proposal_is_reviewable_and_does_not_write_before_approval(
     assert listed[0]["status"] == "pending"
 
 
+def test_edit_and_resend_discards_proposals_from_replaced_turns(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    path = projects_root / "project"
+    project_id = _create_project(client, path)
+    provider_id = _create_provider(client)
+    (path / "main.py").write_text("print('original')\n", encoding="utf-8")
+
+    conversation_id = _create_proposal(client, project_id, provider_id, monkeypatch)[0]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    first_user_id = messages[0]["id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+        json={
+            "conversation_id": conversation_id,
+            "provider_id": provider_id,
+            "model_id": "gpt-test",
+            "message": "Update main.py again",
+            "edit_user_message_id": first_user_id,
+        },
+        headers=_csrf(client),
+    )
+    assert response.status_code == 200
+
+    listed = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}/proposals"
+    ).json()["proposals"]
+    assert listed == []
+    remaining = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    assert [message["content"] for message in remaining][0] == "Update main.py again"
+
+
 def test_apply_requires_explicit_approval_and_writes_proposed_content(
     client: TestClient, projects_root, monkeypatch
 ) -> None:

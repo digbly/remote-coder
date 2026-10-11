@@ -1,11 +1,12 @@
 export {
-  decideAICommand,
+  decideAIApproval,
   fetchAICommandPermission,
   fetchAIConversation,
   fetchAIConversations,
   fetchAIProviderModels,
   fetchAIProposals,
   fetchAIProviders,
+  fetchAISkills,
   openAIChatStream,
   updateAIProposal,
   updateAICommandPermission,
@@ -18,6 +19,7 @@ export type {
   AIConversationDetail,
   AIProvider,
   AIProviderModel,
+  AISkill,
 } from './api'
 export { consumeChatStream } from './chatStream'
 export type { ChatStreamEvent } from './chatStream'

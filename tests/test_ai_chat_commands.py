@@ -24,7 +24,7 @@ def _create_project(client: TestClient, path: Path) -> int:
 async def _create_approval(
     user_id: int, project_id: int, command: str
 ) -> approvals.PendingApproval:
-    return approvals.create_approval(user_id, project_id, command)
+    return approvals.create_approval(user_id, project_id, "command", command)
 
 
 def test_command_permission_is_persisted_per_user(client: TestClient, projects_root: Path) -> None:
@@ -213,7 +213,7 @@ def test_command_runner_caps_output(monkeypatch, tmp_path: Path) -> None:
 
 def test_approval_is_bound_to_user_and_project() -> None:
     async def exercise() -> None:
-        pending = approvals.create_approval(10, 20, "pwd")
+        pending = approvals.create_approval(10, 20, "command", "pwd")
         waiting = asyncio.create_task(approvals.wait_for_decision(pending))
         await asyncio.sleep(0)
 
@@ -232,10 +232,10 @@ def test_approval_route_authorizes_project_and_resolves_pending_request(
     _login(client)
     project_id = _create_project(client, projects_root / "approval-project")
     pending = asyncio.run(_create_approval(1, project_id, "pwd"))
-    url = f"/api/v1/projects/{project_id}/ai-chat/commands/{pending.approval_id}"
+    url = f"/api/v1/projects/{project_id}/ai-chat/approvals/{pending.approval_id}"
 
     wrong_project = client.post(
-        f"/api/v1/projects/{project_id + 999}/ai-chat/commands/{pending.approval_id}",
+        f"/api/v1/projects/{project_id + 999}/ai-chat/approvals/{pending.approval_id}",
         json={"approved": True},
         headers=_csrf(client),
     )

@@ -55,7 +55,7 @@ const ERROR_CODE_KEYS = {
   AI_CHAT_CONVERSATION_NOT_FOUND: 'apiErrors.aiChatConversationNotFound',
   AI_CHAT_MODEL_UNAVAILABLE: 'apiErrors.aiChatModelUnavailable',
   AI_CHAT_LIMIT_EXCEEDED: 'apiErrors.aiChatLimitExceeded',
-  AI_COMMAND_APPROVAL_NOT_FOUND: 'apiErrors.aiCommandApprovalNotFound',
+  AI_APPROVAL_NOT_FOUND: 'apiErrors.aiApprovalNotFound',
   AI_CHANGE_PROPOSAL_NOT_FOUND: 'apiErrors.aiChangeProposalNotFound',
   AI_CHANGE_PROPOSAL_NOT_PENDING: 'apiErrors.aiChangeProposalNotPending',
   AI_CHANGE_PROPOSAL_STALE: 'apiErrors.aiChangeProposalStale',
@@ -311,6 +311,12 @@ export interface AIConversationDetail {
   messages: AIChatMessage[]
 }
 
+export interface AISkill {
+  slug: string
+  name: string
+  description: string
+}
+
 export type AIProposalChangeType =
   | 'modify'
   | 'create'
@@ -360,13 +366,13 @@ export async function updateAICommandPermission(
   return result.mode
 }
 
-export async function decideAICommand(
+export async function decideAIApproval(
   projectId: number,
   approvalId: string,
   approved: boolean,
 ): Promise<void> {
   const response = await request(
-    `/projects/${projectId}/ai-chat/commands/${encodeURIComponent(approvalId)}`,
+    `/projects/${projectId}/ai-chat/approvals/${encodeURIComponent(approvalId)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -964,6 +970,16 @@ export async function fetchAIConversations(projectId: number): Promise<AIConvers
   return result.conversations
 }
 
+export async function fetchAISkills(projectId: number): Promise<AISkill[]> {
+  const response = await request(`/projects/${projectId}/ai-chat/skills`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const result = (await response.json()) as { skills: AISkill[] }
+  return result.skills
+}
+
 export async function fetchAIConversation(
   projectId: number,
   conversationId: string,
@@ -1018,6 +1034,8 @@ export async function openAIChatStream(
     provider_id: number
     model_id: string
     message: string
+    skill?: string | null
+    edit_user_message_id?: number | null
   },
   signal: AbortSignal,
 ): Promise<Response> {

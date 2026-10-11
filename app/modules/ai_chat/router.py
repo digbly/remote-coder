@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import ErrorCode, api_error, error_responses
 from app.modules.ai_changes.router import router as ai_changes_router
-from app.modules.ai_chat import approvals, service
+from app.modules.ai_chat import approvals, service, skills
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.schemas import (
     ChatTurnRequest,
@@ -14,6 +14,8 @@ from app.modules.ai_chat.schemas import (
     CommandPermissionRead,
     ConversationDetail,
     ConversationListResponse,
+    SkillListResponse,
+    SkillRead,
 )
 from app.modules.ai_chat.streaming import stream_chat_turn
 from app.modules.ai_providers import service as provider_service
@@ -49,11 +51,11 @@ def update_command_permission(
 
 
 @router.post(
-    "/commands/{approval_id}",
+    "/approvals/{approval_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses=error_responses(401, 403, 404),
 )
-async def decide_command_approval(
+async def decide_approval(
     project_id: int,
     approval_id: str,
     payload: CommandApprovalDecision,
@@ -68,7 +70,22 @@ async def decide_command_approval(
         project_id,
         payload.approved,
     ):
-        raise api_error(ErrorCode.AI_COMMAND_APPROVAL_NOT_FOUND, status_code=404)
+        raise api_error(ErrorCode.AI_APPROVAL_NOT_FOUND, status_code=404)
+
+
+@router.get("/skills", response_model=SkillListResponse, responses=error_responses(401, 403, 404))
+def list_skills(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+) -> SkillListResponse:
+    project = project_service.get_project(db, current_user, project_id)
+    return SkillListResponse(
+        skills=[
+            SkillRead(slug=skill.slug, name=skill.name, description=skill.description)
+            for skill in skills.list_skills(Path(project.path))
+        ]
+    )
 
 
 @router.get("/conversations", response_model=ConversationListResponse, responses=_CHAT_ERRORS)
@@ -115,6 +132,12 @@ async def stream_message(
     models = await provider_service.list_models(db, current_user.id, payload.provider_id, settings)
     if not any(model.id == payload.model_id for model in models):
         raise api_error(ErrorCode.AI_CHAT_MODEL_UNAVAILABLE, status_code=422)
+    skill_body: str | None = None
+    if payload.skill is not None:
+        skill_body = skills.load_skill_body(payload.skill, Path(project.path))
+        if skill_body is None:
+            raise api_error(ErrorCode.AI_CHAT_SKILL_UNAVAILABLE, status_code=422)
+    user_content = payload.message or f"/{payload.skill}"
     _, api_key, adapter = provider_service.chat_credentials(
         db, current_user.id, payload.provider_id, settings
     )
@@ -132,7 +155,8 @@ async def stream_message(
         payload.conversation_id,
         payload.provider_id,
         payload.model_id,
-        payload.message,
+        user_content,
+        payload.edit_user_message_id,
     )
     return StreamingResponse(
         stream_chat_turn(
@@ -147,9 +171,10 @@ async def stream_message(
             conversation_id=conversation.id,
             conversation_title=conversation.title,
             user_message_id=user_message.id,
-            user_content=payload.message,
+            user_content=user_content,
             assistant_message=assistant_message,
             history=history,
+            skill_body=skill_body,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

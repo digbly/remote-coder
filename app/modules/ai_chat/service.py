@@ -1,9 +1,11 @@
 import logging
-from sqlalchemy import desc, select
+
+from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
 from app.core import user_settings
 from app.core.errors import ErrorCode, api_error
+from app.modules.ai_changes import service as change_service
 from app.modules.ai_chat.models import ChatMessage, Conversation, MessageRole, MessageStatus
 from app.modules.ai_chat.schemas import (
     ChatMessageRead,
@@ -79,6 +81,7 @@ def prepare_turn(
     provider_id: int,
     model_id: str,
     user_content: str,
+    edit_user_message_id: int | None = None,
 ) -> tuple[Project, Conversation, ChatMessage, ChatMessage, list[ProviderMessage]]:
     project = project_service.get_project(db, user, project_id)
     if conversation_id is None:
@@ -93,6 +96,8 @@ def prepare_turn(
         db.flush()
     else:
         conversation = _get_conversation(db, user.id, project_id, conversation_id)
+        if edit_user_message_id is not None:
+            _truncate_for_edit(db, conversation, edit_user_message_id)
 
     previous = list(
         db.scalars(
@@ -144,11 +149,39 @@ def finish_assistant(
     content: str,
     status: MessageStatus,
     thinking: str = "",
+    error: str = "",
 ) -> None:
     assistant_message.content = content
     assistant_message.thinking = thinking
+    assistant_message.error = error
     assistant_message.status = status
     db.commit()
+
+
+def _truncate_for_edit(
+    db: Session, conversation: Conversation, edit_user_message_id: int
+) -> None:
+    """Drop a user message and everything after it so it can be re-sent.
+
+    Editing replaces an earlier turn, so every later message (and any change
+    proposals they produced) is discarded before the new turn is prepared.
+    """
+    target = db.scalar(
+        select(ChatMessage).where(
+            ChatMessage.id == edit_user_message_id,
+            ChatMessage.conversation_id == conversation.id,
+        )
+    )
+    if target is None or target.role is not MessageRole.USER:
+        raise api_error(ErrorCode.AI_CHAT_MESSAGE_NOT_FOUND, status_code=404)
+    db.execute(
+        delete(ChatMessage).where(
+            ChatMessage.conversation_id == conversation.id,
+            ChatMessage.id >= edit_user_message_id,
+        )
+    )
+    # Commits the message deletion together with the proposal cleanup.
+    change_service.delete_proposals_since(db, conversation.id, target.created_at)
 
 
 def _get_conversation(

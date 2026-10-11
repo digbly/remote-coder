@@ -54,7 +54,11 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Configure AI credential encryption to use providers"
         ),
         "AI_CHAT_CONVERSATION_NOT_FOUND": "Chat conversation not found",
+        "AI_CHAT_MESSAGE_NOT_FOUND": (
+            "That message is no longer available to edit and resend"
+        ),
         "AI_CHAT_MODEL_UNAVAILABLE": "The selected model is not available for this provider",
+        "AI_CHAT_SKILL_UNAVAILABLE": "The selected skill is no longer available",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "The assistant reached a safety limit for this reply. Send another message to continue"
         ),
@@ -65,7 +69,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "AI_CHAT_EMPTY_RESPONSE": (
             "The model returned an empty response. Send another message to retry"
         ),
-        "AI_COMMAND_APPROVAL_NOT_FOUND": "Command approval expired or is no longer available",
+        "AI_APPROVAL_NOT_FOUND": "This approval expired or is no longer available",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Change proposal not found",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Change proposal is no longer pending",
         "AI_CHANGE_PROPOSAL_STALE": "The file changed after the proposal was created",
@@ -131,7 +135,11 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Hãy cấu hình khóa mã hóa trước khi dùng AI provider"
         ),
         "AI_CHAT_CONVERSATION_NOT_FOUND": "Không tìm thấy cuộc trò chuyện",
+        "AI_CHAT_MESSAGE_NOT_FOUND": (
+            "Tin nhắn này không còn để sửa và gửi lại"
+        ),
         "AI_CHAT_MODEL_UNAVAILABLE": "Model đã chọn không khả dụng với provider này",
+        "AI_CHAT_SKILL_UNAVAILABLE": "Skill đã chọn không còn khả dụng",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "Trợ lý đã đạt giới hạn an toàn cho phản hồi này. Hãy gửi thêm tin nhắn để tiếp tục"
         ),
@@ -140,7 +148,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Hãy gửi thêm tin nhắn để tiếp tục"
         ),
         "AI_CHAT_EMPTY_RESPONSE": ("Model trả về nội dung rỗng. Hãy gửi lại tin nhắn để thử lại"),
-        "AI_COMMAND_APPROVAL_NOT_FOUND": "Yêu cầu duyệt lệnh đã hết hạn hoặc không còn khả dụng",
+        "AI_APPROVAL_NOT_FOUND": "Yêu cầu duyệt đã hết hạn hoặc không còn khả dụng",
         "AI_CHANGE_PROPOSAL_NOT_FOUND": "Không tìm thấy đề xuất thay đổi",
         "AI_CHANGE_PROPOSAL_NOT_PENDING": "Đề xuất thay đổi không còn ở trạng thái chờ duyệt",
         "AI_CHANGE_PROPOSAL_STALE": "Tệp đã thay đổi sau khi đề xuất được tạo",
