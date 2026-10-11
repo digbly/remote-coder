@@ -43,6 +43,7 @@ function stripLocalState(state: SyncedState): SyncedState {
       rightOpen: LAYOUT_DEFAULTS.rightOpen,
       rightWidth: LAYOUT_DEFAULTS.rightWidth,
     },
+    activeProjectId: state.activeProjectId,
   }
 }
 
@@ -73,6 +74,7 @@ function mergeLocalState(remote: SyncedState, local: SyncedState): SyncedState {
       rightOpen: local.layout.rightOpen,
       rightWidth: local.layout.rightWidth,
     },
+    activeProjectId: remote.activeProjectId,
   }
 }
 
