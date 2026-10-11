@@ -1,7 +1,8 @@
 import difflib
 import hashlib
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ErrorCode, api_error
@@ -251,6 +252,22 @@ def _persist(
     db.commit()
     db.refresh(proposal)
     return proposal_read(proposal)
+
+
+def delete_proposals_since(db: Session, conversation_id: str, since: datetime) -> int:
+    """Delete proposals created at or after ``since`` in a conversation.
+
+    Used when earlier chat turns are replaced (edit and resend) so proposals
+    produced by discarded turns do not linger in the conversation.
+    """
+    result = db.execute(
+        delete(ChangeProposal).where(
+            ChangeProposal.conversation_id == conversation_id,
+            ChangeProposal.created_at >= since,
+        )
+    )
+    db.commit()
+    return result.rowcount or 0
 
 
 def list_proposals(

@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.ai_chat.models import MessageRole, MessageStatus
 
@@ -31,6 +31,13 @@ class ChatTurnRequest(BaseModel):
     provider_id: int = Field(gt=0)
     model_id: str = Field(min_length=1, max_length=255)
     message: str = Field(min_length=1, max_length=16000)
+    edit_user_message_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _require_conversation_for_edit(self) -> "ChatTurnRequest":
+        if self.edit_user_message_id is not None and self.conversation_id is None:
+            raise ValueError("edit_user_message_id requires conversation_id")
+        return self
 
 
 class ConversationRead(BaseModel):

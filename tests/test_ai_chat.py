@@ -482,6 +482,136 @@ def test_chat_turn_limit_is_streamed_and_persisted(
     assert messages[-1]["error"] == events[-1]["message"]
 
 
+def test_chat_edit_and_resend_replaces_the_turn_and_later_messages(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+    seen_history: list[list[str]] = []
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, _client, _api_key, _model, _system, messages, _tools, *, session_id=None):
+        seen_history.append([message.content for message in messages])
+        yield TextDelta(f"Answer to: {messages[-1].content}")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+
+    def send(message: str, conversation_id: str | None = None, edit_id: int | None = None):
+        payload: dict[str, object] = {
+            "provider_id": provider_id,
+            "model_id": "gpt-test",
+            "message": message,
+        }
+        if conversation_id is not None:
+            payload["conversation_id"] = conversation_id
+        if edit_id is not None:
+            payload["edit_user_message_id"] = edit_id
+        return _events(
+            client.post(
+                f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+                json=payload,
+                headers=_csrf(client),
+            )
+        )
+
+    first = send("First question")
+    conversation_id = first[0]["conversation"]["id"]
+    send("Second question", conversation_id)
+
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    assert [message["content"] for message in messages] == [
+        "First question",
+        "Answer to: First question",
+        "Second question",
+        "Answer to: Second question",
+    ]
+    first_user_id = messages[0]["id"]
+
+    seen_history.clear()
+    edited = send("Edited question", conversation_id, first_user_id)
+
+    detail = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()
+    assert edited[-1]["type"] == "complete"
+    # The edited turn and everything after it are replaced by the new turn.
+    assert [message["content"] for message in detail["messages"]] == [
+        "Edited question",
+        "Answer to: Edited question",
+    ]
+    assert all(message["status"] == "completed" for message in detail["messages"])
+    assert seen_history == [["Edited question"]]
+
+
+def test_chat_edit_rejects_missing_or_assistant_message(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, *_args, **_kwargs):
+        yield TextDelta("Answer")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Question"},
+            headers=_csrf(client),
+        )
+    )
+    conversation_id = events[0]["conversation"]["id"]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    assistant_id = messages[1]["id"]
+
+    for edit_id in (assistant_id, 999_999):
+        response = client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "conversation_id": conversation_id,
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Edited",
+                "edit_user_message_id": edit_id,
+            },
+            headers=_csrf(client),
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "AI_CHAT_MESSAGE_NOT_FOUND"
+
+    missing_conversation = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+        json={
+            "provider_id": provider_id,
+            "model_id": "gpt-test",
+            "message": "Edited",
+            "edit_user_message_id": messages[0]["id"],
+        },
+        headers=_csrf(client),
+    )
+    assert missing_conversation.status_code == 422
+
+    unchanged = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    assert [message["content"] for message in unchanged] == ["Question", "Answer"]
+
+
 def test_chat_retries_transient_provider_error(
     client: TestClient, projects_root, monkeypatch
 ) -> None:

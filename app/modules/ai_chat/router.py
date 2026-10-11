@@ -133,6 +133,7 @@ async def stream_message(
         payload.provider_id,
         payload.model_id,
         payload.message,
+        payload.edit_user_message_id,
     )
     return StreamingResponse(
         stream_chat_turn(

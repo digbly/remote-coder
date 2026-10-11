@@ -1018,6 +1018,7 @@ export async function openAIChatStream(
     provider_id: number
     model_id: string
     message: string
+    edit_user_message_id?: number | null
   },
   signal: AbortSignal,
 ): Promise<Response> {

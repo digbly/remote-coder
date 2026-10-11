@@ -4,6 +4,7 @@ import {
   ArrowUpIcon,
   ChevronDownIcon,
   MonitorIcon,
+  PinIcon,
   PlusIcon,
   WarningIcon,
 } from './icons'
@@ -33,6 +34,8 @@ const brandStyle = { backgroundImage: BRAND_GRADIENT }
 
 const MAX_TEXTAREA_HEIGHT = 192
 const MIN_TEXTAREA_HEIGHT = 24
+const MIN_EDIT_HEIGHT = 72
+const MAX_MESSAGE_CHARS = 16000
 
 const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
 const cardBg = 'bg-white dark:bg-[#1F1F1F]'
@@ -175,6 +178,8 @@ export function ChatPanel({
   const [selectedConversation, setSelectedConversation] = useState(conversationId ?? '')
   const [messages, setMessages] = useState<AIChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editDraft, setEditDraft] = useState('')
   const [loading, setLoading] = useState(true)
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
@@ -182,6 +187,7 @@ export function ChatPanel({
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
   const optimisticIdRef = useRef(0)
   const onStreamingChangeRef = useRef(onStreamingChange)
 
@@ -281,6 +287,13 @@ export function ChatPanel({
     el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT), MAX_TEXTAREA_HEIGHT)}px`
   }, [draft])
 
+  useEffect(() => {
+    const el = editTextareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_EDIT_HEIGHT), MAX_TEXTAREA_HEIGHT)}px`
+  }, [editDraft, editingId])
+
   async function refreshConversations(): Promise<AIConversation[]> {
     const result = await fetchAIConversations(projectId)
     setConversations(result)
@@ -338,11 +351,30 @@ export function ChatPanel({
     }
   }
 
-  async function send(event: FormEvent<HTMLFormElement>) {
+  function beginEdit(message: AIChatMessage) {
+    if (streaming) return
+    setEditingId(message.id)
+    setEditDraft(message.content)
+    setError('')
+  }
+
+  async function resendEdit(message: AIChatMessage) {
+    const content = editDraft.trim()
+    if (!content || streaming) return
+    setEditingId(null)
+    await startTurn(content, message.id)
+  }
+
+  function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = draft.trim()
     if (!content || !providerId || !modelId || streaming) return
     setDraft('')
+    void startTurn(content)
+  }
+
+  async function startTurn(content: string, editUserMessageId?: number) {
+    if (!content || !providerId || !modelId || streaming) return
     setError('')
     setLoadError('')
     setStreaming(true)
@@ -355,7 +387,9 @@ export function ChatPanel({
     let activeConversationId = selectedConversation
     let streamCompleted = false
     setMessages((current) => [
-      ...current,
+      ...(editUserMessageId === undefined
+        ? current
+        : current.filter((message) => message.id < editUserMessageId)),
       {
         id: optimisticUserId,
         role: 'user',
@@ -381,6 +415,7 @@ export function ChatPanel({
           provider_id: providerId,
           model_id: modelId,
           message: content,
+          edit_user_message_id: editUserMessageId ?? null,
         },
         controller.signal,
       )
@@ -512,6 +547,12 @@ export function ChatPanel({
 
   const provider = providers.find((item) => item.id === providerId)
   const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
+  const activeTitle =
+    conversations.find((item) => item.id === selectedConversation)?.title ?? ''
+  const pinnedMessage =
+    messages
+      .findLast((message) => message.role === 'user' && message.content.trim() !== '')
+      ?.content.trim() ?? ''
 
   function describeTool(name: string, path?: string): string {
     const labelKey = TOOL_LABEL_KEYS[name]
@@ -550,7 +591,23 @@ export function ChatPanel({
       data-active={active}
       className={`flex h-full min-h-0 flex-col ${pageBg} ${primaryText}`}
     >
-      <div className="flex items-center justify-end gap-2 px-4 pb-1 pt-2 text-[11px] text-[#666666]">
+      <div className={`flex items-center gap-3 border-b ${cardBorder} px-4 py-2`}>
+        <div className="min-w-0 flex-1">
+          <p className={`truncate text-xs font-semibold ${primaryText}`}>
+            {activeTitle || t('chat.newConversation')}
+          </p>
+          {pinnedMessage && (
+            <p
+              className={`flex items-center gap-1 text-[11px] ${mutedText}`}
+              title={pinnedMessage}
+            >
+              <PinIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {t('chat.pinnedMessage')} · {pinnedMessage}
+              </span>
+            </p>
+          )}
+        </div>
         <select
           className={`${compactSelectClass} max-w-40`}
           value={selectedConversation}
@@ -583,12 +640,15 @@ export function ChatPanel({
         {loadError && <p className={`text-center text-sm ${dangerText}`}>{loadError}</p>}
         {messages.map((message) => {
           const isUser = message.role === 'user'
+          const isEditing = isUser && editingId === message.id
           return (
             <article
               key={`${tabId}-${message.id}`}
               className={
                 isUser
-                  ? `ml-auto w-fit max-w-[85%] rounded-2xl px-4 py-3 ${userBubbleBg} ${primaryText}`
+                  ? isEditing
+                    ? `w-full rounded-2xl px-4 py-3 ${userBubbleBg} ${primaryText}`
+                    : `group ml-auto w-fit max-w-[85%] rounded-2xl px-4 py-3 ${userBubbleBg} ${primaryText}`
                   : 'w-full rounded-none border-0 bg-transparent px-0 py-2'
               }
             >
@@ -599,9 +659,63 @@ export function ChatPanel({
                 <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
               )}
               {isUser ? (
-                <div className={`whitespace-pre-wrap break-words text-[15px] leading-7 ${primaryText}`}>
-                  {message.content}
-                </div>
+                editingId === message.id ? (
+                  <div className="flex flex-col gap-2">
+                    <textarea
+                      ref={editTextareaRef}
+                      value={editDraft}
+                      onChange={(event) => setEditDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setEditingId(null)
+                        } else if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault()
+                          void resendEdit(message)
+                        }
+                      }}
+                      style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
+                      autoFocus
+                      maxLength={MAX_MESSAGE_CHARS}
+                      aria-label={t('chat.edit')}
+                      className={`max-h-48 w-full resize-none overflow-y-auto rounded-xl border border-[#C25C49]/50 bg-white px-3 py-2 text-[15px] leading-7 ${primaryText} outline-none transition focus:border-[#C25C49] focus:ring-2 focus:ring-[#C25C49]/25 dark:bg-black/30`}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className={`rounded-full border ${cardBorder} ${subtleBg} px-3.5 py-1.5 text-xs ${primaryText} transition hover:brightness-95`}
+                      >
+                        {t('chat.cancelEdit')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void resendEdit(message)}
+                        disabled={!editDraft.trim() || streaming}
+                        style={brandStyle}
+                        className={`${gradientButton} px-4 py-1.5 text-xs`}
+                      >
+                        {t('chat.resend')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-end gap-1">
+                    <div className={`whitespace-pre-wrap break-words text-[15px] leading-7 ${primaryText}`}>
+                      {message.content}
+                    </div>
+                    {message.id > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => beginEdit(message)}
+                        disabled={streaming}
+                        title={t('chat.edit')}
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium opacity-0 transition group-hover:opacity-70 focus-visible:opacity-100 hover:opacity-100 [@media(hover:none)]:opacity-60 disabled:hidden ${mutedText}`}
+                      >
+                        {t('chat.edit')}
+                      </button>
+                    )}
+                  </div>
+                )
               ) : message.content ? (
                 <MarkdownMessage content={message.content} />
               ) : message.status === 'streaming' &&
@@ -732,7 +846,7 @@ export function ChatPanel({
                 }
               }}
               rows={1}
-              maxLength={16000}
+              maxLength={MAX_MESSAGE_CHARS}
               placeholder={t('chat.messagePlaceholder')}
               style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
               className={`min-h-9 w-full resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm leading-6 ${primaryText} outline-none ${placeholderText} disabled:opacity-50`}

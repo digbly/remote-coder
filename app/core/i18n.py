@@ -54,6 +54,9 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Configure AI credential encryption to use providers"
         ),
         "AI_CHAT_CONVERSATION_NOT_FOUND": "Chat conversation not found",
+        "AI_CHAT_MESSAGE_NOT_FOUND": (
+            "That message is no longer available to edit and resend"
+        ),
         "AI_CHAT_MODEL_UNAVAILABLE": "The selected model is not available for this provider",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "The assistant reached a safety limit for this reply. Send another message to continue"
@@ -131,6 +134,9 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Hãy cấu hình khóa mã hóa trước khi dùng AI provider"
         ),
         "AI_CHAT_CONVERSATION_NOT_FOUND": "Không tìm thấy cuộc trò chuyện",
+        "AI_CHAT_MESSAGE_NOT_FOUND": (
+            "Tin nhắn này không còn để sửa và gửi lại"
+        ),
         "AI_CHAT_MODEL_UNAVAILABLE": "Model đã chọn không khả dụng với provider này",
         "AI_CHAT_LIMIT_EXCEEDED": (
             "Trợ lý đã đạt giới hạn an toàn cho phản hồi này. Hãy gửi thêm tin nhắn để tiếp tục"

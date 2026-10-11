@@ -498,3 +498,12 @@ export function WarningIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function PinIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 17v5" />
+      <path d="M9 10.8V4h6v6.8l2.2 3.2a1 1 0 0 1-.8 1.6H7.6a1 1 0 0 1-.8-1.6L9 10.8Z" />
+    </Svg>
+  )
+}
