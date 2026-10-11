@@ -218,6 +218,7 @@ const en = {
     searchPlaceholder: 'Search',
     searchNames: 'Names',
     searchContents: 'Contents',
+    searchToggleAdvanced: 'Toggle search options',
     searchFilesToInclude: 'Files to include',
     searchFilesToExclude: 'Files to exclude',
     searchIncludePlaceholder: 'files to include (e.g. *.ts, src/**)',

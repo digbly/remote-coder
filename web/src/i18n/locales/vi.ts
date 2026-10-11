@@ -218,6 +218,7 @@ const vi = {
     searchPlaceholder: 'Tìm kiếm',
     searchNames: 'Tên',
     searchContents: 'Nội dung',
+    searchToggleAdvanced: 'Bật/tắt tùy chọn tìm kiếm',
     searchFilesToInclude: 'Tệp bao gồm',
     searchFilesToExclude: 'Tệp loại trừ',
     searchIncludePlaceholder: 'tệp bao gồm (vd: *.ts, src/**)',

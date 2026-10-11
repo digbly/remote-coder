@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchFileTree,
@@ -22,6 +22,7 @@ import {
   ChevronRightIcon,
   FileIcon,
   FolderIcon,
+  MoreIcon,
   RefreshIcon,
   SearchIcon,
 } from './icons'
@@ -159,7 +160,7 @@ interface SearchToggleProps {
   active: boolean
   label: string
   onClick: () => void
-  children: string
+  children: ReactNode
 }
 
 function SearchToggle({ active, label, onClick, children }: SearchToggleProps) {
@@ -170,7 +171,7 @@ function SearchToggle({ active, label, onClick, children }: SearchToggleProps) {
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-medium transition ${
+      className={`flex h-6 w-6 items-center justify-center rounded text-[11px] font-medium leading-none transition ${
         active
           ? 'bg-indigo-600 text-white'
           : 'text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]'
@@ -222,6 +223,7 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
   const [mode, setMode] = useState<FileSearchMode>('names')
   const [include, setInclude] = useState('')
   const [exclude, setExclude] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
   const [regex, setRegex] = useState(false)
@@ -322,11 +324,11 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
       </div>
 
       <div className="shrink-0 border-b border-[var(--border)] px-2 pb-2">
-        <div className="relative">
+        <div className="flex items-center rounded-md border border-[var(--border)] bg-[var(--bg)] transition focus-within:border-indigo-500">
           <SearchIcon
             width={13}
             height={13}
-            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-2)]"
+            className="pointer-events-none ml-2 shrink-0 text-[var(--muted-2)]"
           />
           <input
             type="text"
@@ -334,34 +336,35 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t('ide.searchPlaceholder')}
             aria-label={t('ide.searchPlaceholder')}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] py-1 pl-7 pr-2 text-[12.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+            className="min-w-0 flex-1 bg-transparent py-1 pl-1.5 pr-1 text-[12.5px] text-[var(--fg)] outline-none"
           />
+          <div className="flex shrink-0 items-center gap-0.5 pr-1">
+            <SearchToggle
+              active={caseSensitive}
+              label={t('ide.searchMatchCase')}
+              onClick={() => setCaseSensitive((value) => !value)}
+            >
+              Aa
+            </SearchToggle>
+            <SearchToggle
+              active={wholeWord}
+              label={t('ide.searchMatchWholeWord')}
+              onClick={() => setWholeWord((value) => !value)}
+            >
+              <span className="underline">ab</span>
+            </SearchToggle>
+            <SearchToggle
+              active={regex}
+              label={t('ide.searchUseRegex')}
+              onClick={() => setRegex((value) => !value)}
+            >
+              .*
+            </SearchToggle>
+          </div>
         </div>
 
-        <div className="mt-1.5 flex items-center gap-0.5">
-          <SearchToggle
-            active={caseSensitive}
-            label={t('ide.searchMatchCase')}
-            onClick={() => setCaseSensitive((value) => !value)}
-          >
-            Aa
-          </SearchToggle>
-          <SearchToggle
-            active={wholeWord}
-            label={t('ide.searchMatchWholeWord')}
-            onClick={() => setWholeWord((value) => !value)}
-          >
-            ab
-          </SearchToggle>
-          <SearchToggle
-            active={regex}
-            label={t('ide.searchUseRegex')}
-            onClick={() => setRegex((value) => !value)}
-          >
-            .*
-          </SearchToggle>
-
-          <div className="ml-auto grid grid-cols-2 rounded-md bg-[var(--hover-subtle)] p-0.5">
+        <div className="mt-1.5 flex items-center">
+          <div className="grid grid-cols-2 rounded-md bg-[var(--hover-subtle)] p-0.5">
             <button
               type="button"
               aria-pressed={mode === 'names'}
@@ -387,26 +390,50 @@ function ExplorerBody({ projectId, onOpenFile }: ExplorerPanelProps) {
               {t('ide.searchContents')}
             </button>
           </div>
+
+          <button
+            type="button"
+            aria-expanded={showAdvanced}
+            aria-controls="explorer-search-advanced"
+            aria-label={t('ide.searchToggleAdvanced')}
+            title={t('ide.searchToggleAdvanced')}
+            onClick={() => setShowAdvanced((value) => !value)}
+            className={`relative ml-auto flex h-6 w-6 items-center justify-center rounded transition ${
+              showAdvanced
+                ? 'bg-[var(--hover)] text-[var(--fg-strong)]'
+                : 'text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--fg-strong)]'
+            }`}
+          >
+            <MoreIcon width={14} height={14} />
+            {!showAdvanced && (include.trim() !== '' || exclude.trim() !== '') && (
+              <span
+                className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-indigo-500"
+                aria-hidden="true"
+              />
+            )}
+          </button>
         </div>
 
-        <div className="mt-1.5 space-y-1">
-          <input
-            type="text"
-            value={include}
-            onChange={(event) => setInclude(event.target.value)}
-            placeholder={t('ide.searchIncludePlaceholder')}
-            aria-label={t('ide.searchFilesToInclude')}
-            className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
-          />
-          <input
-            type="text"
-            value={exclude}
-            onChange={(event) => setExclude(event.target.value)}
-            placeholder={t('ide.searchExcludePlaceholder')}
-            aria-label={t('ide.searchFilesToExclude')}
-            className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
-          />
-        </div>
+        {showAdvanced && (
+          <div id="explorer-search-advanced" className="mt-1.5 space-y-1">
+            <input
+              type="text"
+              value={include}
+              onChange={(event) => setInclude(event.target.value)}
+              placeholder={t('ide.searchIncludePlaceholder')}
+              aria-label={t('ide.searchFilesToInclude')}
+              className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+            />
+            <input
+              type="text"
+              value={exclude}
+              onChange={(event) => setExclude(event.target.value)}
+              placeholder={t('ide.searchExcludePlaceholder')}
+              aria-label={t('ide.searchFilesToExclude')}
+              className="w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[11.5px] text-[var(--fg)] outline-none transition focus:border-indigo-500"
+            />
+          </div>
+        )}
       </div>
 
       <div key={version} className="min-h-0 flex-1 overflow-y-auto px-1 pb-3">
