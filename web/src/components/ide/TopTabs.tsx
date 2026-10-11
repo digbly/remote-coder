@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AgentDefinition } from '../../lib/agents'
 import type { WorkspaceTab } from '../../lib/workspaceStore'
@@ -6,6 +6,11 @@ import { CloseIcon, CommandIcon, PinIcon } from './icons'
 import { NewTabMenu } from './NewTabMenu'
 import { TabContextMenu } from './TabContextMenu'
 import { TAB_DOT_COLORS, tabColorValue } from './tabDisplay'
+
+const DROP_SIDE_CLASS: Record<'before' | 'after', string> = {
+  before: 'shadow-[inset_2px_0_0_0_#6366f1]',
+  after: 'shadow-[inset_-2px_0_0_0_#6366f1]',
+}
 
 interface TopTabsProps {
   tabs: WorkspaceTab[]
@@ -18,6 +23,7 @@ interface TopTabsProps {
   onTogglePin: (id: string) => void
   onRename: (id: string, title: string) => void
   onSetColor: (id: string, color: string | undefined) => void
+  onReorder: (sourceId: string, targetId: string, position: 'before' | 'after') => void
   onNew: (agent?: AgentDefinition) => void
   onNewChat: () => void
   onNewBrowser: () => void
@@ -34,6 +40,7 @@ export function TopTabs({
   onTogglePin,
   onRename,
   onSetColor,
+  onReorder,
   onNew,
   onNewChat,
   onNewBrowser,
@@ -42,6 +49,11 @@ export function TopTabs({
   const [menu, setMenu] = useState<{ tabId: string; x: number; y: number } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{
+    id: string
+    position: 'before' | 'after'
+  } | null>(null)
   const cancelRenameRef = useRef(false)
   const onCloseRef = useRef(onClose)
 
@@ -69,6 +81,12 @@ export function TopTabs({
 
   const menuTab = menu ? tabs.find((tab) => tab.id === menu.tabId) ?? null : null
   const menuIndex = menuTab ? tabs.findIndex((tab) => tab.id === menuTab.id) : -1
+  const draggingTab = dragId ? tabs.find((tab) => tab.id === dragId) ?? null : null
+
+  function dropPosition(event: DragEvent<HTMLElement>): 'before' | 'after' {
+    const rect = event.currentTarget.getBoundingClientRect()
+    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+  }
 
   function beginRename(tab: WorkspaceTab) {
     cancelRenameRef.current = false
@@ -94,15 +112,53 @@ export function TopTabs({
           const active = tab.id === activeId
           const color = tabColorValue(tab.color)
           const editing = editingId === tab.id
+          const dragging = dragId === tab.id
+          const canDrop = draggingTab != null && Boolean(draggingTab.pinned) === Boolean(tab.pinned)
+          const dropSide = canDrop && dropTarget?.id === tab.id ? dropTarget.position : null
           return (
             <div
               key={tab.id}
+              draggable={!editing}
+              onDragStart={(event) => {
+                setDragId(tab.id)
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData('text/plain', tab.id)
+              }}
+              onDragEnd={() => {
+                setDragId(null)
+                setDropTarget(null)
+              }}
+              onDragOver={(event) => {
+                if (dragging) return
+                if (!canDrop) {
+                  setDropTarget((prev) => (prev ? null : prev))
+                  return
+                }
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                const position = dropPosition(event)
+                setDropTarget((prev) =>
+                  prev?.id === tab.id && prev.position === position
+                    ? prev
+                    : { id: tab.id, position },
+                )
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                if (dragId && canDrop && !dragging) {
+                  onReorder(dragId, tab.id, dropPosition(event))
+                }
+                setDragId(null)
+                setDropTarget(null)
+              }}
               onContextMenu={(event) => {
                 event.preventDefault()
                 setMenu({ tabId: tab.id, x: event.clientX, y: event.clientY })
               }}
               style={active && color ? { borderTopColor: color } : undefined}
               className={`group relative flex min-w-[120px] flex-1 items-stretch border-r border-[var(--border)] text-[12px] ${
+                dragging ? 'opacity-50' : ''
+              } ${dropSide ? DROP_SIDE_CLASS[dropSide] : ''} ${
                 active
                   ? 'border-t-2 border-t-indigo-500 bg-[var(--active)] text-[var(--fg-strong)]'
                   : 'text-[var(--text-2)] hover:bg-[var(--menu-hover)] hover:text-[var(--fg-2)]'

@@ -255,6 +255,31 @@ export function withTabPinned(
   return { ...workspaces, [projectId]: { ...workspace, tabs } }
 }
 
+// Move a tab to a new position. Pinned and unpinned tabs are separate groups:
+// a drag across the boundary is ignored so pinned tabs always stay in front.
+export function withReorderedTabs(
+  workspaces: Record<number, ProjectWorkspace>,
+  projectId: number,
+  sourceId: string,
+  targetId: string,
+  position: 'before' | 'after',
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[projectId]
+  if (!workspace || sourceId === targetId) return workspaces
+  const source = workspace.tabs.find((tab) => tab.id === sourceId)
+  const target = workspace.tabs.find((tab) => tab.id === targetId)
+  if (!source || !target || Boolean(source.pinned) !== Boolean(target.pinned)) return workspaces
+  const next = workspace.tabs.filter((tab) => tab.id !== sourceId)
+  const targetIndex = next.findIndex((tab) => tab.id === targetId)
+  if (targetIndex === -1) return workspaces
+  const insertAt = position === 'after' ? targetIndex + 1 : targetIndex
+  next.splice(insertAt, 0, source)
+  return {
+    ...workspaces,
+    [projectId]: { ...workspace, tabs: reorderPinned(next) },
+  }
+}
+
 export function withTabColor(
   workspaces: Record<number, ProjectWorkspace>,
   projectId: number,

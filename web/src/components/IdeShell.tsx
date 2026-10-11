@@ -13,6 +13,7 @@ import {
   withTabTitle,
   withTabPinned,
   withTabColor,
+  withReorderedTabs,
   withRenamedTab,
   withBrowserTab,
   type ActiveProjectRef,
@@ -276,6 +277,15 @@ export function IdeShell({
     }))
   }
 
+  function reorderTabs(sourceId: string, targetId: string, position: 'before' | 'after') {
+    if (activeProjectId == null) return
+    const projectId = activeProjectId
+    update((prev) => ({
+      ...prev,
+      workspaces: withReorderedTabs(prev.workspaces, projectId, sourceId, targetId, position),
+    }))
+  }
+
   function closeProjectTabs(projectId: number) {
     for (const tab of workspaces[projectId]?.tabs ?? []) {
       releaseTabResources(projectId, tab)
@@ -442,6 +452,7 @@ export function IdeShell({
               onTogglePin={toggleTabPin}
               onRename={renameTab}
               onSetColor={setTabColor}
+              onReorder={reorderTabs}
               onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
               onNewChat={openChat}
               onNewBrowser={openBrowser}
