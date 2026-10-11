@@ -193,7 +193,7 @@ export function PinIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M12 17v5" />
-      <path d="M5 17h14v-1.8a2 2 0 0 0-1.1-1.8l-1.8-.9A2 2 0 0 1 15 10.8V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.8a2 2 0 0 1-1.1 1.7l-1.8.9A2 2 0 0 0 5 15.2Z" />
+      <path d="M9 10.8V4h6v6.8l2.2 3.2a1 1 0 0 1-.8 1.6H7.6a1 1 0 0 1-.8-1.6L9 10.8Z" />
     </Svg>
   )
 }
@@ -495,15 +495,6 @@ export function WarningIcon(props: IconProps) {
     <Svg {...props}>
       <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
       <path d="M12 9v4M12 17h.01" />
-    </Svg>
-  )
-}
-
-export function PinIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M12 17v5" />
-      <path d="M9 10.8V4h6v6.8l2.2 3.2a1 1 0 0 1-.8 1.6H7.6a1 1 0 0 1-.8-1.6L9 10.8Z" />
     </Svg>
   )
 }
