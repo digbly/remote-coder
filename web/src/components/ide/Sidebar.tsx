@@ -3,14 +3,23 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import {
   deleteWorktree,
-  fetchProjects,
   fetchRunningTerminals,
-  fetchWorktrees,
   vscodeUrl,
   type Project,
   type User,
   type Worktree,
 } from '../../lib/api'
+import {
+  cachedProjects,
+  cachedWorktrees,
+  loadProjects,
+  loadWorktrees,
+  refreshProjectWorktrees,
+  removeProjectWorktrees,
+  setProjects as setProjectsCache,
+  subscribeProjects,
+  subscribeWorktrees,
+} from '../../lib/projectCache'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import { useConfirm } from '../../lib/confirmContext'
 import {
@@ -38,19 +47,6 @@ const PROJECT_ACCENTS = ['bg-violet-400', 'bg-sky-400', 'bg-emerald-400', 'bg-am
 
 function projectAccent(index: number) {
   return PROJECT_ACCENTS[index % PROJECT_ACCENTS.length]
-}
-
-async function loadWorktrees(projects: Project[]): Promise<Record<number, Worktree[]>> {
-  const entries = await Promise.all(
-    projects.map(async (project) => {
-      try {
-        return [project.id, await fetchWorktrees(project.id)] as const
-      } catch {
-        return [project.id, [] as Worktree[]] as const
-      }
-    }),
-  )
-  return Object.fromEntries(entries)
 }
 
 function NavItem({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
@@ -327,8 +323,10 @@ export function Sidebar({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const confirm = useConfirm()
-  const [projects, setProjects] = useState<Project[] | null>(null)
-  const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>({})
+  const [projects, setProjects] = useState<Project[] | null>(() => cachedProjects())
+  const [worktrees, setWorktrees] = useState<Record<number, Worktree[]>>(
+    () => cachedWorktrees() ?? {},
+  )
   const [runningTerminals, setRunningTerminals] = useState<Record<number, string[]>>({})
   const [error, setError] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
@@ -359,18 +357,21 @@ export function Sidebar({
 
   useEffect(() => {
     let active = true
-    fetchProjects()
-      .then(async (list) => {
-        if (!active) return
-        setProjects(list)
-        const loaded = await loadWorktrees(list)
-        if (active) setWorktrees(loaded)
-      })
+    const unsubscribeProjects = subscribeProjects((list) => {
+      if (active) setProjects(list)
+    })
+    const unsubscribeWorktrees = subscribeWorktrees((list) => {
+      if (active) setWorktrees(list)
+    })
+    loadProjects()
+      .then(() => loadWorktrees())
       .catch(() => {
-        if (active) setError(true)
+        if (active && cachedProjects() === null) setError(true)
       })
     return () => {
       active = false
+      unsubscribeProjects()
+      unsubscribeWorktrees()
     }
   }, [])
 
@@ -397,18 +398,14 @@ export function Sidebar({
   function handleCreated(project: Project) {
     setShowNewProject(false)
     setError(false)
-    setProjects((prev) => (prev ? [project, ...prev] : [project]))
-    fetchWorktrees(project.id)
-      .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
-      .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: [] })))
+    setProjectsCache([project, ...(cachedProjects() ?? [])])
+    void refreshProjectWorktrees(project.id)
     onOpenProject(project)
   }
 
   function handleWorktreeCreated(project: Project, worktree: Worktree) {
     setWorktreeTarget(null)
-    fetchWorktrees(project.id)
-      .then((list) => setWorktrees((prev) => ({ ...prev, [project.id]: list })))
-      .catch(() => setWorktrees((prev) => ({ ...prev, [project.id]: prev[project.id] ?? [] })))
+    void refreshProjectWorktrees(project.id)
     onOpenWorktree(project, worktree.name)
   }
 
@@ -451,11 +448,7 @@ export function Sidebar({
     deleteWorktree(current.project.id, worktree.name)
       .then(() => {
         onWorktreeDeleted(current.project.id, worktree.name)
-        fetchWorktrees(current.project.id)
-          .then((list) => setWorktrees((prev) => ({ ...prev, [current.project.id]: list })))
-          .catch(() => {
-            /* the worktree is gone; keep the previous list if the refresh fails */
-          })
+        void refreshProjectWorktrees(current.project.id)
       })
       .catch((err) => {
         setMenuError(err instanceof Error ? err.message : t('ide.deleteWorktreeFailed'))
@@ -472,12 +465,8 @@ export function Sidebar({
 
   function handleProjectDeleted(projectId: number) {
     setProjectToDelete(null)
-    setProjects((prev) => (prev ? prev.filter((project) => project.id !== projectId) : prev))
-    setWorktrees((prev) => {
-      const next = { ...prev }
-      delete next[projectId]
-      return next
-    })
+    setProjectsCache((cachedProjects() ?? []).filter((project) => project.id !== projectId))
+    removeProjectWorktrees(projectId)
     onProjectDeleted(projectId)
   }
 

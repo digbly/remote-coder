@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchMe, login as apiLogin, logout as apiLogout, type User } from './api'
 import { AuthContext, type AuthContextValue } from './authContext'
+import { resetProjectCache } from './projectCache'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiLogout()
     } finally {
+      resetProjectCache()
       setUser(null)
     }
   }, [])
