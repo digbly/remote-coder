@@ -74,6 +74,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "VSCODE_START_FAILED": "Could not start the VS Code server",
         "VSCODE_PROXY_FAILED": "Could not reach the VS Code server",
         "VSCODE_FORBIDDEN": "Cross-site request rejected",
+        "BROWSER_DISABLED": "The browser is disabled",
+        "BROWSER_START_FAILED": "Could not start the browser",
+        "BROWSER_PROXY_FAILED": "Could not reach the browser",
+        "BROWSER_FORBIDDEN": "Cross-site request rejected",
+        "BROWSER_NAVIGATION_FAILED": "Could not navigate the browser",
+        "BROWSER_COMMAND_FAILED": "Could not control the browser",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -143,6 +149,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "VSCODE_START_FAILED": "Không thể khởi động VS Code server",
         "VSCODE_PROXY_FAILED": "Không thể kết nối tới VS Code server",
         "VSCODE_FORBIDDEN": "Từ chối yêu cầu cross-site",
+        "BROWSER_DISABLED": "Trình duyệt đang bị tắt",
+        "BROWSER_START_FAILED": "Không thể khởi động trình duyệt",
+        "BROWSER_PROXY_FAILED": "Không thể kết nối tới trình duyệt",
+        "BROWSER_FORBIDDEN": "Từ chối yêu cầu cross-site",
+        "BROWSER_NAVIGATION_FAILED": "Không thể điều hướng trình duyệt",
+        "BROWSER_COMMAND_FAILED": "Không thể điều khiển trình duyệt",
     },
 }
 

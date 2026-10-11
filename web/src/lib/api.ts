@@ -64,6 +64,12 @@ const ERROR_CODE_KEYS = {
   VSCODE_START_FAILED: 'apiErrors.vscodeStartFailed',
   VSCODE_PROXY_FAILED: 'apiErrors.vscodeProxyFailed',
   VSCODE_FORBIDDEN: 'apiErrors.vscodeForbidden',
+  BROWSER_DISABLED: 'apiErrors.browserDisabled',
+  BROWSER_START_FAILED: 'apiErrors.browserStartFailed',
+  BROWSER_PROXY_FAILED: 'apiErrors.browserProxyFailed',
+  BROWSER_FORBIDDEN: 'apiErrors.browserForbidden',
+  BROWSER_NAVIGATION_FAILED: 'apiErrors.browserNavigationFailed',
+  BROWSER_COMMAND_FAILED: 'apiErrors.browserCommandFailed',
 } as const
 
 export interface User {
@@ -1010,6 +1016,89 @@ export function projectTerminalUrl(
 
 export function vscodeUrl(projectId: number, worktree: string): string {
   return `${API_PREFIX}/projects/${projectId}/vscode/${encodeURIComponent(worktree)}/`
+}
+
+export function browserStreamUrl(projectId: number, sessionId: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/browser/stream?session=${encodeURIComponent(sessionId)}`
+}
+
+export async function navigateBrowser(
+  projectId: number,
+  sessionId: string,
+  url: string,
+): Promise<void> {
+  await browserControlRequest(projectId, sessionId, 'navigate', { url })
+}
+
+export async function controlBrowser(
+  projectId: number,
+  sessionId: string,
+  action: 'back' | 'forward' | 'reload',
+): Promise<void> {
+  await browserControlRequest(projectId, sessionId, action)
+}
+
+export async function setBrowserViewport(
+  projectId: number,
+  sessionId: string,
+  width: number,
+  height: number,
+): Promise<void> {
+  await browserControlRequest(projectId, sessionId, 'viewport', { width, height })
+}
+
+export async function insertBrowserText(
+  projectId: number,
+  sessionId: string,
+  text: string,
+): Promise<void> {
+  await browserControlRequest(projectId, sessionId, 'insert', { text })
+}
+
+export async function fetchBrowserSelection(
+  projectId: number,
+  sessionId: string,
+): Promise<string> {
+  const response = await request(
+    `/projects/${projectId}/browser/selection?session=${encodeURIComponent(sessionId)}`,
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  const data = (await response.json()) as { text?: string }
+  return data.text ?? ''
+}
+
+export async function closeBrowserSession(
+  projectId: number,
+  sessionId: string,
+): Promise<void> {
+  await request(`/projects/${projectId}/browser/session?session=${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  })
+}
+
+async function browserControlRequest(
+  projectId: number,
+  sessionId: string,
+  action: string,
+  body?: Record<string, unknown>,
+): Promise<void> {
+  const response = await request(
+    `/projects/${projectId}/browser/${action}?session=${encodeURIComponent(sessionId)}`,
+    {
+      method: 'POST',
+      ...(body
+        ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        : {}),
+    },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
 }
 
 export function workspaceUrl(): string {

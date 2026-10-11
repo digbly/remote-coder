@@ -87,6 +87,18 @@ class Settings(BaseSettings):
     vscode_max_sessions: int = 4
     vscode_extra_args: str = ""
 
+    browser_enabled: bool = True
+    browser_binary: str = "agent-browser"
+    browser_bind_host: str = "127.0.0.1"
+    browser_stream_quality: int = 60
+    browser_stream_max_fps: int = 30
+    browser_headless: bool = True
+    browser_start_timeout_seconds: int = 30
+    browser_session_ttl_seconds: int = 3600
+    browser_max_sessions: int = 2
+    browser_allowed_domains: str = ""
+    browser_extra_args: str = ""
+
     @model_validator(mode="after")
     def _derive_vscode_user_data_root(self) -> "Settings":
         if not self.vscode_user_data_root:
