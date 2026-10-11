@@ -114,6 +114,23 @@ export function PlusIcon(props: IconProps) {
   )
 }
 
+export function MinusIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+    </Svg>
+  )
+}
+
+export function DiscardIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8.5 5.5 5 9l3.5 3.5" />
+      <path d="M8.5 9H13a6.5 6.5 0 0 1 0 11H8.5" />
+    </Svg>
+  )
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Svg {...props}>
@@ -169,6 +186,21 @@ export function FileIcon(props: IconProps) {
   )
 }
 
+export function GitFileIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3v5h5" />
+      <g transform="translate(12 13.8) scale(0.52) translate(-12 -12)" strokeWidth="3.4">
+        <circle cx="6" cy="5" r="2.5" />
+        <circle cx="6" cy="19" r="2.5" />
+        <circle cx="18" cy="7" r="2.5" />
+        <path d="M6 7.5v9M18 9.5a6 6 0 0 1-6 6H9" />
+      </g>
+    </Svg>
+  )
+}
+
 export function CommitIcon(props: IconProps) {
   return (
     <Svg {...props}>
@@ -194,15 +226,6 @@ export function CheckIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="m4 12 5 5L20 6" />
-    </Svg>
-  )
-}
-
-export function UndoIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M3 7v6h6" />
-      <path d="M3.5 13a9 9 0 1 0 2.6-6.4L3 9" />
     </Svg>
   )
 }

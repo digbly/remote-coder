@@ -11,7 +11,6 @@ import {
   generateCommitMessage,
   pullBranch,
   pushBranch,
-  stageAllPaths,
   stagePaths,
   unstageAllPaths,
   unstagePaths,
@@ -25,14 +24,14 @@ import {
   CloudDownloadIcon,
   CloudUploadIcon,
   CommitIcon,
-  FileIcon,
+  DiscardIcon,
+  GitFileIcon,
+  MinusIcon,
   PlusIcon,
   PrIcon,
   RefreshIcon,
   SparklesIcon,
   SpinnerIcon,
-  TrashIcon,
-  UndoIcon,
 } from './icons'
 import { BranchMenu } from './BranchMenu'
 import { gitStatusColor, GIT_STATUS_REFRESH_INTERVAL_MS } from './gitStatus'
@@ -50,7 +49,7 @@ function PathRow({
 }) {
   const content = (
     <>
-      <FileIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
+      <GitFileIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
       <span className="truncate text-[var(--fg-3-alt)]" title={label}>
         {label}
       </span>
@@ -110,12 +109,16 @@ function Section({
 }) {
   return (
     <div className="mt-3">
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+      <div className="group flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
         <ChevronDownIcon width={12} height={12} />
         <span>
           {title} {count}
         </span>
-        {action && <span className="ml-auto">{action}</span>}
+        {action && (
+          <span className="ml-auto flex items-center gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+            {action}
+          </span>
+        )}
       </div>
       <div className="space-y-0.5">{children}</div>
     </div>
@@ -143,30 +146,6 @@ function RowAction({
       className="rounded p-0.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
-    </button>
-  )
-}
-
-function ToolbarButton({
-  label,
-  onClick,
-  disabled,
-  children,
-}: {
-  label: string
-  onClick: () => void
-  disabled: boolean
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--btn)] px-2.5 py-1 text-[12px] font-medium text-[var(--fg-2)] transition hover:bg-[var(--hover-alt)] disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      {children}
-      {label}
     </button>
   )
 }
@@ -233,10 +212,6 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
 
   const canCommit = status !== null && status.staged.length > 0 && message.trim().length > 0
   const canOpenPullRequest = status !== null && branch.trim().length > 0
-  const canStageAll = status !== null && (status.unstaged.length > 0 || status.untracked.length > 0)
-  const canDiscardAll =
-    status !== null &&
-    (status.staged.length > 0 || status.unstaged.length > 0 || status.untracked.length > 0)
   const canPull = status !== null && Boolean(status.upstream)
 
   function runAction(
@@ -277,16 +252,6 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     )
   }
 
-  function handleStageAll() {
-    runAction(
-      'stage',
-      async () => {
-        setStatus(await stageAllPaths(projectId))
-      },
-      t('ide.stageFailed'),
-    )
-  }
-
   function handleUnstageAll() {
     runAction(
       'stage',
@@ -307,13 +272,8 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     )
   }
 
-  function handleDiscardAll() {
-    if (!status || !window.confirm(t('ide.discardConfirm'))) return
-    const paths = [
-      ...status.staged.flatMap(discardTargets),
-      ...status.unstaged.flatMap(discardTargets),
-      ...status.untracked,
-    ]
+  function confirmDiscard(paths: string[]) {
+    if (paths.length === 0 || !window.confirm(t('ide.discardConfirm'))) return
     handleDiscard(paths)
   }
 
@@ -535,22 +495,6 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
         )}
         {!loading && !error && status && !clean && (
           <>
-            <div className="flex items-center gap-2 px-1.5 pt-1.5">
-              <ToolbarButton
-                label={t('ide.stageAll')}
-                onClick={handleStageAll}
-                disabled={disabled || !canStageAll}
-              >
-                <PlusIcon width={14} height={14} />
-              </ToolbarButton>
-              <ToolbarButton
-                label={t('ide.discardAll')}
-                onClick={handleDiscardAll}
-                disabled={disabled || !canDiscardAll}
-              >
-                <TrashIcon width={14} height={14} />
-              </ToolbarButton>
-            </div>
             {status.conflicted.length > 0 && (
               <Section title={t('ide.conflicts')} count={status.conflicted.length}>
                 {status.conflicted.map((path) => (
@@ -573,7 +517,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                     disabled={disabled}
                     onClick={handleUnstageAll}
                   >
-                    <UndoIcon width={14} height={14} />
+                    <MinusIcon width={14} height={14} />
                   </RowAction>
                 }
               >
@@ -589,14 +533,14 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                           disabled={disabled}
                           onClick={() => handleDiscard(discardTargets(file))}
                         >
-                          <TrashIcon width={14} height={14} />
+                          <DiscardIcon width={14} height={14} />
                         </RowAction>
                         <RowAction
                           label={t('ide.unstage')}
                           disabled={disabled}
                           onClick={() => handleUnstage([file.path])}
                         >
-                          <UndoIcon width={14} height={14} />
+                          <MinusIcon width={14} height={14} />
                         </RowAction>
                       </>
                     }
@@ -605,7 +549,28 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
               </Section>
             )}
             {status.unstaged.length > 0 && (
-              <Section title={t('ide.changes')} count={status.unstaged.length}>
+              <Section
+                title={t('ide.changes')}
+                count={status.unstaged.length}
+                action={
+                  <>
+                    <RowAction
+                      label={t('ide.discardAll')}
+                      disabled={disabled}
+                      onClick={() => confirmDiscard(status.unstaged.flatMap(discardTargets))}
+                    >
+                      <DiscardIcon width={14} height={14} />
+                    </RowAction>
+                    <RowAction
+                      label={t('ide.stageAll')}
+                      disabled={disabled}
+                      onClick={() => handleStage(status.unstaged.map((file) => file.path))}
+                    >
+                      <PlusIcon width={14} height={14} />
+                    </RowAction>
+                  </>
+                }
+              >
                 {status.unstaged.map((file) => (
                   <ChangeRow
                     key={`unstaged:${file.path}`}
@@ -618,7 +583,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                           disabled={disabled}
                           onClick={() => handleDiscard(discardTargets(file))}
                         >
-                          <TrashIcon width={14} height={14} />
+                          <DiscardIcon width={14} height={14} />
                         </RowAction>
                         <RowAction
                           label={t('ide.stage')}
@@ -634,7 +599,28 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
               </Section>
             )}
             {status.untracked.length > 0 && (
-              <Section title={t('ide.untracked')} count={status.untracked.length}>
+              <Section
+                title={t('ide.untracked')}
+                count={status.untracked.length}
+                action={
+                  <>
+                    <RowAction
+                      label={t('ide.discardAll')}
+                      disabled={disabled}
+                      onClick={() => confirmDiscard(status.untracked)}
+                    >
+                      <DiscardIcon width={14} height={14} />
+                    </RowAction>
+                    <RowAction
+                      label={t('ide.stageAll')}
+                      disabled={disabled}
+                      onClick={() => handleStage(status.untracked)}
+                    >
+                      <PlusIcon width={14} height={14} />
+                    </RowAction>
+                  </>
+                }
+              >
                 {status.untracked.map((path) => (
                   <PathRow
                     key={`untracked:${path}`}
@@ -648,7 +634,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
                           disabled={disabled}
                           onClick={() => handleDiscard([path])}
                         >
-                          <TrashIcon width={14} height={14} />
+                          <DiscardIcon width={14} height={14} />
                         </RowAction>
                         <RowAction
                           label={t('ide.stage')}

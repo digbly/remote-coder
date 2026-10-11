@@ -565,10 +565,6 @@ export function unstagePaths(projectId: number, paths: string[]): Promise<GitSta
   return postJson(`/projects/${projectId}/git/unstage`, { paths })
 }
 
-export function stageAllPaths(projectId: number): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/stage-all`, {})
-}
-
 export function unstageAllPaths(projectId: number): Promise<GitStatus> {
   return postJson(`/projects/${projectId}/git/unstage-all`, {})
 }
