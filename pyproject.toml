@@ -51,3 +51,27 @@ target-version = ["py312"]
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+
+[tool.pylint.main]
+fail-under = "9.0"
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "duplicate-code",
+    "redefined-outer-name",
+    "unused-argument",
+    "protected-access",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-return-statements",
+    "too-many-statements",
+    "too-many-nested-blocks",
+    "too-many-instance-attributes",
+    "too-many-lines",
+]
