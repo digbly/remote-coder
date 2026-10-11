@@ -34,10 +34,6 @@ Uvicorn. Python 3.12, Git, Git LFS, GitHub CLI, and code-server are included.
 docker build -t remote-coder .
 docker run --rm --name remote-coder \
   -p 8000:8000 \
-  -v remote-coder-projects:/home/remote-coder/projects \
-  -v remote-coder-database:/app/database \
-  -v remote-coder-logs:/app/storage/logs \
-  -v remote-coder-vscode:/home/remote-coder/.remote-coder/vscode/cache \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -e ADMIN_PASSWORD='replace-with-a-strong-password' \
   -e AI_CREDENTIAL_ENCRYPTION_KEY='replace-with-a-generated-fernet-key' \

@@ -1,92 +1,24 @@
 # Installation
 
-This guide covers everything needed to run Remote Coder locally.
+This guide explains how to install and run Remote Coder locally.
 
-## Prerequisites
+## Requirements
 
-| Tool | Version | Purpose |
-| --- | --- | --- |
-| Python | >= 3.12 | API server |
-| [uv](https://docs.astral.sh/uv/) | latest | Python environment and dependencies |
-| Node.js + npm | >= 18 | Web (Vite) frontend |
-| git | any | Project/worktree operations |
-| [Git LFS](https://git-lfs.com/) | latest | Large files in Git repositories |
-| [GitHub CLI](https://cli.github.com/) | latest | Authenticated GitHub clone and pull requests |
-| [code-server](https://github.com/coder/code-server) | latest | VS Code server (IDE panel) |
+- Python 3.12 or later and [uv](https://docs.astral.sh/uv/)
+- Node.js 18 or later and npm
+- Git
 
-Install Git LFS and initialize its Git hooks before pushing repositories that
-use LFS:
+Install these tools if you need the corresponding integrations:
 
-```bash
-sudo apt-get install git-lfs
-git lfs install
-```
+- [code-server](https://github.com/coder/code-server) for the VS Code panel.
+- [agent-browser](https://github.com/vercel-labs/agent-browser) and Chrome for
+  the Browser tab.
+- [GitHub CLI](https://cli.github.com/) to clone private GitHub repositories
+  or create pull requests.
 
-## 1. Install code-server
+## Install dependencies
 
-The IDE panel launches a `code-server` process, and the app resolves the
-`code-server` binary from `PATH` (see `vscode_binary` in `app/core/config.py`).
-Without it, opening the IDE fails with:
-
-```json
-{"detail":{"code":"VSCODE_START_FAILED","message":"Không thể khởi động VS Code server"}}
-```
-
-Install it with one of the following:
-
-```bash
-# Official install script (recommended)
-curl -fsSL https://code-server.dev/install.sh | sh
-
-# npm
-npm i -g code-server
-
-# snap (classic)
-sudo snap install code-server --classic
-```
-
-Verify the install:
-
-```bash
-code-server --version
-```
-
-If the binary lives outside `PATH`, point the app at it via `.env`:
-
-```
-VSCODE_BINARY=/absolute/path/to/code-server
-```
-
-## 1b. Install agent-browser
-
-The live Browser tab streams a real Chrome session driven by
-[`agent-browser`](https://github.com/vercel-labs/agent-browser). Install the
-CLI and download Chrome for Testing:
-
-```bash
-npm install -g agent-browser
-agent-browser install --with-deps   # Linux: also installs required libraries
-```
-
-`--with-deps` runs the system package manager, so it needs root (use `sudo`).
-`npm install -g` only needs root when npm's global prefix is system-owned (it
-does not under nvm). Run `agent-browser install` as the **same user that runs
-the API** so Chrome lands in that user's home; otherwise the server cannot find
-it.
-
-Verify the install:
-
-```bash
-agent-browser --version
-```
-
-If the binary lives outside `PATH`, point the app at it via `.env`:
-
-```
-BROWSER_BINARY=/absolute/path/to/agent-browser
-```
-
-## 2. Set up the API
+Set up the API environment:
 
 ```bash
 uv venv --python 3.12 .venv
@@ -94,113 +26,51 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 ```
 
-## 3. Set up the web frontend
+Install the web dependencies:
 
 ```bash
 npm install --prefix web
 ```
 
-## 4. Configure environment
+## Configure the application
+
+Create the local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Generate a Fernet key with the project's Python environment:
+Set `ADMIN_PASSWORD` in `.env` before exposing the app beyond your local
+machine. To save AI provider credentials, set `AI_CREDENTIAL_ENCRYPTION_KEY`
+to a Fernet key. Generate one with the project environment:
 
 ```bash
 .venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-Copy the generated value into `.env` as `AI_CREDENTIAL_ENCRYPTION_KEY`. Keep
-this key secret, back it up securely, and reuse the same value across restarts
-and deployments. Do not generate a new key when restarting the app: changing
-it makes saved AI provider credentials unreadable, so they must be entered
-again.
+Keep this key secret and reuse it across restarts. Changing it makes saved AI
+provider credentials unreadable.
 
-Then adjust the other values in `.env` as needed (admin credentials, etc.).
-
-Authenticate the GitHub CLI as the same operating-system user that runs the API.
-GitHub project cloning uses that login, including for private repositories:
+If you use GitHub integrations, authenticate the GitHub CLI as the same
+operating-system user that runs the API:
 
 ```bash
 gh auth login
-gh auth status
 ```
 
-The Dev Container installs GitHub CLI automatically. For other environments,
-install it using the [official installation instructions](https://github.com/cli/cli/blob/trunk/docs/install_linux.md),
-then verify it with `gh --version`.
+## Run the application
 
-## 5. Run
-
-Run the API and web dev servers together:
+Start the API and web development servers:
 
 ```bash
 ./scripts/dev.sh
 ```
 
-- API: http://127.0.0.1:8000 (docs at `/docs`)
-- Web (Vite): http://localhost:5173
+The script creates `.env` from `.env.example` if it does not exist.
 
-Or run each separately:
+- Web app: http://localhost:5173
+- API: http://127.0.0.1:8000
+- API docs: http://127.0.0.1:8000/docs
 
-```bash
-uvicorn app.main:app --reload
-npm run dev --prefix web
-```
-
-## Troubleshooting
-
-### `VSCODE_START_FAILED`
-
-The VS Code server could not start. Most commonly `code-server` is missing
-from `PATH`. Confirm with `code-server --version` and install it (step 1).
-
-Other things to check:
-
-- Ports `8800-8900` (or `VSCODE_PORT_START`/`VSCODE_PORT_END`) are free.
-- `code-server` has write access to its data dir
-  (`~/.remote-coder/vscode/cache` by default).
-
-### `BROWSER_START_FAILED` / the Browser tab is blank
-
-The live Browser tab streams a real Chrome session driven by `agent-browser`.
-When the binary or Chrome is missing the session cannot start, and the tab
-reports **"Could not start the browser"** (error code `BROWSER_START_FAILED`).
-
-Install it (see step 1b):
-
-```bash
-npm install -g agent-browser
-agent-browser install --with-deps   # downloads Chrome for Testing + libs
-```
-
-Confirm the install (step 1b):
-
-```bash
-agent-browser --version
-agent-browser stream status --json   # expect {"enabled": true, ...}
-```
-
-Other things to check:
-
-- Restart the API after installing `agent-browser` so the new binary is picked
-  up from `PATH` (or point at it with `BROWSER_BINARY`).
-- Chrome for Testing is present; re-run `agent-browser install --with-deps`.
-- The API log shows `browser stream connect failed at ws://127.0.0.1:<port>/...`
-  when it cannot reach the session's stream server; the port comes from
-  `agent-browser stream status --json`.
-- To disable the feature entirely, set `BROWSER_ENABLED=false`.
-
-The tab and the AI agent share one browser per project, so the address bar
-navigates that shared session. Use `BROWSER_ALLOWED_DOMAINS` (comma-separated)
-to restrict which hosts the browser may reach.
-
-### `uvicorn not found`
-
-The API dependencies are not installed. Run step 2.
-
-### `web/node_modules not found`
-
-The frontend dependencies are not installed. Run step 3.
+For help resolving setup and runtime errors, see
+[Troubleshooting](troubleshooting.md).
