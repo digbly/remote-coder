@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useIsMobile } from '../../lib/useMediaQuery'
+import {
+  ArrowUpIcon,
+  ChevronDownIcon,
+  MonitorIcon,
+  PlusIcon,
+  WarningIcon,
+} from './icons'
+import { MarkdownMessage } from './MarkdownMessage'
 import {
   decideAICommand,
   consumeChatStream,
@@ -20,13 +27,13 @@ import {
   type AIProvider,
   type AIProviderModel,
 } from '../../lib/chat'
-import { ArrowUpIcon, ChevronDownIcon, SettingsIcon } from './icons'
 
 const BRAND_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D98A5B 100%)'
 const USER_BUBBLE_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D88962 100%)'
 const brandStyle = { backgroundImage: BRAND_GRADIENT }
 
 const MAX_TEXTAREA_HEIGHT = 192
+const MIN_TEXTAREA_HEIGHT = 24
 
 const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
 const cardBg = 'bg-white dark:bg-[#1F1F1F]'
@@ -42,7 +49,14 @@ const focusRing =
   'focus:border-[#C25C49] focus:ring-2 focus:ring-[#C25C49]/30'
 const placeholderText = 'placeholder:text-[#6B6B6B] dark:placeholder:text-[#AAAAAA]'
 
-const selectClass = `rounded-lg border ${cardBorder} ${subtleBg} px-2.5 py-1.5 text-base ${primaryText} outline-none transition ${focusRing} disabled:opacity-50 md:text-xs`
+const compactSelectClass = `appearance-none rounded-full border border-[#E7E7E7] bg-[#F5F5F5] px-2.5 py-1 text-[11px] ${primaryText} outline-none transition ${focusRing} disabled:opacity-50`
+
+const composerShell = `flex flex-col rounded-3xl border ${cardBorder} ${cardBg} px-3 pb-2 pt-3 shadow-sm transition focus-within:border-[#C25C49] focus-within:ring-2 focus-within:ring-[#C25C49]/25`
+const composerIconButton = `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${mutedText} transition hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/10`
+const composerSendButton =
+  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100'
+const composerSelect = `max-w-[10.5rem] cursor-pointer appearance-none truncate rounded-full bg-transparent py-1 pl-2.5 pr-6 text-[12px] ${primaryText} outline-none transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10`
+const composerMetaItem = `inline-flex items-center gap-1.5 rounded-full bg-transparent px-1.5 py-1 text-[11px] ${mutedText} transition hover:bg-black/5 dark:hover:bg-white/10`
 
 const gradientButton =
   'inline-flex items-center justify-center rounded-full font-medium text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100'
@@ -145,7 +159,6 @@ export function ChatPanel({
   onStreamingChange?: (streaming: boolean) => void
 }) {
   const { t } = useTranslation()
-  const isMobile = useIsMobile()
   const [providers, setProviders] = useState<AIProvider[]>([])
   const [providerId, setProviderId] = useState<number | null>(null)
   const [models, setModels] = useState<AIProviderModel[]>([])
@@ -166,7 +179,6 @@ export function ChatPanel({
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
-  const [controlsOpen, setControlsOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -266,7 +278,7 @@ export function ChatPanel({
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT), MAX_TEXTAREA_HEIGHT)}px`
   }, [draft])
 
   async function refreshConversations(): Promise<AIConversation[]> {
@@ -500,10 +512,6 @@ export function ChatPanel({
 
   const provider = providers.find((item) => item.id === providerId)
   const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
-  const fieldLabelClass = `flex text-xs ${mutedText} ${
-    isMobile ? 'flex-col gap-1' : 'items-center gap-2'
-  }`
-  const fieldSelectClass = `${selectClass} ${isMobile ? 'w-full' : ''}`
 
   function describeTool(name: string, path?: string): string {
     const labelKey = TOOL_LABEL_KEYS[name]
@@ -542,112 +550,24 @@ export function ChatPanel({
       data-active={active}
       className={`flex h-full min-h-0 flex-col ${pageBg} ${primaryText}`}
     >
-      <div className={`shrink-0 border-b ${cardBorder} ${cardBg}`}>
-        {isMobile && (
-          <button
-            type="button"
-            onClick={() => setControlsOpen((value) => !value)}
-            aria-expanded={controlsOpen}
-            className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs ${primaryText} transition hover:opacity-80`}
-          >
-            <SettingsIcon width={14} height={14} className={`shrink-0 ${mutedText}`} />
-            <span className="min-w-0 flex-1 truncate">
-              {provider ? provider.name : t('chat.selectProvider')}
-              {' · '}
-              {modelId || t('chat.selectModel')}
-            </span>
-            <ChevronDownIcon
-              width={14}
-              height={14}
-              className={`shrink-0 ${mutedText} transition-transform ${controlsOpen ? 'rotate-180' : ''}`}
-            />
-          </button>
-        )}
-        <div
-          className={
-            isMobile
-              ? controlsOpen
-                ? 'flex flex-col items-stretch gap-3 px-4 py-3'
-                : 'hidden'
-              : 'flex flex-wrap items-center gap-2 px-4 py-2.5'
-          }
+      <div className="flex items-center justify-end gap-2 px-4 pb-1 pt-2 text-[11px] text-[#666666]">
+        <select
+          className={`${compactSelectClass} max-w-40`}
+          value={selectedConversation}
+          onChange={(event) => void selectConversation(event.target.value)}
+          disabled={streaming}
+          aria-label={t('chat.history')}
         >
-          <label className={fieldLabelClass}>
-            {t('chat.provider')}
-            <select
-              className={fieldSelectClass}
-              value={providerId ?? ''}
-              onChange={(event) => {
-                const next = Number(event.target.value) || null
-                setProviderId(next)
-                setModels([])
-                setModelId('')
-              }}
-              disabled={loading || streaming || permissionSaving}
-            >
-              <option value="">{t('chat.selectProvider')}</option>
-              {providers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} ({item.kind})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={fieldLabelClass}>
-            {t('chat.commandPermission')}
-            <select
-              className={fieldSelectClass}
-              value={commandPermission}
-              onChange={(event) => {
-                const mode = event.target.value
-                if (mode === 'manual' || mode === 'risky' || mode === 'allow_all') {
-                  void changeCommandPermission(mode)
-                }
-              }}
-              disabled={loading || streaming || permissionSaving}
-              aria-label={t('chat.commandPermission')}
-            >
-              <option value="manual">{t('chat.permissionManual')}</option>
-              <option value="risky">{t('chat.permissionRisky')}</option>
-              <option value="allow_all">{t('chat.permissionAllowAll')}</option>
-            </select>
-          </label>
-          <label className={fieldLabelClass}>
-            {t('chat.model')}
-            <select
-              className={fieldSelectClass}
-              value={modelId}
-              onChange={(event) => setModelId(event.target.value)}
-              disabled={!models.length || streaming}
-            >
-              <option value="">{t('chat.selectModel')}</option>
-              {(providerId ? models : []).map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={`${fieldLabelClass} ${isMobile ? '' : 'ml-auto'}`}>
-            {t('chat.history')}
-            <select
-              className={`${selectClass} ${isMobile ? 'w-full' : 'max-w-56'}`}
-              value={selectedConversation}
-              onChange={(event) => void selectConversation(event.target.value)}
-              disabled={streaming}
-            >
-              <option value="">{t('chat.newConversation')}</option>
-              {conversations.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+          <option value="">{t('chat.newConversation')}</option>
+          {conversations.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4 md:px-4 md:py-5">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-5">
         {loading && <p className={`text-center text-sm ${mutedText}`}>{t('common.loading')}</p>}
         {!loading && providers.length === 0 && (
           <div className="mx-auto mt-12 max-w-lg text-center">
@@ -679,16 +599,17 @@ export function ChatPanel({
               {!isUser && message.steps && message.steps.length > 0 && (
                 <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
               )}
-              <div
-                className={`whitespace-pre-wrap break-words text-[15px] leading-7 ${
-                  isUser ? 'text-white' : primaryText
-                }`}
-              >
-                {message.content ||
-                  (message.status === 'streaming' && !message.thinking && !message.steps?.length
-                    ? t('chat.thinking')
-                    : '')}
-              </div>
+              {isUser ? (
+                <div className="whitespace-pre-wrap break-words text-[15px] leading-7 text-white">
+                  {message.content}
+                </div>
+              ) : message.content ? (
+                <MarkdownMessage content={message.content} />
+              ) : message.status === 'streaming' &&
+                !message.thinking &&
+                !message.steps?.length ? (
+                <div className={`text-[15px] leading-7 ${primaryText}`}>{t('chat.thinking')}</div>
+              ) : null}
               {message.status === 'failed' && (
                 <p className={`mt-2 text-xs ${isUser ? 'text-white' : dangerText}`}>
                   {message.error || t('chat.failedStatus')}
@@ -787,7 +708,7 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
-      <div className={`border-t ${cardBorder} ${cardBg} p-3 md:p-4`}>
+      <div className={`border-t ${cardBorder} ${cardBg} px-4 pb-3 pt-4`}>
         {error && <p className={`mx-auto mb-2 max-w-3xl text-sm ${dangerText}`}>{error}</p>}
         {!provider && providers.length > 0 && (
           <p className={`mx-auto mb-2 max-w-3xl text-xs ${mutedText}`}>
@@ -799,51 +720,139 @@ export function ChatPanel({
             {t('chat.modelsUnavailable')}
           </p>
         )}
-        <form
-          onSubmit={(event) => void send(event)}
-          className="mx-auto flex max-w-3xl items-end gap-2"
-        >
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                event.currentTarget.form?.requestSubmit()
-              }
-            }}
-            rows={1}
-            maxLength={16000}
-            placeholder={t('chat.messagePlaceholder')}
-            style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
-            className={`min-h-10 flex-1 resize-none overflow-y-auto rounded-2xl border ${cardBorder} ${subtleBg} px-4 py-2.5 text-base ${primaryText} outline-none transition ${placeholderText} ${focusRing} disabled:opacity-50 md:text-sm`}
-            disabled={loading || streaming}
-          />
-          {streaming ? (
-            <button
-              type="button"
-              onClick={() => abortRef.current?.abort()}
-              className={`h-10 shrink-0 rounded-full border ${cardBorder} ${subtleBg} px-4 text-sm ${primaryText} transition hover:brightness-95`}
+        <form onSubmit={(event) => void send(event)} className="mx-auto max-w-3xl">
+          <div className={composerShell}>
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  event.currentTarget.form?.requestSubmit()
+                }
+              }}
+              rows={1}
+              maxLength={16000}
+              placeholder={t('chat.messagePlaceholder')}
+              style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
+              className={`min-h-9 w-full resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm leading-6 ${primaryText} outline-none ${placeholderText} disabled:opacity-50`}
+              disabled={loading || streaming}
+            />
+            <div className="mt-1 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void selectConversation('')}
+                className={composerIconButton}
+                title={t('chat.newConversation')}
+                aria-label={t('chat.newConversation')}
+                disabled={loading || streaming}
+              >
+                <PlusIcon className="h-4 w-4" />
+              </button>
+
+              <label className="relative inline-flex items-center">
+                <select
+                  className={composerSelect}
+                  value={providerId ?? ''}
+                  onChange={(event) => {
+                    const next = Number(event.target.value) || null
+                    setProviderId(next)
+                    setModels([])
+                    setModelId('')
+                  }}
+                  disabled={loading || streaming || permissionSaving}
+                  aria-label={t('chat.provider')}
+                  title={t('chat.provider')}
+                >
+                  <option value="">{t('chat.selectProvider')}</option>
+                  {providers.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 opacity-50" />
+              </label>
+
+              <label className="relative inline-flex items-center">
+                <select
+                  className={composerSelect}
+                  value={modelId}
+                  onChange={(event) => setModelId(event.target.value)}
+                  disabled={!models.length || streaming}
+                  aria-label={t('chat.model')}
+                  title={t('chat.model')}
+                >
+                  <option value="">{t('chat.selectModel')}</option>
+                  {(providerId ? models : []).map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.display_name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 opacity-50" />
+              </label>
+
+              <div className="flex-1" />
+
+              {streaming ? (
+                <button
+                  type="button"
+                  onClick={() => abortRef.current?.abort()}
+                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full border ${cardBorder} ${subtleBg} px-3 text-xs ${primaryText} transition hover:brightness-95`}
+                >
+                  {t('chat.stop')}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!canSend}
+                  aria-label={t('chat.send')}
+                  title={t('chat.send')}
+                  style={brandStyle}
+                  className={composerSendButton}
+                >
+                  <ArrowUpIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={`mt-2 flex flex-wrap items-center gap-3 px-1.5 text-[11px] ${mutedText}`}>
+            <span className="inline-flex items-center gap-1.5">
+              <MonitorIcon className="h-3.5 w-3.5" />
+              {t('chat.environmentLocal')}
+            </span>
+            <label
+              className={`relative inline-flex cursor-pointer items-center gap-1.5 ${composerMetaItem}`}
             >
-              {t('chat.stop')}
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label={t('chat.send')}
-              title={t('chat.send')}
-              style={brandStyle}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
-            >
-              <ArrowUpIcon className="h-4 w-4" />
-            </button>
-          )}
+              <WarningIcon className="h-3.5 w-3.5" />
+              <select
+                className="cursor-pointer appearance-none bg-transparent pr-4 text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                value={commandPermission}
+                onChange={(event) => {
+                  const mode = event.target.value
+                  if (mode === 'manual' || mode === 'risky' || mode === 'allow_all') {
+                    void changeCommandPermission(mode)
+                  }
+                }}
+                disabled={loading || streaming || permissionSaving}
+                aria-label={t('chat.commandPermission')}
+                title={t('chat.commandPermission')}
+              >
+                <option value="manual">{t('chat.permissionManual')}</option>
+                <option value="risky">{t('chat.permissionRisky')}</option>
+                <option value="allow_all">{t('chat.permissionAllowAll')}</option>
+              </select>
+              <ChevronDownIcon className="pointer-events-none absolute right-0.5 top-1/2 h-3 w-3 -translate-y-1/2 opacity-50" />
+            </label>
+          </div>
+
+          <p className={`mt-1.5 px-1.5 text-[11px] ${mutedText}`}>
+            {t('chat.readOnlyNotice')}
+          </p>
         </form>
-        <p className={`mx-auto mt-1 max-w-3xl text-[11px] ${mutedText}`}>
-          {t('chat.readOnlyNotice')}
-        </p>
       </div>
     </section>
   )

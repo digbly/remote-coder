@@ -480,3 +480,21 @@ export function SpinnerCircleIcon(props: IconProps) {
     </Svg>
   )
 }
+
+export function MonitorIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+    </Svg>
+  )
+}
+
+export function WarningIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4M12 17h.01" />
+    </Svg>
+  )
+}

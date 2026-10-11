@@ -378,6 +378,7 @@ const vi = {
     sendFailed: 'Không gửi được tin nhắn',
     messagePlaceholder: 'Hỏi về dự án này... (Enter để gửi, Shift+Enter xuống dòng)',
     readOnlyNotice: 'Chỉ có quyền đọc dự án. Mọi thay đổi tệp đề xuất cần được xem xét riêng.',
+    environmentLocal: 'Cục bộ',
     you: 'Bạn',
     assistant: 'Trợ lý lập trình',
     thinking: 'Đang suy nghĩ...',

@@ -378,6 +378,7 @@ const en = {
     sendFailed: 'Could not send the message',
     messagePlaceholder: 'Ask about this project... (Enter to send, Shift+Enter for a new line)',
     readOnlyNotice: 'Project access is read-only. Proposed file changes must be reviewed separately.',
+    environmentLocal: 'Local',
     you: 'You',
     assistant: 'Code assistant',
     thinking: 'Thinking...',
