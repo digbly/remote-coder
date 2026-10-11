@@ -194,6 +194,9 @@ const en = {
     browserConnecting: 'Connecting to the browser…',
     browserDisconnected: 'Disconnected from the browser',
     browserReconnect: 'Reconnect',
+    browserMenuCopy: 'Copy',
+    browserMenuPaste: 'Paste',
+    browserMenuSelectAll: 'Select all',
     browserHint:
       'You and the AI agent share this browser. Click the page to type; press Ctrl+Alt to release the keyboard.',
     openTerminal: 'Open terminal',

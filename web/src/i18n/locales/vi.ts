@@ -194,6 +194,9 @@ const vi = {
     browserConnecting: 'Đang kết nối trình duyệt…',
     browserDisconnected: 'Mất kết nối tới trình duyệt',
     browserReconnect: 'Kết nối lại',
+    browserMenuCopy: 'Sao chép',
+    browserMenuPaste: 'Dán',
+    browserMenuSelectAll: 'Chọn tất cả',
     browserHint:
       'Bạn và AI agent dùng chung trình duyệt này. Bấm vào trang để gõ; nhấn Ctrl+Alt để nhả bàn phím.',
     openTerminal: 'Mở terminal',
