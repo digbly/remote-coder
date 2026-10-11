@@ -10,6 +10,7 @@ from app.core.db import Base, SessionLocal, engine
 from app.core.errors import validation_exception_handler
 from app.core.i18n import resolve_language, set_language
 from app.core.logging import configure_logging
+from app.modules.agent_sessions.router import router as agent_sessions_router
 from app.modules.agents.router import router as agents_router
 from app.modules.ai_chat.approvals import cancel_all as cancel_pending_approvals
 from app.modules.ai_chat.router import router as ai_chat_router
@@ -113,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vscode_router, prefix=settings.api_prefix)
     app.include_router(browser_router, prefix=settings.api_prefix)
     app.include_router(agents_router, prefix=settings.api_prefix)
+    app.include_router(agent_sessions_router, prefix=settings.api_prefix)
     app.include_router(ai_providers_router, prefix=settings.api_prefix)
     app.include_router(ai_chat_router, prefix=settings.api_prefix)
     app.include_router(workspace_router, prefix=settings.api_prefix)

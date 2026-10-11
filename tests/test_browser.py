@@ -386,6 +386,62 @@ def test_parse_status_extracts_json() -> None:
     assert payload == {"enabled": True, "port": 9223}
 
 
+def test_inspect_command() -> None:
+    assert service.inspect_command(Settings(browser_binary="agent-browser")) == [
+        "agent-browser",
+        "inspect",
+    ]
+
+
+def test_parse_inspect_url() -> None:
+    assert service.parse_inspect_url(None) is None
+    assert service.parse_inspect_url("nothing here") is None
+    assert (
+        service.parse_inspect_url("✓ Opened DevTools: http://127.0.0.1:32825")
+        == "http://127.0.0.1:32825"
+    )
+
+
+def test_is_loopback_url() -> None:
+    assert service.is_loopback_url("http://127.0.0.1:32825")
+    assert service.is_loopback_url("http://localhost:1/")
+    assert not service.is_loopback_url("http://evil.example/")
+    assert not service.is_loopback_url("file:///etc/passwd")
+
+
+def test_browser_inspect_returns_url(
+    client: TestClient, projects_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client)
+    project_id, _ = _register_repo_with_worktree(client, projects_root)
+
+    def runner(command: list[str], env: dict[str, str]) -> str:
+        return "✓ Opened DevTools: http://127.0.0.1:32825"
+
+    monkeypatch.setattr(service, "manager", _StubManager(_session_for(1234, runner)))
+
+    response = client.post(_browser_url(project_id, "inspect"), headers=_csrf(client))
+
+    assert response.status_code == 200
+    assert response.json() == {"url": "http://127.0.0.1:32825"}
+
+
+def test_browser_inspect_rejects_non_loopback_url(
+    client: TestClient, projects_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _login(client)
+    project_id, _ = _register_repo_with_worktree(client, projects_root)
+
+    def runner(command: list[str], env: dict[str, str]) -> str:
+        return "✓ Opened DevTools: http://evil.example/"
+
+    monkeypatch.setattr(service, "manager", _StubManager(_session_for(1234, runner)))
+
+    response = client.post(_browser_url(project_id, "inspect"), headers=_csrf(client))
+
+    assert response.status_code == 502
+
+
 def _manager_runner(command: list[str], env: dict[str, str]) -> str:
     return json.dumps(
         {
