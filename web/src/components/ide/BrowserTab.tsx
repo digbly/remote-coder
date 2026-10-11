@@ -13,11 +13,12 @@ import {
   browserStreamUrl,
   controlBrowser,
   fetchBrowserSelection,
+  inspectBrowser,
   insertBrowserText,
   navigateBrowser,
   setBrowserViewport,
 } from '../../lib/api'
-import { ArrowLeftIcon, ArrowRightIcon, GlobeIcon, MaximizeIcon, MinimizeIcon, RefreshIcon } from './icons'
+import { ArrowLeftIcon, ArrowRightIcon, BugIcon, GlobeIcon, MaximizeIcon, MinimizeIcon, RefreshIcon } from './icons'
 
 interface FrameMessage {
   data: string
@@ -26,8 +27,14 @@ interface FrameMessage {
 
 type ConnectionState = 'connecting' | 'open' | 'closed'
 
+type ContextMenuEntry = { label: string; run: () => void } | { separator: true }
+
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 15000
+
+const CONTEXT_MENU_WIDTH = 176
+const CONTEXT_MENU_HEIGHT = 232
+const CONTEXT_MENU_MARGIN = 8
 
 function normalizeUrl(raw: string): string {
   const value = raw.trim()
@@ -84,6 +91,7 @@ export function BrowserTab({
   const [reconnectNonce, setReconnectNonce] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [caret, setCaret] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   const send = useCallback((payload: unknown) => {
     const socket = socketRef.current
@@ -276,6 +284,41 @@ export function BrowserTab({
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
+  useEffect(() => {
+    if (!menu) return
+    function close() {
+      setMenu(null)
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [menu])
+
+  function openContextMenu(clientX: number, clientY: number) {
+    const maxX = Math.max(
+      CONTEXT_MENU_MARGIN,
+      window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN,
+    )
+    const maxY = Math.max(
+      CONTEXT_MENU_MARGIN,
+      window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN,
+    )
+    setMenu({
+      x: Math.min(clientX, maxX),
+      y: Math.min(clientY, maxY),
+    })
+  }
+
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       void document.exitFullscreen()
@@ -309,7 +352,9 @@ export function BrowserTab({
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
-    event.preventDefault()
+    // Left/middle presses suppress native focus and selection. The right button
+    // is left alone so the browser still emits `contextmenu` for our menu.
+    if (event.button !== 2) event.preventDefault()
     const { x, y } = targetPoint(event)
     const canvas = canvasRef.current
     const rect = canvas?.getBoundingClientRect()
@@ -472,6 +517,25 @@ export function BrowserTab({
     }
   }
 
+  async function inspect() {
+    // Open the tab synchronously so the click still counts as a user gesture;
+    // the DevTools URL only exists after the async round-trip, so point the tab
+    // at it once it arrives.
+    const tab = window.open('', '_blank')
+    if (tab) tab.opener = null
+    try {
+      const url = await inspectBrowser(projectId, sessionId)
+      if (url && tab) {
+        tab.location.href = url
+      } else {
+        tab?.close()
+      }
+    } catch (err) {
+      tab?.close()
+      setError(err instanceof Error ? err.message : t('apiErrors.unknown'))
+    }
+  }
+
   async function copyOrCut(cut: boolean) {
     try {
       const text = await fetchBrowserSelection(projectId, sessionId)
@@ -492,6 +556,42 @@ export function BrowserTab({
       })
     }
   }
+
+  function selectAll() {
+    for (const eventType of ['keyDown', 'keyUp'] as const) {
+      send({
+        type: 'input_keyboard',
+        eventType,
+        key: 'a',
+        code: 'KeyA',
+        modifiers: 2,
+        windowsVirtualKeyCode: 65,
+        nativeVirtualKeyCode: 65,
+      })
+    }
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) await insertBrowserText(projectId, sessionId, text)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('apiErrors.unknown'))
+    }
+  }
+
+  const menuItem =
+    'flex w-full items-center px-3 py-1.5 text-left text-[var(--fg-2)] transition hover:bg-[var(--active)]'
+
+  const contextMenuEntries: ContextMenuEntry[] = [
+    { label: t('ide.browserMenuCopy'), run: () => void copyOrCut(false) },
+    { label: t('ide.browserMenuPaste'), run: () => void pasteFromClipboard() },
+    { label: t('ide.browserMenuSelectAll'), run: selectAll },
+    { separator: true },
+    { label: t('ide.browserBack'), run: () => void control('back') },
+    { label: t('ide.browserForward'), run: () => void control('forward') },
+    { label: t('ide.browserReload'), run: () => void control('reload') },
+  ]
 
   const toolbarButton =
     'shrink-0 rounded-md p-1.5 text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--fg-strong)] disabled:opacity-40 disabled:hover:bg-transparent'
@@ -528,6 +628,15 @@ export function BrowserTab({
           className={toolbarButton}
         >
           <RefreshIcon width={14} height={14} />
+        </button>
+        <button
+          type="button"
+          aria-label={t('ide.browserInspect')}
+          title={t('ide.browserInspect')}
+          onClick={() => void inspect()}
+          className={toolbarButton}
+        >
+          <BugIcon width={14} height={14} />
         </button>
         <button
           type="button"
@@ -581,7 +690,14 @@ export function BrowserTab({
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onWheel={onWheel}
-          onContextMenu={(event) => event.preventDefault()}
+          onContextMenu={(event) => {
+            // Headless Chrome renders no browser chrome, so its native context
+            // menu never reaches the streamed frames. Suppress it and surface
+            // our own menu; the right-click was already forwarded for pages
+            // that draw a custom context menu themselves.
+            event.preventDefault()
+            openContextMenu(event.clientX, event.clientY)
+          }}
           className="block cursor-default outline-none"
         />
         <textarea
@@ -598,6 +714,34 @@ export function BrowserTab({
           className="pointer-events-none absolute h-px w-px resize-none overflow-hidden border-0 bg-transparent p-0 text-transparent opacity-0 outline-none"
           style={{ left: caret.left, top: caret.top }}
         />
+        {menu && (
+          <div
+            role="menu"
+            style={{ top: menu.y, left: menu.x }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+            className="fixed z-30 w-44 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] py-1 text-[12px] shadow-xl shadow-black/40"
+          >
+            {contextMenuEntries.map((entry, index) =>
+              'separator' in entry ? (
+                <div key={`separator-${index}`} className="my-1 border-t border-[var(--border)]" />
+              ) : (
+                <button
+                  key={entry.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenu(null)
+                    entry.run()
+                  }}
+                  className={menuItem}
+                >
+                  {entry.label}
+                </button>
+              ),
+            )}
+          </div>
+        )}
         {connection !== 'open' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--bg)]/80 text-center">
             <p className="text-sm text-[var(--muted)]">

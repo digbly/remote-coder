@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Project, User } from '../lib/api'
+import type { AgentSession, Project, User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import type { WorkspaceTab } from '../lib/workspaceStore'
 import { useViewportHeight } from '../lib/useViewportHeight'
@@ -57,6 +57,8 @@ interface MobileShellProps {
   chatWorktrees: Record<number, string[]>
   onOpenFile: (path: string, line?: number) => void
   onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
+  onResumeChat: (conversationId: string, title: string) => void
+  onResumeSession: (session: AgentSession) => void
   children: ReactNode
 }
 
@@ -82,6 +84,8 @@ export function MobileShell({
   chatWorktrees,
   onOpenFile,
   onOpenDiff,
+  onResumeChat,
+  onResumeSession,
   children,
 }: MobileShellProps) {
   const { t } = useTranslation()
@@ -245,10 +249,19 @@ export function MobileShell({
           <div className="relative z-10 flex h-[75vh] flex-col overflow-hidden rounded-t-2xl border-t border-[var(--border)] bg-[var(--surface)] pb-[var(--safe-bottom)] [&>aside]:h-full">
             <RightPanel
               projectId={projectId}
+              worktree={activeWorktrees[projectId]}
               width={window.innerWidth}
               onClose={() => setPanelOpen(false)}
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
+              onResumeChat={(conversationId, title) => {
+                onResumeChat(conversationId, title)
+                setPanelOpen(false)
+              }}
+              onResumeSession={(session) => {
+                onResumeSession(session)
+                setPanelOpen(false)
+              }}
             />
           </div>
         </div>

@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     agent_commit_message_timeout_seconds: int = 120
     agent_commit_message_diff_max_bytes: int = 100_000
     agent_commit_message_args: str = ""
+    # OpenCode's data directory (holding ``opencode.db``). Empty resolves the
+    # XDG default (``~/.local/share/opencode``).
+    opencode_data_dir: str = ""
 
     vscode_enabled: bool = True
     vscode_binary: str = "code-server"

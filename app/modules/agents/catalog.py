@@ -15,7 +15,13 @@ class CliAgent(Agent):
 DEFAULT_AGENT_SPECS: tuple[AgentSpec, ...] = (
     AgentSpec(id="claude", label="Claude Code", command="claude", prompt_args=("-p", "{prompt}")),
     AgentSpec(id="agy", label="Antigravity", command="agy"),
-    AgentSpec(id="opencode", label="OpenCode", command="opencode", prompt_args=("run", "{prompt}")),
+    AgentSpec(
+        id="opencode",
+        label="OpenCode",
+        command="opencode",
+        prompt_args=("run", "{prompt}"),
+        resume_args=("--session", "{session}"),
+    ),
     AgentSpec(id="codex", label="Codex", command="codex", prompt_args=("exec", "{prompt}")),
     AgentSpec(id="gemini", label="Gemini CLI", command="gemini", prompt_args=("-p", "{prompt}")),
     AgentSpec(id="aider", label="Aider", command="aider"),

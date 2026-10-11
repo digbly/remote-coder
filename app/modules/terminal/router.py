@@ -34,6 +34,7 @@ async def project_terminal(
     settings: SettingsDep,
     worktree: str | None = None,
     agent_id: str | None = None,
+    session: str | None = None,
 ) -> None:
     if not same_origin(websocket):
         await reject(websocket, WS_FORBIDDEN)
@@ -68,8 +69,14 @@ async def project_terminal(
         cwd = resolved
 
     # Resolve the launch line and environment from the agent registry before
-    # releasing the database connection used to read the user's overrides.
-    launch = agents_service.resolve_launch(db, user, agent_id) if agent_id is not None else None
+    # releasing the database connection used to read the user's overrides. A
+    # supplied session id resumes that session instead of starting fresh.
+    if agent_id is None:
+        launch = None
+    elif session is not None:
+        launch = agents_service.resolve_resume_launch(db, user, agent_id, session)
+    else:
+        launch = agents_service.resolve_launch(db, user, agent_id)
     agent_env = agents_service.agent_env(agent_id) if agent_id is not None else {}
 
     # Release the database connection: it is not needed for the (potentially

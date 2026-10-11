@@ -151,16 +151,45 @@ async def get_selection(
 
     browser = await _ensure_session(db, settings, current_user, project_id, session)
     db.close()
-    try:
-        output = await asyncio.to_thread(browser.run, service.selection_command(settings))
-    except service.BrowserError as exc:
-        raise api_error(
-            ErrorCode.BROWSER_COMMAND_FAILED, status_code=status.HTTP_502_BAD_GATEWAY
-        ) from exc
+    output = await _run(
+        service.selection_command(settings),
+        browser,
+        code=ErrorCode.BROWSER_COMMAND_FAILED,
+    )
     payload = service.parse_status(output)
     data = payload.get("data") if isinstance(payload, dict) else None
     text = data.get("result") if isinstance(data, dict) else None
     return {"text": text if isinstance(text, str) else ""}
+
+
+@router.post(
+    "/{project_id}/browser/inspect",
+    responses=error_responses(401, 404, 502),
+)
+async def inspect(
+    request: Request,
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    session: str = Query(service.DEFAULT_SESSION),
+) -> dict[str, str]:
+    if not same_origin(request):
+        raise api_error(ErrorCode.BROWSER_FORBIDDEN, status_code=status.HTTP_403_FORBIDDEN)
+
+    browser = await _ensure_session(db, settings, current_user, project_id, session)
+    db.close()
+    output = await _run(
+        service.inspect_command(settings),
+        browser,
+        code=ErrorCode.BROWSER_COMMAND_FAILED,
+    )
+    url = service.parse_inspect_url(output)
+    if not url or not service.is_loopback_url(url):
+        raise api_error(
+            ErrorCode.BROWSER_COMMAND_FAILED, status_code=status.HTTP_502_BAD_GATEWAY
+        )
+    return {"url": url}
 
 
 @router.post(
@@ -338,9 +367,9 @@ async def _run(
     session: service.BrowserSession,
     *,
     code: ErrorCode = ErrorCode.BROWSER_NAVIGATION_FAILED,
-) -> None:
+) -> str | None:
     try:
-        await asyncio.to_thread(session.run, command)
+        return await asyncio.to_thread(session.run, command)
     except service.BrowserError as exc:
         raise api_error(code, status_code=status.HTTP_502_BAD_GATEWAY) from exc
 

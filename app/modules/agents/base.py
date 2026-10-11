@@ -6,6 +6,7 @@ from abc import ABC
 from dataclasses import dataclass
 
 PROMPT_PLACEHOLDER = "{prompt}"
+SESSION_PLACEHOLDER = "{session}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,9 @@ class AgentSpec:
     # ``("-p", "{prompt}")`` or ``("exec", "{prompt}")``. Empty means the agent
     # has no known non-interactive prompt mode.
     prompt_args: tuple[str, ...] = ()
+    # How to resume a previous session, e.g. ``("--session", "{session}")`` or
+    # ``("resume", "{session}")``. Empty means the agent cannot resume.
+    resume_args: tuple[str, ...] = ()
 
 
 class Agent(ABC):
@@ -48,6 +52,26 @@ class Agent(ABC):
         resolved_command = (command if command is not None else self.spec.command).strip()
         resolved_args = (args if args is not None else self.spec.args).strip()
         return f"{resolved_command} {resolved_args}".strip()
+
+    def build_resume_launch(
+        self, command: str | None, args: str | None, session_id: str | None
+    ) -> str | None:
+        """Return the shell line that resumes ``session_id``, or ``None``.
+
+        ``None`` means the agent declares no resume form (see
+        :attr:`AgentSpec.resume_args`) or the session id is empty, in which case
+        callers fall back to a plain launch.
+        """
+        if not self.spec.resume_args or not session_id:
+            return None
+        resolved_command = (command if command is not None else self.spec.command).strip()
+        if not resolved_command:
+            return None
+        resolved_args = (args if args is not None else self.spec.args).strip()
+        tail = [
+            session_id if token == SESSION_PLACEHOLDER else token for token in self.spec.resume_args
+        ]
+        return " ".join(part for part in [resolved_command, resolved_args, *tail] if part)
 
     def build_prompt_command(
         self, command: str | None, args: str | None, prompt: str
