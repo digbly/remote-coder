@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.core.config import Settings
 from app.core.deps import DbDep, SettingsDep
-from app.core.errors import error_responses
+from app.core.errors import ErrorCode, api_error, error_responses
 from app.modules.auth import service
 from app.modules.auth.deps import CsrfDep, CurrentUser
 from app.modules.auth.models import User
-from app.modules.auth.rate_limit import login_rate_limit, refresh_rate_limit
-from app.modules.auth.schemas import LoginRequest, UserRead
+from app.modules.auth.pow import pow_store
+from app.modules.auth.rate_limit import login_rate_limit, pow_rate_limit, refresh_rate_limit
+from app.modules.auth.schemas import LoginRequest, PowChallenge, UserRead
 from app.modules.auth.security import create_access_token, generate_csrf_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -50,11 +51,31 @@ def _clear_auth_cookies(response: Response, settings: Settings) -> None:
     response.delete_cookie(settings.csrf_cookie_name, path="/")
 
 
+def _pow_required(settings: Settings) -> bool:
+    return settings.pow_enabled and settings.pow_difficulty > 0
+
+
+@router.get(
+    "/pow",
+    response_model=PowChallenge,
+    dependencies=[Depends(pow_rate_limit)],
+    responses=error_responses(429),
+)
+def pow_challenge(settings: SettingsDep) -> PowChallenge:
+    if not _pow_required(settings):
+        return PowChallenge(challenge="", difficulty=0)
+    challenge = pow_store.issue(
+        ttl_seconds=settings.pow_challenge_ttl_seconds,
+        length_bytes=settings.pow_challenge_bytes,
+    )
+    return PowChallenge(challenge=challenge, difficulty=settings.pow_difficulty)
+
+
 @router.post(
     "/login",
     response_model=UserRead,
     dependencies=[Depends(login_rate_limit)],
-    responses=error_responses(401, 403, 422, 429),
+    responses=error_responses(400, 401, 403, 422, 429),
 )
 def login(
     payload: LoginRequest,
@@ -62,6 +83,11 @@ def login(
     db: DbDep,
     settings: SettingsDep,
 ) -> User:
+    if _pow_required(settings) and not pow_store.verify(
+        payload.pow_challenge, payload.pow_nonce, settings.pow_difficulty
+    ):
+        raise api_error(ErrorCode.POW_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
     user = service.authenticate_user(db, payload.username, payload.password)
     access_token = create_access_token(user.username, settings)
     refresh_token = service.issue_refresh_token(db, user, settings)

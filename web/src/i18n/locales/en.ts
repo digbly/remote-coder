@@ -23,6 +23,7 @@ const en = {
     notAuthenticated: 'Your session has expired. Please sign in again.',
     csrfInvalid: 'Security check failed. Please refresh and try again.',
     rateLimited: 'Too many attempts. Please try again later.',
+    powInvalid: 'Security challenge failed. Please try again.',
     validation: 'Invalid input. Please check the form and try again.',
     unknown: 'Something went wrong. Please try again.',
     projectNotFound: 'Project not found',

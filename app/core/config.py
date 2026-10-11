@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET_KEY = "dev-secret-key-change-me-in-production-0123456789"
@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     login_rate_limit_window_seconds: int = 60
     refresh_rate_limit_attempts: int = 30
     refresh_rate_limit_window_seconds: int = 60
+
+    # Proof-of-work login challenge: the client must find a nonce whose
+    # SHA-256(challenge + nonce) digest starts with `pow_difficulty` zero hex
+    # nibbles. Each challenge is single-use and expires after its TTL.
+    pow_enabled: bool = True
+    pow_difficulty: int = Field(default=4, ge=0, le=64)
+    pow_challenge_ttl_seconds: int = Field(default=300, ge=1)
+    pow_challenge_bytes: int = Field(default=16, ge=16, le=64)
+    pow_rate_limit_attempts: int = 60
+    pow_rate_limit_window_seconds: int = 60
 
     projects_root: str = "~/projects"
     worktrees_root: str = "~/remote-coder/workspaces"

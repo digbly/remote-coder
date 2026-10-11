@@ -12,12 +12,15 @@ from app.core.db import Base, get_db
 from app.main import app
 from app.modules.auth import service
 from app.modules.auth.models import RefreshToken, User
+from app.modules.auth.pow import pow_store
 from app.modules.auth.rate_limit import limiter
 from app.modules.auth.security import generate_refresh_token, hash_password, hash_refresh_token
+from tests.conftest import solve_pow
 
 USERNAME = "alice"
 PASSWORD = "secret123"
 LOGIN_URL = "/api/v1/auth/login"
+POW_URL = "/api/v1/auth/pow"
 REFRESH_URL = "/api/v1/auth/refresh"
 ME_URL = "/api/v1/auth/me"
 LOGOUT_URL = "/api/v1/auth/logout"
@@ -26,8 +29,10 @@ LOGOUT_URL = "/api/v1/auth/logout"
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     limiter.reset()
+    pow_store.reset()
     yield
     limiter.reset()
+    pow_store.reset()
 
 
 @pytest.fixture
@@ -63,8 +68,18 @@ def client() -> TestClient:
     app.dependency_overrides.clear()
 
 
+def _solve_pow(challenge: dict) -> dict[str, str]:
+    difficulty = challenge["difficulty"]
+    token = challenge["challenge"]
+    if difficulty <= 0 or not token:
+        return {}
+    return {"pow_challenge": token, "pow_nonce": solve_pow(token, difficulty)}
+
+
 def _login(client: TestClient, username: str = USERNAME, password: str = PASSWORD):
-    return client.post(LOGIN_URL, json={"username": username, "password": password})
+    challenge = client.get(POW_URL).json()
+    payload = {"username": username, "password": password, **_solve_pow(challenge)}
+    return client.post(LOGIN_URL, json=payload)
 
 
 def _error_code(response) -> str:
@@ -110,6 +125,77 @@ def test_login_rate_limited(client: TestClient) -> None:
     blocked = _login(client, password="wrong")
     assert blocked.status_code == 429
     assert blocked.headers.get("Retry-After")
+
+
+def test_pow_challenge_endpoint(client: TestClient) -> None:
+    response = client.get(POW_URL)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["algorithm"] == "sha256"
+    assert body["difficulty"] >= 1
+    assert body["challenge"]
+
+
+def test_login_requires_pow_when_enabled(client: TestClient) -> None:
+    response = client.post(LOGIN_URL, json={"username": USERNAME, "password": PASSWORD})
+    assert response.status_code == 400
+    assert _error_code(response) == "POW_INVALID"
+
+
+def test_login_rejects_invalid_pow_nonce(client: TestClient) -> None:
+    challenge = client.get(POW_URL).json()
+    response = client.post(
+        LOGIN_URL,
+        json={
+            "username": USERNAME,
+            "password": PASSWORD,
+            "pow_challenge": challenge["challenge"],
+            "pow_nonce": "not-a-solution",
+        },
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "POW_INVALID"
+
+
+def test_login_rejects_unknown_pow_challenge(client: TestClient) -> None:
+    response = client.post(
+        LOGIN_URL,
+        json={
+            "username": USERNAME,
+            "password": PASSWORD,
+            "pow_challenge": "deadbeef",
+            "pow_nonce": "0",
+        },
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "POW_INVALID"
+
+
+def test_login_pow_challenge_is_single_use(client: TestClient) -> None:
+    challenge = client.get(POW_URL).json()
+    payload = {"username": USERNAME, "password": PASSWORD, **_solve_pow(challenge)}
+    assert client.post(LOGIN_URL, json=payload).status_code == 200
+    reuse = client.post(LOGIN_URL, json=payload)
+    assert reuse.status_code == 400
+    assert _error_code(reuse) == "POW_INVALID"
+
+
+def test_login_bypasses_pow_when_disabled(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(pow_enabled=False)
+    try:
+        assert client.get(POW_URL).json()["difficulty"] == 0
+        assert _login(client).status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+
+def test_login_bypasses_pow_when_difficulty_zero(client: TestClient) -> None:
+    app.dependency_overrides[get_settings] = lambda: Settings(pow_difficulty=0)
+    try:
+        assert client.get(POW_URL).json()["difficulty"] == 0
+        assert _login(client).status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 def test_me_requires_auth(client: TestClient) -> None:
@@ -333,9 +419,10 @@ def test_login_rate_limited_error_code(client: TestClient) -> None:
 
 
 def test_login_error_message_localized_by_accept_language(client: TestClient) -> None:
+    challenge = client.get(POW_URL).json()
     response = client.post(
         LOGIN_URL,
-        json={"username": USERNAME, "password": "wrong"},
+        json={"username": USERNAME, "password": "wrong", **_solve_pow(challenge)},
         headers={"Accept-Language": "vi"},
     )
     assert response.json()["detail"]["message"] == "Tên đăng nhập hoặc mật khẩu không đúng"

@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import Base, get_db
 from app.main import app
 from app.modules.auth.models import User
+from app.modules.auth.pow import pow_store
 from app.modules.auth.rate_limit import limiter
 from app.modules.auth.security import hash_password
 from app.modules.terminal import service as terminal_service
@@ -28,8 +31,10 @@ LOCAL_URL = "/api/v1/projects/local"
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     limiter.reset()
+    pow_store.reset()
     yield
     limiter.reset()
+    pow_store.reset()
 
 
 @pytest.fixture
@@ -67,6 +72,7 @@ def client(projects_root) -> TestClient:
         admin_username=USERNAME,
         admin_password=PASSWORD,
         ai_credential_encryption_key=Fernet.generate_key().decode("ascii"),
+        pow_enabled=False,
     )
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = lambda: settings
@@ -81,6 +87,16 @@ def client(projects_root) -> TestClient:
 def _login(client: TestClient, username: str = USERNAME) -> None:
     response = client.post(LOGIN_URL, json={"username": username, "password": PASSWORD})
     assert response.status_code == 200
+
+
+def solve_pow(challenge: str, difficulty: int) -> str:
+    prefix = "0" * difficulty
+    nonce = 0
+    while True:
+        digest = hashlib.sha256(f"{challenge}{nonce}".encode()).hexdigest()
+        if digest.startswith(prefix):
+            return str(nonce)
+        nonce += 1
 
 
 def _csrf(client: TestClient) -> dict[str, str]:

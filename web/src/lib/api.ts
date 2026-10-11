@@ -1,5 +1,6 @@
 import i18n from '../i18n'
 import type { AgentDefinition } from './agents'
+import { solvePowChallenge, type PowChallenge } from './pow'
 
 const API_PREFIX = '/api/v1'
 const CSRF_COOKIE = 'csrf_token'
@@ -11,6 +12,7 @@ const ERROR_CODE_KEYS = {
   NOT_AUTHENTICATED: 'apiErrors.notAuthenticated',
   CSRF_INVALID: 'apiErrors.csrfInvalid',
   RATE_LIMITED: 'apiErrors.rateLimited',
+  POW_INVALID: 'apiErrors.powInvalid',
   VALIDATION_ERROR: 'apiErrors.validation',
   PROJECT_NOT_FOUND: 'apiErrors.projectNotFound',
   INVALID_GITHUB_URL: 'apiErrors.invalidGithubUrl',
@@ -445,11 +447,27 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   return response
 }
 
+export async function fetchPowChallenge(): Promise<PowChallenge> {
+  const response = await request('/auth/pow')
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as PowChallenge
+}
+
 export async function login(username: string, password: string): Promise<User> {
+  const challenge = await fetchPowChallenge()
+  const body: Record<string, string> = { username, password }
+  if (challenge.difficulty > 0 && challenge.challenge) {
+    body.pow_challenge = challenge.challenge
+    body.pow_nonce = await solvePowChallenge(challenge)
+  }
+
   const response = await request('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {

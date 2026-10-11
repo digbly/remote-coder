@@ -100,3 +100,13 @@ def refresh_rate_limit(
         limit=settings.refresh_rate_limit_attempts,
         window_seconds=settings.refresh_rate_limit_window_seconds,
     )
+
+
+def pow_rate_limit(request: Request, settings: Annotated[Settings, Depends(get_settings)]) -> None:
+    _enforce_limit(
+        request,
+        settings,
+        key_prefix="pow",
+        limit=settings.pow_rate_limit_attempts,
+        window_seconds=settings.pow_rate_limit_window_seconds,
+    )

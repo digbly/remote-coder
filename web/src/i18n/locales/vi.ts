@@ -23,6 +23,7 @@ const vi = {
     notAuthenticated: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
     csrfInvalid: 'Xác thực bảo mật thất bại. Vui lòng tải lại trang và thử lại.',
     rateLimited: 'Quá nhiều lần thử. Vui lòng thử lại sau.',
+    powInvalid: 'Xác thực bảo mật thất bại. Vui lòng thử lại.',
     validation: 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.',
     unknown: 'Đã có lỗi xảy ra. Vui lòng thử lại.',
     projectNotFound: 'Không tìm thấy dự án',
