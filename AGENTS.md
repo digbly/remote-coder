@@ -1,0 +1,3 @@
+- After submit code:
+  - Run `pylint $(git ls-files '*.py')` and fix for all py files
+  - Fix all `pytest` make sure everything works.
