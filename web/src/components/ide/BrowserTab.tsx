@@ -595,7 +595,7 @@ export function BrowserTab({
           onCompositionEnd={onCompositionEnd}
           onKeyDown={onKeyDown}
           onKeyUp={onKeyUp}
-          className="absolute h-px w-px resize-none overflow-hidden border-0 bg-transparent p-0 text-transparent opacity-0 outline-none"
+          className="pointer-events-none absolute h-px w-px resize-none overflow-hidden border-0 bg-transparent p-0 text-transparent opacity-0 outline-none"
           style={{ left: caret.left, top: caret.top }}
         />
         {connection !== 'open' && (

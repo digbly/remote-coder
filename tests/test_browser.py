@@ -358,7 +358,8 @@ def test_browser_proxies_stream(
 
 def test_open_command_flags() -> None:
     headless = service.open_command(Settings(browser_binary="agent-browser"))
-    assert headless == ["agent-browser", "open"]
+    assert headless[:2] == ["agent-browser", "open"]
+    assert "--init-script" in headless
 
     headed = service.open_command(
         Settings(

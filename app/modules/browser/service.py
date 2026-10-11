@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.core.config import Settings
@@ -63,6 +64,11 @@ def open_command(settings: Settings) -> list[str]:
         args.append("--headed")
     if settings.browser_allowed_domains.strip():
         args.extend(["--allowed-domains", settings.browser_allowed_domains])
+    # Keep new-tab links in the current tab: the panel has no tab bar, so a
+    # spawned tab would be invisible.
+    init_script = Path(__file__).with_name("force_same_tab.js")
+    if init_script.is_file():
+        args.extend(["--init-script", str(init_script)])
     if settings.browser_extra_args.strip():
         args.extend(shlex.split(settings.browser_extra_args))
     return args
