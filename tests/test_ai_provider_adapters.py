@@ -16,6 +16,7 @@ from app.modules.ai_providers.base import (
 )
 from app.modules.ai_providers.gemini import GeminiAdapter
 from app.modules.ai_providers.openai import OpenAIAdapter
+from app.modules.ai_providers.openai_compatible import OpenAICompatibleAdapter
 
 API_KEY = "private-provider-key"
 TOOLS = [ProviderTool(name="read_file", description="Read a file", parameters={"type": "object"})]
@@ -592,3 +593,117 @@ async def test_gemini_blocked_prompt_includes_reason() -> None:
                 pass
 
     assert exc_info.value.diagnostic == "Prompt blocked: SAFETY"
+
+
+BASE_URL = "https://opencode.ai/zen/v1"
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_lists_models_from_base_url() -> None:
+    def handler(request: Request) -> Response:
+        assert request.url.path == "/zen/v1/models"
+        assert request.headers["authorization"] == f"Bearer {API_KEY}"
+        return Response(200, json={"data": [{"id": "deepseek-v4"}]})
+
+    async with await _client(handler) as client:
+        models = await OpenAICompatibleAdapter("opencode", BASE_URL).list_models(client, API_KEY)
+
+    assert [model.id for model in models] == ["deepseek-v4"]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_streams_text_reasoning_tool_call_and_usage() -> None:
+    events = [
+        {"choices": [{"delta": {"content": "Checking."}, "finish_reason": None}]},
+        {"choices": [{"delta": {"reasoning_content": "Thinking..."}, "finish_reason": None}]},
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call-1",
+                                "function": {"name": "read_file", "arguments": '{"path":'},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [{"index": 0, "function": {"arguments": '"main.py"}'}}]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ]
+        },
+        {
+            "choices": [],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+        },
+    ]
+
+    def handler(request: Request) -> Response:
+        assert request.url.path == "/zen/v1/chat/completions"
+        assert request.headers["authorization"] == f"Bearer {API_KEY}"
+        payload = json.loads(request.content)
+        assert payload["stream"] is True
+        assert payload["tools"][0]["type"] == "function"
+        assert payload["tools"][0]["function"]["name"] == "read_file"
+        assert payload["messages"][0] == {"role": "system", "content": "system"}
+        body = "".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n"
+        return Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+    async with await _client(handler) as client:
+        actual = [
+            event
+            async for event in OpenAICompatibleAdapter("opencode", BASE_URL).stream(
+                client, API_KEY, "deepseek-v4", "system", MESSAGES, TOOLS
+            )
+        ]
+
+    assert actual == [
+        TextDelta("Checking."),
+        ThinkingDelta("Thinking..."),
+        ToolCall("call-1", "read_file", {"path": "main.py"}),
+        TurnComplete("tool_calls", 5, 7),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_http_error_is_sanitized() -> None:
+    def handler(_request: Request) -> Response:
+        return Response(401, json={"error": {"message": f"bad key {API_KEY}"}})
+
+    async with await _client(handler) as client:
+        with pytest.raises(ProviderAPIError) as exc_info:
+            async for _event in OpenAICompatibleAdapter("custom", BASE_URL).stream(
+                client, API_KEY, "model", "system", MESSAGES, TOOLS
+            ):
+                pass
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.diagnostic == "bad key [REDACTED]"
+    assert API_KEY not in (exc_info.value.diagnostic or "")
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_stream_error_payload_raises() -> None:
+    def handler(_request: Request) -> Response:
+        body = f"data: {json.dumps({'error': f'upstream failed {API_KEY}'})}\n\n"
+        return Response(200, headers={"content-type": "text/event-stream"}, text=body)
+
+    async with await _client(handler) as client:
+        with pytest.raises(ProviderAPIError) as exc_info:
+            async for _event in OpenAICompatibleAdapter("opencode", BASE_URL).stream(
+                client, API_KEY, "model", "system", MESSAGES, TOOLS
+            ):
+                pass
+
+    assert exc_info.value.diagnostic == "upstream failed [REDACTED]"
+    assert API_KEY not in (exc_info.value.diagnostic or "")

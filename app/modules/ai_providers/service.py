@@ -17,8 +17,13 @@ from app.modules.ai_providers.crypto import (
     encrypt_secret,
 )
 from app.modules.ai_providers.gemini import GeminiAdapter
-from app.modules.ai_providers.models import AIProvider, ProviderKind
+from app.modules.ai_providers.models import (
+    BASE_URL_PROVIDER_KINDS,
+    AIProvider,
+    ProviderKind,
+)
 from app.modules.ai_providers.openai import OpenAIAdapter
+from app.modules.ai_providers.openai_compatible import OpenAICompatibleAdapter
 from app.modules.ai_providers.schemas import (
     ProviderCreate,
     ProviderRead,
@@ -57,8 +62,17 @@ def provider_read(provider: AIProvider) -> ProviderRead:
         kind=provider.kind,
         shared=provider.owner_id is None,
         credential_configured=bool(provider.secret_ciphertext),
+        base_url=provider.base_url,
         created_at=provider.created_at,
     )
+
+
+def adapter_for(provider: AIProvider) -> ProviderAdapter:
+    if provider.kind in BASE_URL_PROVIDER_KINDS:
+        if not provider.base_url:
+            raise api_error(ErrorCode.AI_PROVIDER_FAILED, status_code=502)
+        return OpenAICompatibleAdapter(provider.kind.value, provider.base_url)
+    return ADAPTERS[provider.kind]
 
 
 def create_personal(
@@ -90,6 +104,7 @@ def _create(
         name=payload.name,
         kind=payload.kind,
         secret_ciphertext=ciphertext,
+        base_url=payload.base_url,
     )
     db.add(provider)
     _commit_provider(db, provider)
@@ -132,6 +147,8 @@ def _update(
                 ErrorCode.AI_CREDENTIAL_ENCRYPTION_UNAVAILABLE,
                 status_code=503,
             ) from None
+    if payload.base_url is not None and provider.kind in BASE_URL_PROVIDER_KINDS:
+        provider.base_url = payload.base_url
     _commit_provider(db, provider)
     return provider_read(provider)
 
@@ -155,7 +172,7 @@ async def list_models(
     api_key = _decrypt(provider, settings)
     try:
         async with httpx.AsyncClient() as client:
-            return await ADAPTERS[provider.kind].list_models(client, api_key)
+            return await adapter_for(provider).list_models(client, api_key)
     except ProviderAPIError as exc:
         logger.warning(
             "AI provider model request failed provider=%s status=%s detail=%s",
@@ -184,7 +201,7 @@ def chat_credentials(
     db: Session, user_id: int, provider_id: int, settings: Settings
 ) -> tuple[AIProvider, str, ProviderAdapter]:
     provider = _get_available(db, user_id, provider_id)
-    return provider, _decrypt(provider, settings), ADAPTERS[provider.kind]
+    return provider, _decrypt(provider, settings), adapter_for(provider)
 
 
 def _get_available(db: Session, user_id: int, provider_id: int) -> AIProvider:

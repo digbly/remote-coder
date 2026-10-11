@@ -46,6 +46,8 @@ def _apply_lightweight_migrations() -> None:
             "ai_change_proposals", "change_type", "VARCHAR(16) NOT NULL DEFAULT 'modify'"
         )
         _add_column_if_missing("ai_change_proposals", "target_path", "VARCHAR(4096)")
+    if "ai_providers" in tables:
+        _add_column_if_missing("ai_providers", "base_url", "VARCHAR(2048)")
 
 
 def init_db(settings: Settings) -> None:
