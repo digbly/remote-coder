@@ -12,9 +12,10 @@ interface TopTabsProps {
   onClose: (id: string) => void
   onNew: (agent?: AgentDefinition) => void
   onNewChat: () => void
+  onNewBrowser: () => void
 }
 
-export function TopTabs({ tabs, activeId, onSelect, onClose, onNew, onNewChat }: TopTabsProps) {
+export function TopTabs({ tabs, activeId, onSelect, onClose, onNew, onNewChat, onNewBrowser }: TopTabsProps) {
   const { t } = useTranslation()
 
   return (
@@ -51,7 +52,7 @@ export function TopTabs({ tabs, activeId, onSelect, onClose, onNew, onNewChat }:
             </div>
           )
         })}
-        <NewTabMenu onSelect={onNew} onNewChat={onNewChat} />
+        <NewTabMenu onSelect={onNew} onNewChat={onNewChat} onNewBrowser={onNewBrowser} />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 px-3">

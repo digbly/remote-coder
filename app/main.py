@@ -16,6 +16,8 @@ from app.modules.ai_chat.router import router as ai_chat_router
 from app.modules.ai_providers.router import router as ai_providers_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.service import ensure_admin_user
+from app.modules.browser import service as browser_service
+from app.modules.browser.router import router as browser_router
 from app.modules.git.router import router as git_router
 from app.modules.health.router import router as health_router
 from app.modules.projects.router import router as projects_router
@@ -66,6 +68,9 @@ async def _reap_idle_sessions(settings: Settings) -> None:
         await asyncio.to_thread(
             vscode_service.manager.reap_idle, settings.vscode_session_ttl_seconds
         )
+        await asyncio.to_thread(
+            browser_service.manager.reap_idle, settings.browser_session_ttl_seconds
+        )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -84,7 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with suppress(asyncio.CancelledError):
                 await reaper
             await asyncio.to_thread(vscode_service.manager.kill_all)
-
+            await asyncio.to_thread(browser_service.manager.kill_all)
     app = FastAPI(
         title=settings.app_name,
         debug=settings.debug,
@@ -105,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(terminal_router, prefix=settings.api_prefix)
     app.include_router(terminal_global_router, prefix=settings.api_prefix)
     app.include_router(vscode_router, prefix=settings.api_prefix)
+    app.include_router(browser_router, prefix=settings.api_prefix)
     app.include_router(agents_router, prefix=settings.api_prefix)
     app.include_router(ai_providers_router, prefix=settings.api_prefix)
     app.include_router(ai_chat_router, prefix=settings.api_prefix)
