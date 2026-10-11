@@ -22,7 +22,7 @@ interface RightPanelProps {
   width: number
   onClose: () => void
   onOpenFile: (path: string, line?: number) => void
-  onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
+  onOpenDiff: (path: string, staged: boolean, origPath?: string | null, worktree?: string) => void
   onWorktreeDeleted?: (projectId: number, worktree: string) => void
 }
 
@@ -112,10 +112,16 @@ export function RightPanel({
       >
         {tab === 'explorer' && <ExplorerPanel projectId={projectId} onOpenFile={onOpenFile} />}
         {tab === 'sourceControl' && (
-          <SourceControlPanel projectId={projectId} onOpenDiff={onOpenDiff} />
+          <SourceControlPanel
+            key={worktree ?? 'primary'}
+            projectId={projectId}
+            worktree={worktree}
+            onOpenDiff={(path, staged, origPath) => onOpenDiff(path, staged, origPath, worktree)}
+          />
         )}
         {tab === 'check' && (
           <CheckPanel
+            key={worktree ?? 'primary'}
             projectId={projectId}
             worktree={worktree}
             onWorktreeDeleted={onWorktreeDeleted}

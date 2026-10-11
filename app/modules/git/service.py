@@ -66,8 +66,10 @@ _COMMIT_MESSAGE_MAX_CHARS = 5000
 _FENCE_LINE = re.compile(r"^```[A-Za-z0-9_+-]*$")
 
 
-def get_git_status(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
-    path = _project_repository(db, owner, project_id, settings)
+def get_git_status(
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
+) -> GitStatusRead:
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     return _read_status(path, settings)
 
 
@@ -88,6 +90,7 @@ def get_file_diff(
     staged: bool,
     orig_path: str | None,
     settings: Settings,
+    worktree: str | None = None,
 ) -> GitDiffRead:
     """Return the old and new content of a single changed file for the diff view.
 
@@ -95,7 +98,7 @@ def get_file_diff(
     index (falling back to ``HEAD``) with the working tree. Rename targets use the
     original path on the "old" side. Untracked files diff against empty content.
     """
-    repo = _project_repository(db, owner, project_id, settings)
+    repo = _resolve_repository(db, owner, project_id, settings, worktree)
     _validate_paths([path])
     old_path = orig_path if orig_path else path
     if orig_path:
@@ -168,10 +171,15 @@ def _decode_blob(output: str) -> str:
 
 
 def stage_paths(
-    db: Session, owner: User, project_id: int, paths: list[str], settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    paths: list[str],
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitStatusRead:
     """Stage the given paths, then return the refreshed status."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     _validate_paths(paths)
 
     result = _run_git(path, ["add", "--", *paths], timeout=settings.git_commit_timeout_seconds)
@@ -179,9 +187,11 @@ def stage_paths(
     return _read_status(path, settings)
 
 
-def stage_all(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+def stage_all(
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
+) -> GitStatusRead:
     """Stage every change in the working tree, then return the refreshed status."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
 
     result = _run_git(path, ["add", "-A"], timeout=settings.git_commit_timeout_seconds)
     _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
@@ -189,19 +199,26 @@ def stage_all(db: Session, owner: User, project_id: int, settings: Settings) -> 
 
 
 def unstage_paths(
-    db: Session, owner: User, project_id: int, paths: list[str], settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    paths: list[str],
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitStatusRead:
     """Move the given paths back to the working tree, then return the status."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     _validate_paths(paths)
 
     _unstage(path, paths, settings)
     return _read_status(path, settings)
 
 
-def unstage_all(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+def unstage_all(
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
+) -> GitStatusRead:
     """Move every staged path back to the working tree."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     current = _read_status(path, settings)
 
     _unstage(path, [change.path for change in current.staged], settings)
@@ -209,7 +226,12 @@ def unstage_all(db: Session, owner: User, project_id: int, settings: Settings) -
 
 
 def discard_paths(
-    db: Session, owner: User, project_id: int, paths: list[str], settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    paths: list[str],
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitStatusRead:
     """Discard working tree and index changes for the given paths.
 
@@ -217,7 +239,7 @@ def discard_paths(
     removed from the index (when staged) and from disk. Rename targets may be
     passed alongside their original path so both sides are reverted.
     """
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     _validate_paths(paths)
     if not paths:
         return _read_status(path, settings)
@@ -238,9 +260,11 @@ def discard_paths(
     return _read_status(path, settings)
 
 
-def pull_branch(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+def pull_branch(
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
+) -> GitStatusRead:
     """Fast-forward the current branch from its upstream."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     branch = _current_branch(path, settings)
     if not branch or _upstream_branch(path, branch, settings) is None:
         raise api_error(ErrorCode.GIT_NO_UPSTREAM, status_code=status.HTTP_400_BAD_REQUEST)
@@ -256,9 +280,11 @@ def pull_branch(db: Session, owner: User, project_id: int, settings: Settings) -
     return _read_status(path, settings)
 
 
-def push_branch(db: Session, owner: User, project_id: int, settings: Settings) -> GitStatusRead:
+def push_branch(
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
+) -> GitStatusRead:
     """Push the current branch, setting its upstream on the first push."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     branch = _current_branch(path, settings)
     if not branch:
         raise api_error(ErrorCode.GIT_BRANCH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
@@ -280,10 +306,10 @@ def push_branch(db: Session, owner: User, project_id: int, settings: Settings) -
 
 
 def list_branches(
-    db: Session, owner: User, project_id: int, settings: Settings
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
 ) -> GitBranchesRead:
     """Return the current branch together with every local branch."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     result = _run_git(
         path,
         ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
@@ -470,10 +496,15 @@ def create_branch(
 
 
 def checkout_branch(
-    db: Session, owner: User, project_id: int, name: str, settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    name: str,
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitStatusRead:
     """Switch to an existing local branch."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     _checkout(path, name.strip(), create=False, settings=settings)
     return _read_status(path, settings)
 
@@ -544,10 +575,15 @@ def _partition_tracked(
 
 
 def commit_staged(
-    db: Session, owner: User, project_id: int, message: str, settings: Settings
+    db: Session,
+    owner: User,
+    project_id: int,
+    message: str,
+    settings: Settings,
+    worktree: str | None = None,
 ) -> GitCommitRead:
     """Commit whatever is already staged in the index."""
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
 
     cleaned = message.strip()
     if not cleaned:
@@ -570,7 +606,7 @@ def commit_staged(
 
 
 def generate_commit_message(
-    db: Session, owner: User, project_id: int, settings: Settings
+    db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
 ) -> tuple[str, str]:
     """Generate a commit message for the current changes using the default agent.
 
@@ -578,7 +614,7 @@ def generate_commit_message(
     describes what will actually be committed; otherwise the working tree diff
     (or the changed-file list) is used.
     """
-    path = _project_repository(db, owner, project_id, settings)
+    path = _resolve_repository(db, owner, project_id, settings, worktree)
     repo_status = _read_status(path, settings)
     if not (repo_status.staged or repo_status.unstaged or repo_status.untracked):
         raise api_error(ErrorCode.GIT_NOTHING_TO_COMMIT, status_code=status.HTTP_400_BAD_REQUEST)
@@ -768,9 +804,7 @@ def merge_pull_request(
         raise api_error(ErrorCode.GIT_REMOTE_MISSING, status_code=status.HTTP_400_BAD_REQUEST)
 
     if not _current_branch(path, settings):
-        raise api_error(
-            ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST
-        )
+        raise api_error(ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
 
     merged = _run_gh(
         path,
@@ -778,9 +812,7 @@ def merge_pull_request(
         timeout=settings.github_pr_timeout_seconds,
     )
     if merged.returncode != 0:
-        raise api_error(
-            ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST
-        )
+        raise api_error(ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
 
     return get_current_pull_request(db, owner, project_id, settings, worktree)
 

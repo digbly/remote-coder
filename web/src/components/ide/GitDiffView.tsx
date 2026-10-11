@@ -10,10 +10,18 @@ interface GitDiffViewProps {
   path: string
   staged: boolean
   origPath?: string | null
+  worktree?: string
   active: boolean
 }
 
-export function GitDiffView({ projectId, path, staged, origPath, active }: GitDiffViewProps) {
+export function GitDiffView({
+  projectId,
+  path,
+  staged,
+  origPath,
+  worktree,
+  active,
+}: GitDiffViewProps) {
   const { t } = useTranslation()
   const { resolved } = useTheme()
   const [oldContent, setOldContent] = useState('')
@@ -26,7 +34,7 @@ export function GitDiffView({ projectId, path, staged, origPath, active }: GitDi
 
   useEffect(() => {
     let disposed = false
-    Promise.all([fetchFileDiff(projectId, path, staged, origPath), ensureMonaco()])
+    Promise.all([fetchFileDiff(projectId, path, staged, origPath, worktree), ensureMonaco()])
       .then(([diff]) => {
         if (disposed) return
         setOldContent(diff.old_content)
@@ -42,7 +50,7 @@ export function GitDiffView({ projectId, path, staged, origPath, active }: GitDi
     return () => {
       disposed = true
     }
-  }, [projectId, path, staged, origPath, t])
+  }, [projectId, path, staged, origPath, worktree, t])
 
   useEffect(() => {
     if (active) editorRef.current?.layout()
@@ -58,8 +66,9 @@ export function GitDiffView({ projectId, path, staged, origPath, active }: GitDi
 
   const label = origPath ? `${origPath} → ${path}` : path
   // Monaco caches models by URI, so the scope must separate the staged and
-  // working-tree diffs of the same file (they carry different content).
-  const scope = staged ? 'staged' : 'working'
+  // working-tree diffs of the same file (they carry different content), and the
+  // worktree so the same path in different worktrees does not collide.
+  const scope = `${worktree ?? 'primary'}-${staged ? 'staged' : 'working'}`
 
   return (
     <div className="relative h-full w-full bg-[var(--editor)]">

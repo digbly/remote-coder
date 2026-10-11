@@ -166,11 +166,11 @@ export function IdeShell({
     }))
   }
 
-  function openDiff(path: string, staged: boolean, origPath?: string | null) {
+  function openDiff(path: string, staged: boolean, origPath?: string | null, worktree?: string) {
     if (!activeProject) return
     update((prev) => ({
       ...prev,
-      workspaces: withOpenDiff(prev.workspaces, activeProject, path, staged, origPath),
+      workspaces: withOpenDiff(prev.workspaces, activeProject, path, staged, origPath, worktree),
     }))
   }
 
@@ -277,6 +277,7 @@ export function IdeShell({
                 path={tab.filePath}
                 staged={Boolean(tab.diffStaged)}
                 origPath={tab.diffOrigPath}
+                worktree={tab.worktree}
                 active={active}
               />
             ) : tab.kind === 'vscode' && tab.worktree ? (

@@ -268,11 +268,16 @@ export function withOpenDiff(
   path: string,
   staged: boolean,
   origPath?: string | null,
+  worktree?: string,
 ): Record<number, ProjectWorkspace> {
   const current = workspaces[project.id]
   const tabs = current?.tabs ?? []
   const existing = tabs.find(
-    (tab) => tab.kind === 'diff' && tab.filePath === path && Boolean(tab.diffStaged) === staged,
+    (tab) =>
+      tab.kind === 'diff' &&
+      tab.filePath === path &&
+      Boolean(tab.diffStaged) === staged &&
+      tab.worktree === worktree,
   )
   if (existing) {
     return {
@@ -296,6 +301,7 @@ export function withOpenDiff(
     filePath: path,
     diffStaged: staged,
     diffOrigPath: origPath ?? null,
+    ...(worktree ? { worktree } : {}),
   }
   return {
     ...workspaces,

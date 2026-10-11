@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Query, status
 
 from app.core.deps import DbDep, SettingsDep
@@ -22,6 +24,9 @@ from app.modules.git.schemas import (
 
 router = APIRouter(prefix="/projects", tags=["git"])
 
+# Selects a linked worktree by name; absent means the primary worktree.
+WorktreeQuery = Annotated[str | None, Query(max_length=255)]
+
 
 @router.get(
     "/{project_id}/git/status",
@@ -33,8 +38,9 @@ def read_git_status(
     current_user: CurrentUser,
     db: DbDep,
     settings: SettingsDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.get_git_status(db, current_user, project_id, settings)
+    return service.get_git_status(db, current_user, project_id, settings, worktree)
 
 
 @router.get(
@@ -50,8 +56,11 @@ def read_git_diff(
     path: str = Query(min_length=1, max_length=4096),
     staged: bool = False,
     orig_path: str | None = Query(default=None, max_length=4096),
+    worktree: WorktreeQuery = None,
 ) -> GitDiffRead:
-    return service.get_file_diff(db, current_user, project_id, path, staged, orig_path, settings)
+    return service.get_file_diff(
+        db, current_user, project_id, path, staged, orig_path, settings, worktree
+    )
 
 
 @router.post(
@@ -66,8 +75,9 @@ def stage_paths(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.stage_paths(db, current_user, project_id, payload.paths, settings)
+    return service.stage_paths(db, current_user, project_id, payload.paths, settings, worktree)
 
 
 @router.post(
@@ -82,8 +92,9 @@ def unstage_paths(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.unstage_paths(db, current_user, project_id, payload.paths, settings)
+    return service.unstage_paths(db, current_user, project_id, payload.paths, settings, worktree)
 
 
 @router.post(
@@ -97,8 +108,9 @@ def stage_all(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.stage_all(db, current_user, project_id, settings)
+    return service.stage_all(db, current_user, project_id, settings, worktree)
 
 
 @router.post(
@@ -112,8 +124,9 @@ def unstage_all(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.unstage_all(db, current_user, project_id, settings)
+    return service.unstage_all(db, current_user, project_id, settings, worktree)
 
 
 @router.post(
@@ -128,8 +141,9 @@ def discard_paths(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.discard_paths(db, current_user, project_id, payload.paths, settings)
+    return service.discard_paths(db, current_user, project_id, payload.paths, settings, worktree)
 
 
 @router.post(
@@ -143,8 +157,9 @@ def push_branch(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.push_branch(db, current_user, project_id, settings)
+    return service.push_branch(db, current_user, project_id, settings, worktree)
 
 
 @router.post(
@@ -158,8 +173,9 @@ def pull_branch(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.pull_branch(db, current_user, project_id, settings)
+    return service.pull_branch(db, current_user, project_id, settings, worktree)
 
 
 @router.get(
@@ -218,8 +234,9 @@ def list_branches(
     current_user: CurrentUser,
     db: DbDep,
     settings: SettingsDep,
+    worktree: WorktreeQuery = None,
 ) -> GitBranchesRead:
-    return service.list_branches(db, current_user, project_id, settings)
+    return service.list_branches(db, current_user, project_id, settings, worktree)
 
 
 @router.post(
@@ -234,7 +251,7 @@ def create_branch(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
-    worktree: str | None = Query(default=None, max_length=255),
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
     return service.create_branch(db, current_user, project_id, payload.name, settings, worktree)
 
@@ -251,8 +268,9 @@ def checkout_branch(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitStatusRead:
-    return service.checkout_branch(db, current_user, project_id, payload.name, settings)
+    return service.checkout_branch(db, current_user, project_id, payload.name, settings, worktree)
 
 
 @router.post(
@@ -267,8 +285,9 @@ def commit_staged(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitCommitRead:
-    return service.commit_staged(db, current_user, project_id, payload.message, settings)
+    return service.commit_staged(db, current_user, project_id, payload.message, settings, worktree)
 
 
 @router.post(
@@ -282,8 +301,11 @@ def generate_commit_message(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
+    worktree: WorktreeQuery = None,
 ) -> GitCommitMessageRead:
-    agent_id, message = service.generate_commit_message(db, current_user, project_id, settings)
+    agent_id, message = service.generate_commit_message(
+        db, current_user, project_id, settings, worktree
+    )
     return GitCommitMessageRead(message=message, agent_id=agent_id)
 
 
@@ -299,7 +321,7 @@ def create_pull_request(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
-    worktree: str | None = Query(default=None, max_length=255),
+    worktree: WorktreeQuery = None,
 ) -> GitPullRequestRead:
     return service.create_pull_request(db, current_user, project_id, payload, settings, worktree)
 
@@ -315,7 +337,7 @@ def merge_pull_request(
     db: DbDep,
     settings: SettingsDep,
     _csrf: CsrfDep,
-    worktree: str | None = Query(default=None, max_length=255),
+    worktree: WorktreeQuery = None,
 ) -> GitPullRequestStatusRead:
     return service.merge_pull_request(db, current_user, project_id, settings, worktree)
 
@@ -330,6 +352,6 @@ def read_current_pull_request(
     current_user: CurrentUser,
     db: DbDep,
     settings: SettingsDep,
-    worktree: str | None = Query(default=None, max_length=255),
+    worktree: WorktreeQuery = None,
 ) -> GitPullRequestStatusRead:
     return service.get_current_pull_request(db, current_user, project_id, settings, worktree)

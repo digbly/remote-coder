@@ -176,10 +176,11 @@ function resolvePrimaryAction(status: GitStatus | null, clean: boolean): Primary
 
 interface SourceControlPanelProps {
   projectId: number
+  worktree?: string
   onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
 }
 
-export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanelProps) {
+export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceControlPanelProps) {
   const { t } = useTranslation()
   const confirm = useConfirm()
   const [status, setStatus] = useState<GitStatus | null>(null)
@@ -197,7 +198,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
 
   useEffect(() => {
     let active = true
-    fetchGitStatus(projectId)
+    fetchGitStatus(projectId, worktree)
       .then((next) => {
         if (!active) return
         setStatus(next)
@@ -215,7 +216,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
       active = false
       window.clearInterval(timer)
     }
-  }, [projectId, t, reloadToken, reload])
+  }, [projectId, worktree, t, reloadToken, reload])
 
   const clean =
     status !== null &&
@@ -250,7 +251,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'stage',
       async () => {
-        setStatus(await stagePaths(projectId, paths))
+        setStatus(await stagePaths(projectId, paths, worktree))
       },
       t('ide.stageFailed'),
     )
@@ -260,7 +261,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'stage',
       async () => {
-        setStatus(await unstagePaths(projectId, paths))
+        setStatus(await unstagePaths(projectId, paths, worktree))
       },
       t('ide.stageFailed'),
     )
@@ -270,7 +271,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'stage',
       async () => {
-        setStatus(await unstageAllPaths(projectId))
+        setStatus(await unstageAllPaths(projectId, worktree))
       },
       t('ide.stageFailed'),
     )
@@ -280,7 +281,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'discard',
       async () => {
-        setStatus(await discardPaths(projectId, paths))
+        setStatus(await discardPaths(projectId, paths, worktree))
       },
       t('ide.discardFailed'),
     )
@@ -296,7 +297,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'push',
       async () => {
-        setStatus(await pushBranch(projectId))
+        setStatus(await pushBranch(projectId, worktree))
       },
       t('ide.pushFailed'),
     )
@@ -306,7 +307,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'pull',
       async () => {
-        setStatus(await pullBranch(projectId))
+        setStatus(await pullBranch(projectId, worktree))
       },
       t('ide.pullFailed'),
     )
@@ -316,7 +317,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     const next = !branchMenuOpen
     setBranchMenuOpen(next)
     if (next) {
-      fetchBranches(projectId)
+      fetchBranches(projectId, worktree)
         .then(setBranchList)
         .catch((err) => {
           setActionError(err instanceof Error ? err.message : t('ide.switchBranchFailed'))
@@ -332,7 +333,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'branch',
       async () => {
-        setStatus(await checkoutBranch(projectId, name))
+        setStatus(await checkoutBranch(projectId, name, worktree))
         setBranchMenuOpen(false)
       },
       t('ide.switchBranchFailed'),
@@ -343,8 +344,8 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'branch',
       async () => {
-        setStatus(await createBranch(projectId, name))
-        setBranchList(await fetchBranches(projectId))
+        setStatus(await createBranch(projectId, name, worktree))
+        setBranchList(await fetchBranches(projectId, worktree))
         setBranchMenuOpen(false)
       },
       t('ide.createBranchFailed'),
@@ -357,7 +358,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'commit',
       async () => {
-        await commitChanges(projectId, message.trim())
+        await commitChanges(projectId, message.trim(), worktree)
         setMessage('')
       },
       t('ide.commitFailed'),
@@ -368,7 +369,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'generate',
       async () => {
-        const result = await generateCommitMessage(projectId)
+        const result = await generateCommitMessage(projectId, worktree)
         setMessage(result.message)
       },
       t('ide.generateCommitMessageFailed'),
@@ -381,7 +382,7 @@ export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanel
     runAction(
       'createPr',
       async () => {
-        const result = await createPullRequest(projectId, branch)
+        const result = await createPullRequest(projectId, branch, worktree)
         setPullRequestUrl(result.url)
       },
       t('ide.prFailed'),

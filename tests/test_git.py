@@ -764,6 +764,76 @@ def test_create_branch_is_scoped_to_worktree(client: TestClient, projects_root) 
     assert primary == "main"
 
 
+def test_git_status_is_scoped_to_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+    linked = projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature"
+    (linked / "tracked.txt").write_text("hello\nworktree\n")
+
+    scoped = client.get(f"{PROJECTS_URL}/{project_id}/git/status?worktree=myrepo-feature")
+    assert scoped.status_code == 200
+    assert scoped.json()["branch"] == "feature/x"
+    assert [change["path"] for change in scoped.json()["unstaged"]] == ["tracked.txt"]
+
+    primary = client.get(f"{PROJECTS_URL}/{project_id}/git/status")
+    assert primary.status_code == 200
+    assert primary.json()["branch"] == "main"
+    assert primary.json()["unstaged"] == []
+
+
+def test_git_status_unknown_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/status?worktree=missing")
+
+    assert response.status_code == 404
+    assert _error_code(response) == "GIT_WORKTREE_NOT_FOUND"
+
+
+def test_commit_is_scoped_to_worktree(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    client.post(
+        f"{PROJECTS_URL}/{project_id}/git/worktrees",
+        json={"name": "myrepo-feature", "branch": "feature/x", "create_branch": True},
+        headers=_csrf(client),
+    )
+    linked = projects_root.parent / "worktrees" / str(project_id) / "myrepo-feature"
+    (linked / "tracked.txt").write_text("hello\nworktree\n")
+
+    staged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage?worktree=myrepo-feature",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    assert staged.status_code == 200
+    assert [change["path"] for change in staged.json()["staged"]] == ["tracked.txt"]
+
+    committed = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/commit?worktree=myrepo-feature",
+        json={"message": "worktree change"},
+        headers=_csrf(client),
+    )
+    assert committed.status_code == 200
+    assert committed.json()["branch"] == "feature/x"
+
+    primary = client.get(f"{PROJECTS_URL}/{project_id}/git/status")
+    assert primary.json()["staged"] == []
+    assert primary.json()["unstaged"] == []
+
+
 def test_parse_worktrees_marks_primary_and_sorts_first(tmp_path: Path) -> None:
     primary = tmp_path / "repo"
     linked = tmp_path / "zzz-agent"
@@ -977,9 +1047,7 @@ def test_current_pull_request_is_scoped_to_worktree(
 
     monkeypatch.setattr("app.modules.git.service.subprocess.run", fake_run)
 
-    response = client.get(
-        f"{PROJECTS_URL}/{project_id}/git/pull-request?worktree=myrepo-feature"
-    )
+    response = client.get(f"{PROJECTS_URL}/{project_id}/git/pull-request?worktree=myrepo-feature")
 
     assert response.status_code == 200
     body = response.json()

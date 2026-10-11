@@ -556,8 +556,13 @@ export async function browseDirectories(path?: string): Promise<DirectoryListing
   return (await response.json()) as DirectoryListing
 }
 
-export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
-  const response = await request(`/projects/${projectId}/git/status`)
+/** Append the optional worktree selector to a git endpoint path. */
+function gitPath(path: string, worktree?: string): string {
+  return worktree ? `${path}?worktree=${encodeURIComponent(worktree)}` : path
+}
+
+export async function fetchGitStatus(projectId: number, worktree?: string): Promise<GitStatus> {
+  const response = await request(gitPath(`/projects/${projectId}/git/status`, worktree))
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
@@ -570,9 +575,11 @@ export async function fetchFileDiff(
   path: string,
   staged: boolean,
   origPath?: string | null,
+  worktree?: string,
 ): Promise<GitFileDiff> {
   const params = new URLSearchParams({ path, staged: staged ? 'true' : 'false' })
   if (origPath) params.set('orig_path', origPath)
+  if (worktree) params.set('worktree', worktree)
   const response = await request(`/projects/${projectId}/git/diff?${params.toString()}`)
   if (!response.ok) {
     const data = await response.json().catch(() => null)
@@ -594,32 +601,44 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T
 }
 
-export function stagePaths(projectId: number, paths: string[]): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/stage`, { paths })
+export function stagePaths(
+  projectId: number,
+  paths: string[],
+  worktree?: string,
+): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/stage`, worktree), { paths })
 }
 
-export function unstagePaths(projectId: number, paths: string[]): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/unstage`, { paths })
+export function unstagePaths(
+  projectId: number,
+  paths: string[],
+  worktree?: string,
+): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/unstage`, worktree), { paths })
 }
 
-export function unstageAllPaths(projectId: number): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/unstage-all`, {})
+export function unstageAllPaths(projectId: number, worktree?: string): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/unstage-all`, worktree), {})
 }
 
-export function discardPaths(projectId: number, paths: string[]): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/discard`, { paths })
+export function discardPaths(
+  projectId: number,
+  paths: string[],
+  worktree?: string,
+): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/discard`, worktree), { paths })
 }
 
-export function pushBranch(projectId: number): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/push`, {})
+export function pushBranch(projectId: number, worktree?: string): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/push`, worktree), {})
 }
 
-export function pullBranch(projectId: number): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/pull`, {})
+export function pullBranch(projectId: number, worktree?: string): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/pull`, worktree), {})
 }
 
-export async function fetchBranches(projectId: number): Promise<GitBranches> {
-  const response = await request(`/projects/${projectId}/git/branches`)
+export async function fetchBranches(projectId: number, worktree?: string): Promise<GitBranches> {
+  const response = await request(gitPath(`/projects/${projectId}/git/branches`, worktree))
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
@@ -632,20 +651,30 @@ export function createBranch(
   name: string,
   worktree?: string,
 ): Promise<GitStatus> {
-  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
-  return postJson(`/projects/${projectId}/git/branches${query}`, { name })
+  return postJson(gitPath(`/projects/${projectId}/git/branches`, worktree), { name })
 }
 
-export function checkoutBranch(projectId: number, name: string): Promise<GitStatus> {
-  return postJson(`/projects/${projectId}/git/checkout`, { name })
+export function checkoutBranch(
+  projectId: number,
+  name: string,
+  worktree?: string,
+): Promise<GitStatus> {
+  return postJson(gitPath(`/projects/${projectId}/git/checkout`, worktree), { name })
 }
 
-export function commitChanges(projectId: number, message: string): Promise<GitCommitResult> {
-  return postJson(`/projects/${projectId}/git/commit`, { message })
+export function commitChanges(
+  projectId: number,
+  message: string,
+  worktree?: string,
+): Promise<GitCommitResult> {
+  return postJson(gitPath(`/projects/${projectId}/git/commit`, worktree), { message })
 }
 
-export function generateCommitMessage(projectId: number): Promise<GitCommitMessageResult> {
-  return postJson(`/projects/${projectId}/git/commit-message`, {})
+export function generateCommitMessage(
+  projectId: number,
+  worktree?: string,
+): Promise<GitCommitMessageResult> {
+  return postJson(gitPath(`/projects/${projectId}/git/commit-message`, worktree), {})
 }
 
 export function createPullRequest(
@@ -653,24 +682,21 @@ export function createPullRequest(
   branch: string,
   worktree?: string,
 ): Promise<GitPullRequestResult> {
-  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
-  return postJson(`/projects/${projectId}/git/pull-request${query}`, { branch })
+  return postJson(gitPath(`/projects/${projectId}/git/pull-request`, worktree), { branch })
 }
 
 export function mergePullRequest(
   projectId: number,
   worktree?: string,
 ): Promise<GitPullRequestStatus> {
-  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
-  return postJson(`/projects/${projectId}/git/pull-request/merge${query}`, {})
+  return postJson(gitPath(`/projects/${projectId}/git/pull-request/merge`, worktree), {})
 }
 
 export async function fetchCurrentPullRequest(
   projectId: number,
   worktree?: string,
 ): Promise<GitPullRequestStatus> {
-  const query = worktree ? `?worktree=${encodeURIComponent(worktree)}` : ''
-  const response = await request(`/projects/${projectId}/git/pull-request${query}`)
+  const response = await request(gitPath(`/projects/${projectId}/git/pull-request`, worktree))
   if (!response.ok) {
     const data = await response.json().catch(() => null)
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
