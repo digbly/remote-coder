@@ -41,17 +41,35 @@ function PathRow({
   label,
   status,
   action,
+  onOpen,
 }: {
   label: string
   status?: string
   action?: ReactNode
+  onOpen?: () => void
 }) {
-  return (
-    <div className="group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition hover:bg-[var(--hover-subtle)]">
+  const content = (
+    <>
       <FileIcon width={14} height={14} className="shrink-0 text-[var(--muted-2)]" />
       <span className="truncate text-[var(--fg-3-alt)]" title={label}>
         {label}
       </span>
+    </>
+  )
+  return (
+    <div className="group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12.5px] transition hover:bg-[var(--hover-subtle)]">
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          title={label}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          {content}
+        </button>
+      ) : (
+        <span className="flex min-w-0 flex-1 items-center gap-2">{content}</span>
+      )}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {status && (
           <span className={`font-mono text-[11px] ${gitStatusColor(status)}`}>{status}</span>
@@ -62,9 +80,17 @@ function PathRow({
   )
 }
 
-function ChangeRow({ file, action }: { file: GitChange; action?: ReactNode }) {
+function ChangeRow({
+  file,
+  action,
+  onOpen,
+}: {
+  file: GitChange
+  action?: ReactNode
+  onOpen?: () => void
+}) {
   const label = file.orig_path ? `${file.orig_path} → ${file.path}` : file.path
-  return <PathRow label={label} status={file.status} action={action} />
+  return <PathRow label={label} status={file.status} action={action} onOpen={onOpen} />
 }
 
 function discardTargets(file: GitChange): string[] {
@@ -157,9 +183,10 @@ type BusyAction =
 
 interface SourceControlPanelProps {
   projectId: number
+  onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
 }
 
-export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
+export function SourceControlPanel({ projectId, onOpenDiff }: SourceControlPanelProps) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -527,7 +554,12 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
             {status.conflicted.length > 0 && (
               <Section title={t('ide.conflicts')} count={status.conflicted.length}>
                 {status.conflicted.map((path) => (
-                  <PathRow key={path} label={path} status="U" />
+                  <PathRow
+                    key={path}
+                    label={path}
+                    status="U"
+                    onOpen={() => onOpenDiff(path, false, null)}
+                  />
                 ))}
               </Section>
             )}
@@ -549,6 +581,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
                   <ChangeRow
                     key={`staged:${file.path}`}
                     file={file}
+                    onOpen={() => onOpenDiff(file.path, true, file.orig_path)}
                     action={
                       <>
                         <RowAction
@@ -577,6 +610,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
                   <ChangeRow
                     key={`unstaged:${file.path}`}
                     file={file}
+                    onOpen={() => onOpenDiff(file.path, false, file.orig_path)}
                     action={
                       <>
                         <RowAction
@@ -606,6 +640,7 @@ export function SourceControlPanel({ projectId }: SourceControlPanelProps) {
                     key={`untracked:${path}`}
                     label={path}
                     status="?"
+                    onOpen={() => onOpenDiff(path, false, null)}
                     action={
                       <>
                         <RowAction

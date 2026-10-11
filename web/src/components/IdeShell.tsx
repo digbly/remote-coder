@@ -8,6 +8,7 @@ import {
   withNewTerminal,
   withNewChat,
   withOpenFile,
+  withOpenDiff,
   withChatConversation,
   withTabTitle,
   type ActiveProjectRef,
@@ -19,6 +20,7 @@ import { RightPanel } from './ide/RightPanel'
 import { ProjectTerminal } from './ide/Terminal'
 import { ChatTab } from './ide/ChatTab'
 import { FileEditor } from './ide/FileEditor'
+import { GitDiffView } from './ide/GitDiffView'
 import { TopTabs } from './ide/TopTabs'
 import { TabSearchModal } from './ide/TabSearchModal'
 import { VSCodePanel } from './ide/VSCodePanel'
@@ -142,6 +144,14 @@ export function IdeShell({
     }))
   }
 
+  function openDiff(path: string, staged: boolean, origPath?: string | null) {
+    if (!activeProject) return
+    update((prev) => ({
+      ...prev,
+      workspaces: withOpenDiff(prev.workspaces, activeProject, path, staged, origPath),
+    }))
+  }
+
   const setTabTitle = useCallback(
     (projectId: number, tabId: string, title: string) => {
       update((prev) => ({
@@ -261,9 +271,7 @@ export function IdeShell({
               return (
                 <div
                   key={tab.id}
-                  className={`absolute inset-0 ${
-                    active ? '' : 'pointer-events-none invisible'
-                  }`}
+                  className={`absolute inset-0 ${active ? '' : 'hidden'}`}
                 >
                   {tab.kind === 'chat' ? (
                     <ChatTab
@@ -290,6 +298,14 @@ export function IdeShell({
                       projectId={projectId}
                       path={tab.filePath}
                       line={tab.line}
+                      active={active}
+                    />
+                  ) : tab.kind === 'diff' && tab.filePath ? (
+                    <GitDiffView
+                      projectId={projectId}
+                      path={tab.filePath}
+                      staged={Boolean(tab.diffStaged)}
+                      origPath={tab.diffOrigPath}
                       active={active}
                     />
                   ) : tab.kind === 'vscode' && tab.worktree ? (
@@ -325,6 +341,7 @@ export function IdeShell({
                   width={layout.rightWidth}
                   onClose={() => updateLayout({ rightOpen: false })}
                   onOpenFile={openFile}
+                  onOpenDiff={openDiff}
                 />
               </>
             ) : (

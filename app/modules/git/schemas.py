@@ -22,6 +22,13 @@ class GitPathsUpdate(BaseModel):
     paths: list[str] = Field(min_length=1, max_length=1000)
 
 
+class GitDiffRead(BaseModel):
+    path: str
+    orig_path: str | None = None
+    old_content: str = ""
+    new_content: str = ""
+
+
 class GitCommitCreate(BaseModel):
     message: str = Field(min_length=1, max_length=5000)
 

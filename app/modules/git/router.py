@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import error_responses
@@ -10,6 +10,7 @@ from app.modules.git.schemas import (
     GitCommitCreate,
     GitCommitMessageRead,
     GitCommitRead,
+    GitDiffRead,
     GitPathsUpdate,
     GitPullRequestCreate,
     GitPullRequestRead,
@@ -34,6 +35,23 @@ def read_git_status(
     settings: SettingsDep,
 ) -> GitStatusRead:
     return service.get_git_status(db, current_user, project_id, settings)
+
+
+@router.get(
+    "/{project_id}/git/diff",
+    response_model=GitDiffRead,
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+def read_git_diff(
+    project_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    path: str = Query(min_length=1, max_length=4096),
+    staged: bool = False,
+    orig_path: str | None = Query(default=None, max_length=4096),
+) -> GitDiffRead:
+    return service.get_file_diff(db, current_user, project_id, path, staged, orig_path, settings)
 
 
 @router.post(

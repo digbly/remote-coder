@@ -121,6 +121,13 @@ export interface GitStatus {
   conflicted: string[]
 }
 
+export interface GitFileDiff {
+  path: string
+  orig_path: string | null
+  old_content: string
+  new_content: string
+}
+
 export interface GitCommitResult {
   commit: string
   branch: string | null
@@ -519,6 +526,22 @@ export async function fetchGitStatus(projectId: number): Promise<GitStatus> {
     throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
   }
   return (await response.json()) as GitStatus
+}
+
+export async function fetchFileDiff(
+  projectId: number,
+  path: string,
+  staged: boolean,
+  origPath?: string | null,
+): Promise<GitFileDiff> {
+  const params = new URLSearchParams({ path, staged: staged ? 'true' : 'false' })
+  if (origPath) params.set('orig_path', origPath)
+  const response = await request(`/projects/${projectId}/git/diff?${params.toString()}`)
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return (await response.json()) as GitFileDiff
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {

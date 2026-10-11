@@ -21,9 +21,16 @@ interface RightPanelProps {
   width: number
   onClose: () => void
   onOpenFile: (path: string, line?: number) => void
+  onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
 }
 
-export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanelProps) {
+export function RightPanel({
+  projectId,
+  width,
+  onClose,
+  onOpenFile,
+  onOpenDiff,
+}: RightPanelProps) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<PanelTab>(() => loadPanelTab(projectId))
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -100,7 +107,9 @@ export function RightPanel({ projectId, width, onClose, onOpenFile }: RightPanel
         className="flex min-h-0 flex-1 flex-col"
       >
         {tab === 'explorer' && <ExplorerPanel projectId={projectId} onOpenFile={onOpenFile} />}
-        {tab === 'sourceControl' && <SourceControlPanel projectId={projectId} />}
+        {tab === 'sourceControl' && (
+          <SourceControlPanel projectId={projectId} onOpenDiff={onOpenDiff} />
+        )}
         {tab === 'check' && <CheckPanel projectId={projectId} />}
       </div>
     </aside>

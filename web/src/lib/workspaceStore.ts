@@ -1,7 +1,7 @@
 import type { AgentDefinition } from './agents'
 import { normalizeLayout, type LayoutState } from './layoutStore'
 
-export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat'
+export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat' | 'diff'
 
 export interface WorkspaceTab {
   id: string
@@ -14,6 +14,8 @@ export interface WorkspaceTab {
   filePath?: string
   line?: number
   conversationId?: string
+  diffStaged?: boolean
+  diffOrigPath?: string | null
 }
 
 export interface ProjectWorkspace {
@@ -59,14 +61,19 @@ function isTab(value: unknown): value is WorkspaceTab {
     (value.kind === 'terminal' ||
       value.kind === 'editor' ||
       value.kind === 'vscode' ||
-      value.kind === 'chat') &&
+      value.kind === 'chat' ||
+      value.kind === 'diff') &&
     (value.projectId === undefined || typeof value.projectId === 'number') &&
     (value.worktree === undefined || typeof value.worktree === 'string') &&
     (value.agentId === undefined || typeof value.agentId === 'string') &&
     (value.agentLabel === undefined || typeof value.agentLabel === 'string') &&
     (value.filePath === undefined || typeof value.filePath === 'string') &&
     (value.line === undefined || typeof value.line === 'number') &&
-    (value.conversationId === undefined || typeof value.conversationId === 'string')
+    (value.conversationId === undefined || typeof value.conversationId === 'string') &&
+    (value.diffStaged === undefined || typeof value.diffStaged === 'boolean') &&
+    (value.diffOrigPath === undefined ||
+      value.diffOrigPath === null ||
+      typeof value.diffOrigPath === 'string')
   )
 }
 
@@ -220,6 +227,45 @@ export function withOpenFile(
     projectId: project.id,
     filePath: path,
     line,
+  }
+  return {
+    ...workspaces,
+    [project.id]: { tabs: [...tabs, tab], activeId: id },
+  }
+}
+
+export function withOpenDiff(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  path: string,
+  staged: boolean,
+  origPath?: string | null,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const existing = tabs.find(
+    (tab) => tab.kind === 'diff' && tab.filePath === path && Boolean(tab.diffStaged) === staged,
+  )
+  if (existing) {
+    return {
+      ...workspaces,
+      [project.id]: {
+        tabs: tabs.map((tab) =>
+          tab.id === existing.id ? { ...tab, diffOrigPath: origPath ?? null } : tab,
+        ),
+        activeId: existing.id,
+      },
+    }
+  }
+  const id = newTerminalId()
+  const title = path.split('/').pop() || path
+  const tab: WorkspaceTab = {
+    id,
+    title,
+    kind: 'diff',
+    projectId: project.id,
+    filePath: path,
+    diffStaged: staged,
+    diffOrigPath: origPath ?? null,
   }
   return {
     ...workspaces,

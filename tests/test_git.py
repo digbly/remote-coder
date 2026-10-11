@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -130,6 +131,143 @@ def test_git_status_missing_project(client: TestClient) -> None:
     response = client.get(f"{PROJECTS_URL}/9999/git/status")
     assert response.status_code == 404
     assert _error_code(response) == "PROJECT_NOT_FOUND"
+
+
+def test_git_diff_requires_auth(client: TestClient) -> None:
+    assert client.get(f"{PROJECTS_URL}/1/git/diff", params={"path": "a.txt"}).status_code == 401
+
+
+def test_git_diff_unstaged_tracked(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "tracked.txt"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == "tracked.txt"
+    assert body["old_content"] == "hello\n"
+    assert body["new_content"] == "hello\nworld\n"
+
+
+def test_git_diff_staged_compares_head_with_index(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    _git(repo, "add", "tracked.txt")
+    (repo / "tracked.txt").write_text("hello\nworld\nmore\n")
+
+    staged = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff",
+        params={"path": "tracked.txt", "staged": "true"},
+    ).json()
+    assert staged["old_content"] == "hello\n"
+    assert staged["new_content"] == "hello\nworld\n"
+
+    unstaged = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff",
+        params={"path": "tracked.txt", "staged": "false"},
+    ).json()
+    assert unstaged["old_content"] == "hello\nworld\n"
+    assert unstaged["new_content"] == "hello\nworld\nmore\n"
+
+
+def test_git_diff_untracked_diffs_against_empty(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "untracked.txt").write_text("fresh\n")
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "untracked.txt"}
+    ).json()
+    assert body["old_content"] == ""
+    assert body["new_content"] == "fresh\n"
+
+
+def test_git_diff_rename_uses_original_path(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    _git(repo, "mv", "tracked.txt", "renamed.txt")
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff",
+        params={"path": "renamed.txt", "staged": "true", "orig_path": "tracked.txt"},
+    ).json()
+    assert body["orig_path"] == "tracked.txt"
+    assert body["old_content"] == "hello\n"
+    assert body["new_content"] == "hello\n"
+
+
+def test_git_diff_rejects_invalid_path(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "../outside.txt"}
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_INVALID_PATH"
+
+
+def test_git_diff_binary_file_is_rejected(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    (repo / "bin.dat").write_bytes(b"\x00\x01\x02")
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "bin.dat"}
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "FILE_BINARY"
+
+
+def test_git_diff_symlink_returns_link_target(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    outside = projects_root / "secret.txt"
+    outside.write_text("top secret\n")
+    os.symlink(str(outside), repo / "link.txt")
+
+    body = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "link.txt"}
+    ).json()
+
+    assert body["old_content"] == ""
+    assert body["new_content"] == str(outside)
+
+
+def test_git_diff_rejects_symlinked_parent_escape(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    outside = projects_root / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("top secret\n")
+    os.symlink(str(outside), repo / "linkdir")
+
+    response = client.get(
+        f"{PROJECTS_URL}/{project_id}/git/diff", params={"path": "linkdir/secret.txt"}
+    )
+    assert response.status_code == 400
+    assert _error_code(response) == "GIT_INVALID_PATH"
 
 
 def test_git_status_command_failure(client: TestClient, projects_root, monkeypatch) -> None:

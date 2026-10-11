@@ -15,6 +15,7 @@ from app.modules.git.schemas import (
     GitBranchesRead,
     GitChange,
     GitCommitRead,
+    GitDiffRead,
     GitPullRequestCreate,
     GitPullRequestRead,
     GitPullRequestStatusRead,
@@ -23,7 +24,7 @@ from app.modules.git.schemas import (
     GitWorktreeCreate,
     GitWorktreeRead,
 )
-from app.modules.projects.service import get_project, parse_github_repository
+from app.modules.projects.service import MAX_FILE_BYTES, get_project, parse_github_repository
 
 _STATUS_ARGS = [
     "status",
@@ -68,6 +69,93 @@ def _read_status(path: Path, settings: Settings) -> GitStatusRead:
     if result.returncode != 0:
         _raise_status_error(result)
     return parse_status(result.stdout)
+
+
+def get_file_diff(
+    db: Session,
+    owner: User,
+    project_id: int,
+    path: str,
+    staged: bool,
+    orig_path: str | None,
+    settings: Settings,
+) -> GitDiffRead:
+    """Return the old and new content of a single changed file for the diff view.
+
+    A staged diff compares ``HEAD`` with the index; an unstaged diff compares the
+    index (falling back to ``HEAD``) with the working tree. Rename targets use the
+    original path on the "old" side. Untracked files diff against empty content.
+    """
+    repo = _project_repository(db, owner, project_id, settings)
+    _validate_paths([path])
+    old_path = orig_path if orig_path else path
+    if orig_path:
+        _validate_paths([orig_path])
+
+    if staged:
+        old = _read_revision(repo, "HEAD", old_path, settings) or ""
+        new = _read_index(repo, path, settings) or ""
+    else:
+        index = _read_index(repo, path, settings)
+        if index is not None:
+            old = index
+        else:
+            old = _read_revision(repo, "HEAD", old_path, settings) or ""
+        new = _read_worktree(repo, path, settings)
+
+    return GitDiffRead(path=path, orig_path=orig_path, old_content=old, new_content=new)
+
+
+def _read_revision(repo: Path, rev: str, file: str, settings: Settings) -> str | None:
+    """Return the content of ``file`` at ``rev``, or ``None`` when it is absent."""
+    result = _run_git(repo, ["show", f"{rev}:{file}"], timeout=settings.git_status_timeout_seconds)
+    if result.returncode != 0:
+        return None
+    return _decode_blob(result.stdout)
+
+
+def _read_index(repo: Path, file: str, settings: Settings) -> str | None:
+    """Return the content of ``file`` in the index, or ``None`` when it is absent."""
+    return _read_revision(repo, "", file, settings)
+
+
+def _read_worktree(repo: Path, file: str, settings: Settings) -> str:
+    """Return the working tree content of ``file``, or ``""`` when it is missing.
+
+    A symlink is diffed as its link target (what git stores as the blob) instead
+    of following it, so the read can never escape the repository.
+    """
+    target = repo / file
+    if target.is_symlink():
+        try:
+            return os.readlink(target)
+        except OSError:
+            return ""
+    if not target.is_file():
+        return ""
+    try:
+        if not target.resolve().is_relative_to(repo.resolve()):
+            raise api_error(ErrorCode.GIT_INVALID_PATH, status_code=status.HTTP_400_BAD_REQUEST)
+        data = target.read_bytes()
+    except OSError:
+        return ""
+    if len(data) > MAX_FILE_BYTES:
+        raise api_error(ErrorCode.FILE_TOO_LARGE, status_code=status.HTTP_400_BAD_REQUEST)
+    if b"\x00" in data:
+        raise api_error(ErrorCode.FILE_BINARY, status_code=status.HTTP_400_BAD_REQUEST)
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise api_error(ErrorCode.FILE_BINARY, status_code=status.HTTP_400_BAD_REQUEST) from exc
+
+
+def _decode_blob(output: str) -> str:
+    """Reject a binary revision blob so the editor never renders it."""
+    if len(output) > MAX_FILE_BYTES:
+        raise api_error(ErrorCode.FILE_TOO_LARGE, status_code=status.HTTP_400_BAD_REQUEST)
+    if "\x00" in output:
+        raise api_error(ErrorCode.FILE_BINARY, status_code=status.HTTP_400_BAD_REQUEST)
+    return output
 
 
 def stage_paths(

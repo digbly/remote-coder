@@ -5,4 +5,5 @@ export const TAB_DOT_COLORS: Record<TabKind, string> = {
   editor: 'bg-indigo-400',
   vscode: 'bg-blue-400',
   chat: 'bg-emerald-400',
+  diff: 'bg-amber-400',
 }
