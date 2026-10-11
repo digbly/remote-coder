@@ -29,6 +29,26 @@ function clampWidth(value: unknown, fallback: number, min: number, max: number):
   return typeof value === 'number' && Number.isFinite(value) ? clamp(value, min, max) : fallback
 }
 
+const LAYOUT_STORAGE_KEY = 'ide.layout'
+
+export function loadLayout(): LayoutState {
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY)
+    if (raw === null) return { ...LAYOUT_DEFAULTS }
+    return normalizeLayout(JSON.parse(raw))
+  } catch {
+    return { ...LAYOUT_DEFAULTS }
+  }
+}
+
+export function saveLayout(layout: LayoutState): void {
+  try {
+    window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export function normalizeLayout(value: unknown): LayoutState {
   if (!isRecord(value)) return { ...LAYOUT_DEFAULTS }
   return {

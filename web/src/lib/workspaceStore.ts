@@ -1,5 +1,5 @@
 import type { AgentDefinition } from './agents'
-import { normalizeLayout, type LayoutState } from './layoutStore'
+import { loadLayout, normalizeLayout, type LayoutState } from './layoutStore'
 
 export type TabKind = 'terminal' | 'editor' | 'vscode' | 'chat' | 'diff' | 'browser'
 
@@ -417,7 +417,7 @@ export function ensureWorkspace(
 }
 
 export function emptySyncedState(): SyncedState {
-  return { workspaces: {}, layout: normalizeLayout(undefined), activeProjectId: null }
+  return { workspaces: {}, layout: loadLayout(), activeProjectId: null }
 }
 
 export function parseSyncedState(value: unknown): SyncedState | null {

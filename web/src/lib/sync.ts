@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { refreshSession, workspaceUrl } from './api'
-import { LAYOUT_DEFAULTS } from './layoutStore'
+import { LAYOUT_DEFAULTS, saveLayout } from './layoutStore'
 import {
   activeWorktreePatch,
   emptySyncedState,
@@ -199,9 +199,13 @@ export function useWorkspaceSync(): WorkspaceSync {
 
   const update = useCallback(
     (updater: (prev: SyncedState) => SyncedState) => {
-      const next = updater(stateRef.current)
+      const prev = stateRef.current
+      const next = updater(prev)
       stateRef.current = next
       setState(next)
+      // Layout is per-client UI state, persisted locally so a reload restores it.
+      // Updates are immutable, so an unchanged layout keeps its reference.
+      if (next.layout !== prev.layout) saveLayout(next.layout)
       if (sendTimerRef.current !== null) window.clearTimeout(sendTimerRef.current)
       sendTimerRef.current = window.setTimeout(() => {
         sendTimerRef.current = null
