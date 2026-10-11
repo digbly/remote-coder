@@ -78,6 +78,31 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     terminal.open(container)
     fitNow()
 
+    // xterm sends Ctrl+C as SIGINT and never touches the clipboard. Intercept
+    // Ctrl/Cmd+C to copy the selection when there is one (otherwise the shell
+    // still receives SIGINT), and Ctrl/Cmd+V to paste from the clipboard.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true
+      const accel = event.ctrlKey || event.metaKey
+      if (!accel || event.altKey) return true
+
+      const key = event.key.toLowerCase()
+      if (key === 'c' && terminal.hasSelection()) {
+        void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => {})
+        return false
+      }
+      if (key === 'v' && navigator.clipboard?.readText) {
+        void navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) terminal.paste(text)
+          })
+          .catch(() => {})
+        return false
+      }
+      return true
+    })
+
     let disposed = false
     let socket: WebSocket | null = null
     let reconnectTimer: number | null = null
