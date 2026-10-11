@@ -37,7 +37,7 @@ docker run --rm --name remote-coder \
   -v remote-coder-projects:/home/remote-coder/projects \
   -v remote-coder-database:/app/database \
   -v remote-coder-logs:/app/storage/logs \
-  -v remote-coder-vscode:/home/remote-coder/.cache/remote-coder/vscode \
+  -v remote-coder-vscode:/home/remote-coder/.remote-coder/vscode/cache \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -e ADMIN_PASSWORD='replace-with-a-strong-password' \
   -e AI_CREDENTIAL_ENCRYPTION_KEY='replace-with-a-generated-fernet-key' \

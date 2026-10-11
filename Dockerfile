@@ -13,8 +13,7 @@ ENV PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production \
     DEBUG=false \
     VENV_DIR=/opt/venv \
-    PROJECTS_ROOT=/home/remote-coder/projects \
-    VSCODE_USER_DATA_ROOT=/home/remote-coder/.cache/remote-coder/vscode
+    PROJECTS_ROOT=/home/remote-coder/projects
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -34,7 +33,7 @@ RUN useradd --create-home --shell /bin/bash remote-coder \
         /app/database \
         /app/storage/logs \
         /home/remote-coder/projects \
-        /home/remote-coder/.cache/remote-coder/vscode \
+        /home/remote-coder/.remote-coder/vscode/cache \
         /tmp/nginx/client_body \
         /tmp/nginx/proxy \
         /tmp/nginx/fastcgi \

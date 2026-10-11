@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     vscode_bind_host: str = "127.0.0.1"
     vscode_port_start: int = 8800
     vscode_port_end: int = 8900
-    vscode_user_data_root: str = "~/.cache/remote-coder/vscode"
+    vscode_user_data_root: str = "~/.remote-coder/vscode/cache"
     vscode_start_timeout_seconds: int = 30
     vscode_session_ttl_seconds: int = 3600
     vscode_max_sessions: int = 4

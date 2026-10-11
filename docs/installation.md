@@ -132,7 +132,7 @@ Other things to check:
 
 - Ports `8800-8900` (or `VSCODE_PORT_START`/`VSCODE_PORT_END`) are free.
 - `code-server` has write access to its data dir
-  (`~/.cache/remote-coder/vscode` by default).
+  (`~/.remote-coder/vscode/cache` by default).
 
 ### `uvicorn not found`
 
