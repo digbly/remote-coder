@@ -20,10 +20,33 @@ import {
   type AIProvider,
   type AIProviderModel,
 } from '../../lib/chat'
-import { ChevronDownIcon, SettingsIcon } from './icons'
+import { ArrowUpIcon, ChevronDownIcon, SettingsIcon } from './icons'
 
-const selectClass =
-  'rounded-md border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-base text-[var(--fg)] outline-none focus:border-indigo-500 md:text-xs'
+const BRAND_GRADIENT = 'linear-gradient(90deg, #DC2626 0%, #F97316 100%)'
+const USER_BUBBLE_GRADIENT = 'linear-gradient(90deg, #DC2626 0%, #C2410C 100%)'
+const brandStyle = { backgroundImage: BRAND_GRADIENT }
+
+const MAX_TEXTAREA_HEIGHT = 192
+
+const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
+const cardBg = 'bg-white dark:bg-[#1F1F1F]'
+const subtleBg = 'bg-[#F2F2F2] dark:bg-[#272727]'
+const cardBorder = 'border-[#E5E7EB] dark:border-[#2E2E2E]'
+const primaryText = 'text-[#0F0F0F] dark:text-[#F1F1F1]'
+const mutedText = 'text-[#6B6B6B] dark:text-[#AAAAAA]'
+const dangerText = 'text-[#DC2626] dark:text-[#F87171]'
+const accentText = 'text-[#F97316]'
+const accentBg = 'bg-[#F97316]'
+const dotIdle = 'bg-[#B8B8B8] dark:bg-[#555555]'
+const focusRing =
+  'focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/30'
+const placeholderText = 'placeholder:text-[#6B6B6B] dark:placeholder:text-[#AAAAAA]'
+
+const selectClass = `rounded-lg border ${cardBorder} ${subtleBg} px-2.5 py-1.5 text-base ${primaryText} outline-none transition ${focusRing} disabled:opacity-50 md:text-xs`
+
+const gradientButton =
+  'inline-flex items-center justify-center rounded-full font-medium text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100'
+const ghostButton = `inline-flex items-center justify-center rounded-full border ${cardBorder} ${subtleBg} px-3 py-1.5 text-xs ${primaryText} transition hover:brightness-95 disabled:opacity-50`
 
 type ToolLabelKey =
   | 'chat.toolList'
@@ -65,7 +88,7 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="flex items-center gap-1 text-xs font-medium text-[var(--muted-2)] transition hover:text-[var(--fg-2)]"
+        className={`flex items-center gap-1 text-xs font-medium ${mutedText} transition hover:opacity-80`}
       >
         <svg
           viewBox="0 0 20 20"
@@ -77,7 +100,7 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }
         {streaming ? t('chat.thinking') : t('chat.thinkingComplete')}
       </button>
       {open && (
-        <div className="mt-2 whitespace-pre-wrap break-words border-l-2 border-[var(--border)] pl-3 text-xs italic leading-5 text-[var(--muted-2)]">
+        <div className={`mt-2 whitespace-pre-wrap break-words border-l-2 ${cardBorder} pl-3 text-xs italic leading-5 ${mutedText}`}>
           {text || t('chat.thinking')}
         </div>
       )}
@@ -88,17 +111,20 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }
 function ToolSteps({ steps, streaming }: { steps: string[]; streaming: boolean }) {
   return (
     <ul className="mb-2 space-y-1">
-      {steps.map((step, index) => (
-        <li
-          key={index}
-          className={`flex items-center gap-1.5 text-xs ${
-            streaming && index === steps.length - 1 ? 'text-[var(--fg-2)]' : 'text-[var(--muted-2)]'
-          }`}
-        >
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted-3)]" />
-          <span className="truncate">{step}</span>
-        </li>
-      ))}
+      {steps.map((step, index) => {
+        const running = streaming && index === steps.length - 1
+        return (
+          <li
+            key={index}
+            className={`flex items-center gap-1.5 text-xs ${running ? primaryText : mutedText}`}
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? accentBg : dotIdle}`}
+            />
+            <span className="truncate">{step}</span>
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -143,6 +169,7 @@ export function ChatPanel({
   const [controlsOpen, setControlsOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const optimisticIdRef = useRef(0)
   const onStreamingChangeRef = useRef(onStreamingChange)
 
@@ -234,6 +261,13 @@ export function ChatPanel({
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
   }, [messages, pendingCommand])
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
+  }, [draft])
 
   async function refreshConversations(): Promise<AIConversation[]> {
     const result = await fetchAIConversations(projectId)
@@ -466,7 +500,7 @@ export function ChatPanel({
 
   const provider = providers.find((item) => item.id === providerId)
   const canSend = Boolean(provider && modelId && draft.trim() && !streaming)
-  const fieldLabelClass = `flex text-xs text-[var(--muted-2)] ${
+  const fieldLabelClass = `flex text-xs ${mutedText} ${
     isMobile ? 'flex-col gap-1' : 'items-center gap-2'
   }`
   const fieldSelectClass = `${selectClass} ${isMobile ? 'w-full' : ''}`
@@ -506,17 +540,17 @@ export function ChatPanel({
     <section
       aria-hidden={!active}
       data-active={active}
-      className="flex h-full min-h-0 flex-col bg-[var(--bg)]"
+      className={`flex h-full min-h-0 flex-col ${pageBg} ${primaryText}`}
     >
-      <div className="shrink-0 border-b border-[var(--border)] bg-[var(--surface)]">
+      <div className={`shrink-0 border-b ${cardBorder} ${cardBg}`}>
         {isMobile && (
           <button
             type="button"
             onClick={() => setControlsOpen((value) => !value)}
             aria-expanded={controlsOpen}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)]"
+            className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs ${primaryText} transition hover:opacity-80`}
           >
-            <SettingsIcon width={14} height={14} className="shrink-0 text-[var(--muted)]" />
+            <SettingsIcon width={14} height={14} className={`shrink-0 ${mutedText}`} />
             <span className="min-w-0 flex-1 truncate">
               {provider ? provider.name : t('chat.selectProvider')}
               {' · '}
@@ -525,7 +559,7 @@ export function ChatPanel({
             <ChevronDownIcon
               width={14}
               height={14}
-              className={`shrink-0 text-[var(--muted)] transition-transform ${controlsOpen ? 'rotate-180' : ''}`}
+              className={`shrink-0 ${mutedText} transition-transform ${controlsOpen ? 'rotate-180' : ''}`}
             />
           </button>
         )}
@@ -614,63 +648,79 @@ export function ChatPanel({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4 md:px-4 md:py-5">
-        {loading && <p className="text-center text-sm text-[var(--muted-2)]">{t('common.loading')}</p>}
+        {loading && <p className={`text-center text-sm ${mutedText}`}>{t('common.loading')}</p>}
         {!loading && providers.length === 0 && (
           <div className="mx-auto mt-12 max-w-lg text-center">
-            <p className="text-sm font-medium text-[var(--fg-2)]">{t('chat.noProviders')}</p>
-            <p className="mt-1 text-xs text-[var(--muted-2)]">{t('chat.configureProvider')}</p>
+            <p className={`text-sm font-medium ${primaryText}`}>{t('chat.noProviders')}</p>
+            <p className={`mt-1 text-xs ${mutedText}`}>{t('chat.configureProvider')}</p>
           </div>
         )}
         {!loading && providers.length > 0 && messages.length === 0 && (
-          <div className="mx-auto mt-12 max-w-lg text-center text-sm text-[var(--muted-2)]">
+          <div className={`mx-auto mt-12 max-w-lg text-center text-sm ${mutedText}`}>
             {t('chat.empty')}
           </div>
         )}
-        {loadError && <p className="text-center text-sm text-[var(--danger)]">{loadError}</p>}
-        {messages.map((message) => (
-          <article
-            key={`${tabId}-${message.id}`}
-            className={`mx-auto max-w-3xl rounded-xl border border-[var(--border)] p-4 ${
-              message.role === 'user' ? 'bg-[var(--surface)]' : 'bg-[var(--surface-2)]'
-            }`}
-          >
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-2)]">
-              {message.role === 'user' ? t('chat.you') : t('chat.assistant')}
-            </p>
-            {message.role === 'assistant' && message.thinking && (
-              <ThinkingBlock text={message.thinking} streaming={message.status === 'streaming'} />
-            )}
-            {message.role === 'assistant' && message.steps && message.steps.length > 0 && (
-              <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
-            )}
-            <div className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--fg-2)]">
-              {message.content ||
-                (message.status === 'streaming' && !message.thinking && !message.steps?.length
-                  ? t('chat.thinking')
-                  : '')}
-            </div>
-            {message.status === 'failed' && (
-              <p className="mt-2 text-xs text-[var(--danger)]">
-                {message.error || t('chat.failedStatus')}
+        {loadError && <p className={`text-center text-sm ${dangerText}`}>{loadError}</p>}
+        {messages.map((message) => {
+          const isUser = message.role === 'user'
+          return (
+            <article
+              key={`${tabId}-${message.id}`}
+              style={isUser ? { backgroundImage: USER_BUBBLE_GRADIENT } : undefined}
+              className={
+                isUser
+                  ? 'mx-auto max-w-3xl rounded-2xl border border-transparent px-4 py-3 text-white shadow-sm'
+                  : `mx-auto max-w-3xl rounded-2xl border ${cardBorder} ${cardBg} px-4 py-3`
+              }
+            >
+              <p
+                className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  isUser ? 'text-white' : mutedText
+                }`}
+              >
+                {isUser ? t('chat.you') : t('chat.assistant')}
               </p>
-            )}
-            {message.role === 'assistant' && message.notice && (
-              <p className="mt-2 text-xs text-amber-500">{message.notice}</p>
-            )}
-            {message.status === 'interrupted' && (
-              <p className="mt-2 text-xs text-[var(--muted-2)]">{t('chat.interrupted')}</p>
-            )}
-          </article>
-        ))}
+              {!isUser && message.thinking && (
+                <ThinkingBlock text={message.thinking} streaming={message.status === 'streaming'} />
+              )}
+              {!isUser && message.steps && message.steps.length > 0 && (
+                <ToolSteps steps={message.steps} streaming={message.status === 'streaming'} />
+              )}
+              <div
+                className={`whitespace-pre-wrap break-words text-sm leading-6 ${
+                  isUser ? 'text-white' : primaryText
+                }`}
+              >
+                {message.content ||
+                  (message.status === 'streaming' && !message.thinking && !message.steps?.length
+                    ? t('chat.thinking')
+                    : '')}
+              </div>
+              {message.status === 'failed' && (
+                <p className={`mt-2 text-xs ${isUser ? 'text-white' : dangerText}`}>
+                  {message.error || t('chat.failedStatus')}
+                </p>
+              )}
+              {!isUser && message.notice && (
+                <p className={`mt-2 text-xs ${accentText}`}>{message.notice}</p>
+              )}
+              {message.status === 'interrupted' && (
+                <p className={`mt-2 text-xs ${isUser ? 'text-white' : mutedText}`}>
+                  {t('chat.interrupted')}
+                </p>
+              )}
+            </article>
+          )
+        })}
         {pendingCommand && (
-          <article className="mx-auto max-w-3xl rounded-xl border border-amber-500/50 bg-[var(--surface)] p-4">
-            <h3 className="text-sm font-semibold text-[var(--fg-strong)]">
+          <article className={`mx-auto max-w-3xl rounded-2xl border border-[#F97316]/50 ${cardBg} px-4 py-3`}>
+            <h3 className={`text-sm font-semibold ${primaryText}`}>
               {t('chat.commandApprovalTitle')}
             </h3>
-            <p className="mt-1 text-xs text-[var(--muted-2)]">
+            <p className={`mt-1 text-xs ${mutedText}`}>
               {t('chat.commandApprovalHint')}
             </p>
-            <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-[var(--bg)] p-3 text-xs leading-5 text-[var(--fg-2)]">
+            <pre className={`mt-3 max-h-48 overflow-auto rounded-xl ${subtleBg} p-3 text-xs leading-5 ${primaryText}`}>
               <code>{pendingCommand.command}</code>
             </pre>
             <div className="mt-3 flex gap-2">
@@ -678,7 +728,8 @@ export function ChatPanel({
                 type="button"
                 onClick={() => void decideCommand(true)}
                 disabled={approvalBusy}
-                className="rounded-md bg-emerald-700 px-3 py-2 text-xs md:py-1.5 font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                style={brandStyle}
+                className={`${gradientButton} px-3 py-1.5 text-xs`}
               >
                 {t('chat.runCommand')}
               </button>
@@ -686,7 +737,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => void decideCommand(false)}
                 disabled={approvalBusy}
-                className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-xs md:py-1.5 text-[var(--fg-2)] hover:bg-[var(--hover)] disabled:opacity-50"
+                className={ghostButton}
               >
                 {t('chat.cancelCommand')}
               </button>
@@ -696,26 +747,26 @@ export function ChatPanel({
         {proposals.map((proposal) => (
           <article
             key={`proposal-${proposal.id}`}
-            className="mx-auto max-w-3xl rounded-xl border border-amber-500/40 bg-[var(--surface)] p-4"
+            className={`mx-auto max-w-3xl rounded-2xl border border-[#F97316]/40 ${cardBg} px-4 py-3`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-[var(--fg-strong)]">
+                <h3 className={`text-sm font-semibold ${primaryText}`}>
                   {t('chat.proposalTitle')} · {t(`chat.proposalKind.${proposal.change_type}`)}
                 </h3>
-                <p className="text-xs text-[var(--muted-2)]">
+                <p className={`text-xs ${mutedText}`}>
                   {proposal.path}
                   {proposal.change_type === 'move' && proposal.target_path
                     ? ` → ${proposal.target_path}`
                     : ''}
                 </p>
               </div>
-              <span className="text-xs text-[var(--muted-2)]">
+              <span className={`text-xs ${mutedText}`}>
                 {t(`chat.proposalStatus.${proposal.status}`)}
               </span>
             </div>
             {proposal.diff && (
-              <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-[var(--bg)] p-3 text-xs leading-5 text-[var(--fg-2)]">
+              <pre className={`mt-3 max-h-80 overflow-auto rounded-xl ${subtleBg} p-3 text-xs leading-5 ${primaryText}`}>
                 <code>{proposal.diff}</code>
               </pre>
             )}
@@ -724,14 +775,15 @@ export function ChatPanel({
                 <button
                   type="button"
                   onClick={() => void actOnProposal(proposal, 'apply')}
-                  className="rounded-md bg-emerald-700 px-3 py-2 text-xs md:py-1.5 font-medium text-white hover:bg-emerald-600"
+                  style={brandStyle}
+                  className={`${gradientButton} px-3 py-1.5 text-xs`}
                 >
                   {t('chat.applyChange')}
                 </button>
                 <button
                   type="button"
                   onClick={() => void actOnProposal(proposal, 'reject')}
-                  className="rounded-md border border-[var(--border-strong)] px-3 py-2 text-xs md:py-1.5 text-[var(--fg-2)] hover:bg-[var(--hover)]"
+                  className={ghostButton}
                 >
                   {t('chat.rejectChange')}
                 </button>
@@ -742,20 +794,24 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-[var(--border)] bg-[var(--surface)] p-3 md:p-4">
-        {error && <p className="mx-auto mb-2 max-w-3xl text-sm text-[var(--danger)]">{error}</p>}
+      <div className={`border-t ${cardBorder} ${cardBg} p-3 md:p-4`}>
+        {error && <p className={`mx-auto mb-2 max-w-3xl text-sm ${dangerText}`}>{error}</p>}
         {!provider && providers.length > 0 && (
-          <p className="mx-auto mb-2 max-w-3xl text-xs text-[var(--muted-2)]">
+          <p className={`mx-auto mb-2 max-w-3xl text-xs ${mutedText}`}>
             {t('chat.selectProvider')}
           </p>
         )}
         {provider && models.length === 0 && (
-          <p className="mx-auto mb-2 max-w-3xl text-xs text-[var(--muted-2)]">
+          <p className={`mx-auto mb-2 max-w-3xl text-xs ${mutedText}`}>
             {t('chat.modelsUnavailable')}
           </p>
         )}
-        <form onSubmit={(event) => void send(event)} className="mx-auto flex max-w-3xl gap-2">
+        <form
+          onSubmit={(event) => void send(event)}
+          className="mx-auto flex max-w-3xl items-end gap-2"
+        >
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -764,17 +820,18 @@ export function ChatPanel({
                 event.currentTarget.form?.requestSubmit()
               }
             }}
-            rows={2}
+            rows={1}
             maxLength={16000}
             placeholder={t('chat.messagePlaceholder')}
-            className="min-h-12 flex-1 resize-y rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-base text-[var(--fg)] outline-none focus:border-indigo-500 md:text-sm"
+            style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
+            className={`min-h-10 flex-1 resize-none overflow-y-auto rounded-2xl border ${cardBorder} ${subtleBg} px-4 py-2.5 text-base ${primaryText} outline-none transition ${placeholderText} ${focusRing} disabled:opacity-50 md:text-sm`}
             disabled={loading || streaming}
           />
           {streaming ? (
             <button
               type="button"
               onClick={() => abortRef.current?.abort()}
-              className="self-end rounded-md border border-[var(--border-strong)] px-4 py-3 text-sm text-[var(--fg-2)] transition hover:bg-[var(--hover)] md:py-2"
+              className={`h-10 shrink-0 rounded-full border ${cardBorder} ${subtleBg} px-4 text-sm ${primaryText} transition hover:brightness-95`}
             >
               {t('chat.stop')}
             </button>
@@ -782,13 +839,16 @@ export function ChatPanel({
             <button
               type="submit"
               disabled={!canSend}
-              className="self-end rounded-md bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 md:py-2"
+              aria-label={t('chat.send')}
+              title={t('chat.send')}
+              style={brandStyle}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
             >
-              {t('chat.send')}
+              <ArrowUpIcon className="h-4 w-4" />
             </button>
           )}
         </form>
-        <p className="mx-auto mt-1 max-w-3xl text-[11px] text-[var(--muted-3)]">
+        <p className={`mx-auto mt-1 max-w-3xl text-[11px] ${mutedText}`}>
           {t('chat.readOnlyNotice')}
         </p>
       </div>
