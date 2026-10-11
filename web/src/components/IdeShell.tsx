@@ -26,6 +26,8 @@ import { TabSearchModal } from './ide/TabSearchModal'
 import { VSCodePanel } from './ide/VSCodePanel'
 import { ResizeHandle } from './ide/ResizeHandle'
 import { PanelLeftIcon, PanelRightIcon } from './ide/icons'
+import { useIsMobile } from '../lib/useMediaQuery'
+import { MobileShell } from './MobileShell'
 
 function SidebarRail({
   side,
@@ -88,6 +90,7 @@ export function IdeShell({
 }: IdeShellProps) {
   const { t } = useTranslation()
   const { workspaces, layout } = state
+  const isMobile = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const [streamingChatTabs, setStreamingChatTabs] = useState<Record<string, boolean>>({})
 
@@ -222,152 +225,185 @@ export function IdeShell({
     }))
   }
 
+  const tabPanes = (
+    <>
+      {allTabs.map((tab) => {
+        if (tab.projectId == null) return null
+        const projectId = tab.projectId
+        const active = tab.id === activeTabId
+        return (
+          <div key={tab.id} className={`absolute inset-0 ${active ? '' : 'hidden'}`}>
+            {tab.kind === 'chat' ? (
+              <ChatTab
+                projectId={projectId}
+                tabId={tab.id}
+                active={active}
+                conversationId={tab.conversationId}
+                onStreamingChange={(streaming) => setChatStreaming(tab.id, streaming)}
+                onConversationChange={(conversationId, title) =>
+                  update((prev) => ({
+                    ...prev,
+                    workspaces: withChatConversation(
+                      prev.workspaces,
+                      projectId,
+                      tab.id,
+                      conversationId,
+                      title ?? t('chat.tabTitle'),
+                    ),
+                  }))
+                }
+              />
+            ) : tab.kind === 'editor' && tab.filePath ? (
+              <FileEditor
+                projectId={projectId}
+                path={tab.filePath}
+                line={tab.line}
+                active={active}
+              />
+            ) : tab.kind === 'diff' && tab.filePath ? (
+              <GitDiffView
+                projectId={projectId}
+                path={tab.filePath}
+                staged={Boolean(tab.diffStaged)}
+                origPath={tab.diffOrigPath}
+                active={active}
+              />
+            ) : tab.kind === 'vscode' && tab.worktree ? (
+              <VSCodePanel projectId={projectId} worktree={tab.worktree} title={tab.title} />
+            ) : (
+              <ProjectTerminal
+                projectId={projectId}
+                terminalId={tab.id}
+                worktree={tab.worktree}
+                agentId={tab.agentId}
+                active={active}
+                onTitle={setTabTitle}
+              />
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
-      {layout.leftOpen ? (
-        <>
-          <Sidebar
-            user={user}
-            onLogout={onLogout}
-            onOpenProject={onOpenProject}
-            onOpenWorktree={onOpenWorktree}
-            onOpenVSCode={onOpenVSCode}
-            onWorktreeDeleted={closeWorktreeTabs}
-            onProjectDeleted={handleProjectDeleted}
-            onOpenSearch={() => setSearchOpen(true)}
-            activeProjectId={activeProjectId}
-            activeWorktrees={activeWorktrees}
-            chatWorktrees={chatWorktrees}
-            width={layout.leftWidth}
-            onClose={() => updateLayout({ leftOpen: false })}
-          />
-          <ResizeHandle
-            side="left"
-            width={layout.leftWidth}
-            min={LEFT_MIN}
-            max={LEFT_MAX}
-            onResize={(leftWidth) => updateLayout({ leftWidth })}
-            label={t('ide.resizeSidebar')}
-          />
-        </>
-      ) : (
-        <SidebarRail
-          side="left"
-          label={t('ide.showSidebar')}
-          onClick={() => updateLayout({ leftOpen: true })}
-        />
-      )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopTabs
+    <>
+      {isMobile ? (
+        <MobileShell
+          user={user}
+          onLogout={onLogout}
+          projectName={activeProject?.name ?? null}
+          projectId={activeProjectId}
+          projectPending={projectPending}
           tabs={activeTabs}
           activeId={activeTabId}
-          onSelect={onSelectTab}
-          onClose={closeTab}
-          onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
+          onSelectTab={onSelectTab}
+          onNewTerminal={(agent) => activeProject && openTerminal(activeProject, agent)}
           onNewChat={openChat}
-        />
-        <div className="flex min-h-0 min-w-0 flex-1">
-          <div className="relative min-h-0 min-w-0 flex-1">
-            {activeProjectId == null &&
-              (projectPending ? (
-                <div className="flex h-full w-full items-center justify-center">
-                  <p className="text-sm text-[var(--muted)]">{t('common.loading')}</p>
-                </div>
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
-                  <p className="text-sm text-[var(--muted)]">{t('ide.noProjectSelected')}</p>
-                  <p className="text-xs text-[var(--muted-4)]">{t('ide.openProjectHint')}</p>
-                </div>
-              ))}
-            {allTabs.map((tab) => {
-              if (tab.projectId == null) return null
-              const projectId = tab.projectId
-              const active = tab.id === activeTabId
-              return (
-                <div
-                  key={tab.id}
-                  className={`absolute inset-0 ${active ? '' : 'hidden'}`}
-                >
-                  {tab.kind === 'chat' ? (
-                    <ChatTab
-                      projectId={projectId}
-                      tabId={tab.id}
-                      active={active}
-                      conversationId={tab.conversationId}
-                      onStreamingChange={(streaming) => setChatStreaming(tab.id, streaming)}
-                      onConversationChange={(conversationId, title) =>
-                        update((prev) => ({
-                          ...prev,
-                          workspaces: withChatConversation(
-                            prev.workspaces,
-                            projectId,
-                            tab.id,
-                            conversationId,
-                            title ?? t('chat.tabTitle'),
-                          ),
-                        }))
-                      }
-                    />
-                  ) : tab.kind === 'editor' && tab.filePath ? (
-                    <FileEditor
-                      projectId={projectId}
-                      path={tab.filePath}
-                      line={tab.line}
-                      active={active}
-                    />
-                  ) : tab.kind === 'diff' && tab.filePath ? (
-                    <GitDiffView
-                      projectId={projectId}
-                      path={tab.filePath}
-                      staged={Boolean(tab.diffStaged)}
-                      origPath={tab.diffOrigPath}
-                      active={active}
-                    />
-                  ) : tab.kind === 'vscode' && tab.worktree ? (
-                    <VSCodePanel projectId={projectId} worktree={tab.worktree} title={tab.title} />
-                  ) : (
-                    <ProjectTerminal
-                      projectId={projectId}
-                      terminalId={tab.id}
-                      worktree={tab.worktree}
-                      agentId={tab.agentId}
-                      active={active}
-                      onTitle={setTabTitle}
-                    />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          {activeProjectId != null &&
-            (layout.rightOpen ? (
-              <>
-                <ResizeHandle
-                  side="right"
-                  width={layout.rightWidth}
-                  min={RIGHT_MIN}
-                  max={RIGHT_MAX}
-                  onResize={(rightWidth) => updateLayout({ rightWidth })}
-                  label={t('ide.resizePanel')}
-                />
-                <RightPanel
-                  key={activeProjectId}
-                  projectId={activeProjectId}
-                  width={layout.rightWidth}
-                  onClose={() => updateLayout({ rightOpen: false })}
-                  onOpenFile={openFile}
-                  onOpenDiff={openDiff}
-                />
-              </>
-            ) : (
-              <SidebarRail
-                side="right"
-                label={t('ide.showPanel')}
-                onClick={() => updateLayout({ rightOpen: true })}
+          onOpenSearch={() => setSearchOpen(true)}
+          onOpenProject={onOpenProject}
+          onOpenWorktree={onOpenWorktree}
+          onOpenVSCode={onOpenVSCode}
+          onWorktreeDeleted={closeWorktreeTabs}
+          onProjectDeleted={handleProjectDeleted}
+          activeProjectId={activeProjectId}
+          activeWorktrees={activeWorktrees}
+          chatWorktrees={chatWorktrees}
+          onOpenFile={openFile}
+          onOpenDiff={openDiff}
+        >
+          {tabPanes}
+        </MobileShell>
+      ) : (
+        <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
+          {layout.leftOpen ? (
+            <>
+              <Sidebar
+                user={user}
+                onLogout={onLogout}
+                onOpenProject={onOpenProject}
+                onOpenWorktree={onOpenWorktree}
+                onOpenVSCode={onOpenVSCode}
+                onWorktreeDeleted={closeWorktreeTabs}
+                onProjectDeleted={handleProjectDeleted}
+                onOpenSearch={() => setSearchOpen(true)}
+                activeProjectId={activeProjectId}
+                activeWorktrees={activeWorktrees}
+                chatWorktrees={chatWorktrees}
+                width={layout.leftWidth}
+                onClose={() => updateLayout({ leftOpen: false })}
               />
-            ))}
+              <ResizeHandle
+                side="left"
+                width={layout.leftWidth}
+                min={LEFT_MIN}
+                max={LEFT_MAX}
+                onResize={(leftWidth) => updateLayout({ leftWidth })}
+                label={t('ide.resizeSidebar')}
+              />
+            </>
+          ) : (
+            <SidebarRail
+              side="left"
+              label={t('ide.showSidebar')}
+              onClick={() => updateLayout({ leftOpen: true })}
+            />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopTabs
+              tabs={activeTabs}
+              activeId={activeTabId}
+              onSelect={onSelectTab}
+              onClose={closeTab}
+              onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
+              onNewChat={openChat}
+            />
+            <div className="flex min-h-0 min-w-0 flex-1">
+              <div className="relative min-h-0 min-w-0 flex-1">
+                {activeProjectId == null &&
+                  (projectPending ? (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <p className="text-sm text-[var(--muted)]">{t('common.loading')}</p>
+                    </div>
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-center">
+                      <p className="text-sm text-[var(--muted)]">{t('ide.noProjectSelected')}</p>
+                      <p className="text-xs text-[var(--muted-4)]">{t('ide.openProjectHint')}</p>
+                    </div>
+                  ))}
+                {tabPanes}
+              </div>
+              {activeProjectId != null &&
+                (layout.rightOpen ? (
+                  <>
+                    <ResizeHandle
+                      side="right"
+                      width={layout.rightWidth}
+                      min={RIGHT_MIN}
+                      max={RIGHT_MAX}
+                      onResize={(rightWidth) => updateLayout({ rightWidth })}
+                      label={t('ide.resizePanel')}
+                    />
+                    <RightPanel
+                      key={activeProjectId}
+                      projectId={activeProjectId}
+                      width={layout.rightWidth}
+                      onClose={() => updateLayout({ rightOpen: false })}
+                      onOpenFile={openFile}
+                      onOpenDiff={openDiff}
+                    />
+                  </>
+                ) : (
+                  <SidebarRail
+                    side="right"
+                    label={t('ide.showPanel')}
+                    onClick={() => updateLayout({ rightOpen: true })}
+                  />
+                ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
       {searchOpen && (
         <TabSearchModal
           tabs={allTabs}
@@ -376,6 +412,6 @@ export function IdeShell({
           onClose={() => setSearchOpen(false)}
         />
       )}
-    </div>
+    </>
   )
 }

@@ -178,6 +178,8 @@ const en = {
     explorer: 'Explorer',
     check: 'Check',
     panel: 'Panel',
+    menu: 'Menu',
+    tabs: 'Open tabs',
     noFiles: 'No files',
     filesError: 'Failed to load files',
     filesTruncated: 'Showing a partial listing — this folder has too many files.',

@@ -178,6 +178,8 @@ const vi = {
     explorer: 'Explorer',
     check: 'Kiểm tra',
     panel: 'Bảng',
+    menu: 'Menu',
+    tabs: 'Tab đang mở',
     noFiles: 'Không có tệp',
     filesError: 'Không tải được danh sách tệp',
     filesTruncated: 'Đang hiển thị một phần — thư mục này có quá nhiều tệp.',

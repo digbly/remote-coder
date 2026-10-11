@@ -28,6 +28,9 @@ body {
 :root {
   color-scheme: light;
 
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
   --bg: #ffffff;
   --surface: #f7f7f8;
   --surface-2: #ffffff;
