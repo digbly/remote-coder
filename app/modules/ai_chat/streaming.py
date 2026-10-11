@@ -317,6 +317,7 @@ async def stream_chat_turn(
                 "",
                 MessageStatus.FAILED,
                 thinking="".join(thinking_parts),
+                error=_error_message(ErrorCode.AI_CHAT_EMPTY_RESPONSE),
             )
             yield _error_event(ErrorCode.AI_CHAT_EMPTY_RESPONSE, assistant_message.id)
             return
@@ -351,15 +352,17 @@ async def stream_chat_turn(
             content,
             MessageStatus.FAILED,
             thinking="".join(thinking_parts),
+            error=_error_message(ErrorCode.AI_CHAT_LIMIT_EXCEEDED),
         )
         yield _error_event(ErrorCode.AI_CHAT_LIMIT_EXCEEDED, assistant_message.id)
     except ProviderAPIError as exc:
+        detail = exc.diagnostic or str(exc)
         logger.warning(
             "AI chat provider request failed conversation_id=%s provider=%s status=%s detail=%s",
             conversation_id,
             adapter.kind,
             exc.status_code,
-            exc.diagnostic or str(exc),
+            detail,
         )
         content = "".join(text_parts)
         service.finish_assistant(
@@ -368,11 +371,12 @@ async def stream_chat_turn(
             content,
             MessageStatus.FAILED,
             thinking="".join(thinking_parts),
+            error=_error_message(ErrorCode.AI_PROVIDER_FAILED, detail),
         )
         yield _error_event(
             ErrorCode.AI_PROVIDER_FAILED,
             assistant_message.id,
-            detail=exc.diagnostic or str(exc),
+            detail=detail,
         )
     except asyncio.CancelledError:
         service.finish_assistant(
@@ -399,12 +403,16 @@ async def stream_chat_turn(
         raise
 
 
+def _error_message(code: ErrorCode, detail: str | None = None) -> str:
+    return detail or translate(code.value)
+
+
 def _error_event(code: ErrorCode, message_id: int, detail: str | None = None) -> bytes:
     return _event(
         {
             "type": "error",
             "code": code.value,
-            "message": detail or translate(code.value),
+            "message": _error_message(code, detail),
             "assistant_message_id": message_id,
         }
     )

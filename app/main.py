@@ -43,6 +43,7 @@ def _apply_lightweight_migrations() -> None:
     tables = set(inspect(engine).get_table_names())
     if "ai_chat_messages" in tables:
         _add_column_if_missing("ai_chat_messages", "thinking", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing("ai_chat_messages", "error", "TEXT NOT NULL DEFAULT ''")
     if "ai_change_proposals" in tables:
         _add_column_if_missing(
             "ai_change_proposals", "change_type", "VARCHAR(16) NOT NULL DEFAULT 'modify'"

@@ -144,9 +144,11 @@ def finish_assistant(
     content: str,
     status: MessageStatus,
     thinking: str = "",
+    error: str = "",
 ) -> None:
     assistant_message.content = content
     assistant_message.thinking = thinking
+    assistant_message.error = error
     assistant_message.status = status
     db.commit()
 

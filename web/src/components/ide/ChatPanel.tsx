@@ -607,7 +607,7 @@ export function ChatPanel({
               ) : message.status === 'streaming' &&
                 !message.thinking &&
                 !message.steps?.length ? (
-                <div className={`text-[15px] leading-7 ${primaryText}`}>{t('chat.thinking')}</div>
+                <div className={`text-xs font-medium ${mutedText}`}>{t('chat.thinking')}</div>
               ) : null}
               {message.status === 'failed' && (
                 <p className={`mt-2 text-xs ${dangerText}`}>

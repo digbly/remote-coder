@@ -11,7 +11,7 @@ from app.core.errors import ErrorCode
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage as StoredMessage
 from app.modules.ai_chat.models import MessageStatus
-from app.modules.ai_chat.streaming import stream_chat_turn
+from app.modules.ai_chat.streaming import ChatTurnLimitError, stream_chat_turn
 from app.modules.ai_chat.tools import MAX_TOOL_ROUNDS_PER_TURN
 from app.modules.ai_providers.base import (
     ProviderAPIError,
@@ -400,6 +400,7 @@ def test_chat_empty_model_response_is_reported_as_failure(
     assert events[-1]["type"] == "error"
     assert events[-1]["code"] == "AI_CHAT_EMPTY_RESPONSE"
     assert messages[-1]["status"] == "failed"
+    assert messages[-1]["error"] == events[-1]["message"]
 
 
 def test_chat_provider_failure_is_streamed_and_persisted(
@@ -438,8 +439,47 @@ def test_chat_provider_failure_is_streamed_and_persisted(
     assert events[-1]["code"] == "AI_PROVIDER_FAILED"
     assert events[-1]["message"] == "model is not available"
     assert messages[-1]["status"] == "failed"
+    assert messages[-1]["error"] == "model is not available"
     assert "provider-secret" not in str(events)
     assert "provider=openai status=400 detail=model is not available" in caplog.text
+
+
+def test_chat_turn_limit_is_streamed_and_persisted(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def limit_stream(self, *_args, **_kwargs):
+        raise ChatTurnLimitError
+        yield
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", limit_stream)
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={
+                "provider_id": provider_id,
+                "model_id": "gpt-test",
+                "message": "Question",
+            },
+            headers=_csrf(client),
+        )
+    )
+    conversation_id = events[0]["conversation"]["id"]
+    messages = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/conversations/{conversation_id}"
+    ).json()["messages"]
+
+    assert events[-1]["type"] == "error"
+    assert events[-1]["code"] == "AI_CHAT_LIMIT_EXCEEDED"
+    assert messages[-1]["status"] == "failed"
+    assert messages[-1]["error"] == events[-1]["message"]
 
 
 def test_chat_retries_transient_provider_error(
