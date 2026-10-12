@@ -12,6 +12,9 @@ import {
   withChatConversation,
   withChatConversationTab,
   withAgentSessionTerminal,
+  withCommandTerminal,
+  withSavedCommand,
+  withDeletedCommand,
   withTabTitle,
   withTabPinned,
   withTabColor,
@@ -19,6 +22,8 @@ import {
   withRenamedTab,
   withBrowserTab,
   type ActiveProjectRef,
+  type CommandDefinition,
+  type CommandScope,
   type SyncedState,
   type WorkspaceTab,
 } from '../lib/workspaceStore'
@@ -30,6 +35,7 @@ import { BrowserTab } from './ide/BrowserTab'
 import { FileEditor } from './ide/FileEditor'
 import { GitDiffView } from './ide/GitDiffView'
 import { TopTabs } from './ide/TopTabs'
+import { CommandsDialog } from './ide/CommandsDialog'
 import { TabSearchModal } from './ide/TabSearchModal'
 import { VSCodePanel } from './ide/VSCodePanel'
 import { ResizeHandle } from './ide/ResizeHandle'
@@ -100,6 +106,7 @@ export function IdeShell({
   const { workspaces, layout } = state
   const isMobile = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [commandsOpen, setCommandsOpen] = useState(false)
   const [streamingChatTabs, setStreamingChatTabs] = useState<Record<string, boolean>>({})
 
   function updateLayout(patch: Partial<LayoutState>) {
@@ -145,6 +152,33 @@ export function IdeShell({
 
   function openTerminal(project: ActiveProjectRef, agent?: AgentDefinition) {
     update((prev) => ({ ...prev, workspaces: withNewTerminal(prev.workspaces, project, { agent }) }))
+  }
+
+  // Global commands apply everywhere; project commands are shown first so the
+  // most specific ones are easiest to reach.
+  const projectCommands =
+    activeProjectId != null ? state.projectCommands[activeProjectId] ?? [] : []
+  const availableCommands = [...projectCommands, ...state.globalCommands]
+
+  function runCommand(command: CommandDefinition) {
+    if (!activeProject) return
+    const worktree = activeWorktrees[activeProject.id]
+    update((prev) => ({
+      ...prev,
+      workspaces: withCommandTerminal(prev.workspaces, activeProject, {
+        label: command.label,
+        command: command.commands.join('\n'),
+        ...(worktree ? { worktree } : {}),
+      }),
+    }))
+  }
+
+  function saveCommand(scope: CommandScope, command: CommandDefinition) {
+    update((prev) => withSavedCommand(prev, scope, command, activeProjectId))
+  }
+
+  function deleteCommand(scope: CommandScope, commandId: string) {
+    update((prev) => withDeletedCommand(prev, scope, commandId, activeProjectId))
   }
 
   function openChat() {
@@ -401,6 +435,7 @@ export function IdeShell({
                 worktree={tab.worktree}
                 agentId={tab.agentId}
                 agentSessionId={tab.agentSessionId}
+                command={tab.command}
                 active={active}
                 onTitle={setTabTitle}
               />
@@ -438,6 +473,9 @@ export function IdeShell({
           onOpenDiff={openDiff}
           onResumeChat={resumeChatSession}
           onResumeSession={resumeAgentSession}
+          commands={availableCommands}
+          onRunCommand={runCommand}
+          onManageCommands={() => setCommandsOpen(true)}
         >
           {tabPanes}
         </MobileShell>
@@ -492,6 +530,9 @@ export function IdeShell({
               onNew={(agent) => activeProject && openTerminal(activeProject, agent)}
               onNewChat={openChat}
               onNewBrowser={openBrowser}
+              commands={availableCommands}
+              onRunCommand={runCommand}
+              onManageCommands={() => setCommandsOpen(true)}
             />
             <div className="flex min-h-0 min-w-0 flex-1">
               <div className="relative min-h-0 min-w-0 flex-1">
@@ -549,6 +590,16 @@ export function IdeShell({
           activeId={activeTabId}
           onSelect={onSelectTab}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+      {commandsOpen && (
+        <CommandsDialog
+          projectCommands={projectCommands}
+          globalCommands={state.globalCommands}
+          projectName={activeProject?.name ?? null}
+          onSave={saveCommand}
+          onDelete={deleteCommand}
+          onClose={() => setCommandsOpen(false)}
         />
       )}
     </>

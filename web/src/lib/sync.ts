@@ -44,6 +44,8 @@ function stripLocalState(state: SyncedState): SyncedState {
       rightWidth: LAYOUT_DEFAULTS.rightWidth,
     },
     activeProjectId: state.activeProjectId,
+    globalCommands: state.globalCommands,
+    projectCommands: state.projectCommands,
   }
 }
 
@@ -75,6 +77,8 @@ function mergeLocalState(remote: SyncedState, local: SyncedState): SyncedState {
       rightWidth: local.layout.rightWidth,
     },
     activeProjectId: remote.activeProjectId,
+    globalCommands: remote.globalCommands,
+    projectCommands: remote.projectCommands,
   }
 }
 

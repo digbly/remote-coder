@@ -47,6 +47,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
   worktree,
   agentId,
   agentSessionId,
+  command,
   active,
   onTitle,
 }: {
@@ -55,6 +56,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
   worktree?: string
   agentId?: string
   agentSessionId?: string
+  command?: string
   active: boolean
   onTitle?: (projectId: number, terminalId: string, title: string) => void
 }) {
@@ -170,7 +172,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
     function connect() {
       if (disposed) return
       const next = new WebSocket(
-        projectTerminalUrl(projectId, terminalId, { worktree, agentId, agentSessionId }),
+        projectTerminalUrl(projectId, terminalId, { worktree, agentId, agentSessionId, command }),
       )
       next.binaryType = 'arraybuffer'
       socket = next
@@ -268,7 +270,7 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       fitRef.current = null
       terminalRef.current = null
     }
-  }, [projectId, terminalId, worktree, agentId, agentSessionId])
+  }, [projectId, terminalId, worktree, agentId, agentSessionId, command])
 
   useEffect(() => {
     if (!active) return

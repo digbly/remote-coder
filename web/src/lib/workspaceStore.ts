@@ -19,6 +19,9 @@ export interface WorkspaceTab {
   diffOrigPath?: string | null
   pinned?: boolean
   color?: string
+  // A shell command script typed into a freshly created terminal, one line per
+  // command. Set on tabs opened from a saved command.
+  command?: string
   // Set when the user renames the tab by hand; automatic titles (PTY OSC or
   // chat conversation names) must not overwrite a name the user chose.
   customTitle?: boolean
@@ -42,7 +45,20 @@ export interface SyncedState {
   workspaces: Record<number, ProjectWorkspace>
   layout: LayoutState
   activeProjectId: number | null
+  // Saved command scripts, either available in every project (global) or
+  // scoped to a single project. Shared across the user's clients.
+  globalCommands: CommandDefinition[]
+  projectCommands: Record<number, CommandDefinition[]>
 }
+
+export interface CommandDefinition {
+  id: string
+  label: string
+  // One shell command per line, typed into the terminal in order.
+  commands: string[]
+}
+
+export type CommandScope = 'global' | 'project'
 
 export interface NewTerminalOptions {
   worktree?: string
@@ -89,8 +105,24 @@ function isTab(value: unknown): value is WorkspaceTab {
       typeof value.diffOrigPath === 'string') &&
     (value.pinned === undefined || typeof value.pinned === 'boolean') &&
     (value.color === undefined || typeof value.color === 'string') &&
+    (value.command === undefined || typeof value.command === 'string') &&
     (value.customTitle === undefined || typeof value.customTitle === 'boolean')
   )
+}
+
+function isCommandDefinition(value: unknown): value is CommandDefinition {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.label === 'string' &&
+    Array.isArray(value.commands) &&
+    value.commands.every((line) => typeof line === 'string')
+  )
+}
+
+function parseCommandList(value: unknown): CommandDefinition[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isCommandDefinition)
 }
 
 // Pinned tabs stay at the front of the strip; the relative order of both the
@@ -154,6 +186,44 @@ export function withNewTerminal(
       tabs: [...tabs, tab],
       activeId: id,
       ...activeWorktreePatch(worktree),
+    },
+  }
+}
+
+export interface RunCommandOptions {
+  label: string
+  // The command script to type into the new terminal, one command per line.
+  command: string
+  worktree?: string
+}
+
+/**
+ * Open a terminal tab that runs a saved command. The server types ``command``
+ * into the freshly created shell session.
+ */
+export function withCommandTerminal(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  options: RunCommandOptions,
+): Record<number, ProjectWorkspace> {
+  const tabs = workspaces[project.id]?.tabs ?? []
+  const id = newTerminalId()
+  const label = options.label
+  const count = countByLabel(tabs, label)
+  const tab: WorkspaceTab = {
+    id,
+    title: count === 0 ? label : `${label} (${count + 1})`,
+    kind: 'terminal',
+    projectId: project.id,
+    command: options.command,
+    ...(options.worktree ? { worktree: options.worktree } : {}),
+  }
+  return {
+    ...workspaces,
+    [project.id]: {
+      tabs: [...tabs, tab],
+      activeId: id,
+      ...activeWorktreePatch(options.worktree),
     },
   }
 }
@@ -614,7 +684,13 @@ export function ensureWorkspace(
 }
 
 export function emptySyncedState(): SyncedState {
-  return { workspaces: {}, layout: loadLayout(), activeProjectId: null }
+  return {
+    workspaces: {},
+    layout: loadLayout(),
+    activeProjectId: null,
+    globalCommands: [],
+    projectCommands: {},
+  }
 }
 
 export function parseSyncedState(value: unknown): SyncedState | null {
@@ -636,9 +712,75 @@ export function parseSyncedState(value: unknown): SyncedState | null {
       ? value.activeProjectId
       : null
 
+  const projectCommands: Record<number, CommandDefinition[]> = {}
+  if (isRecord(value.projectCommands)) {
+    for (const [key, raw] of Object.entries(value.projectCommands)) {
+      const projectId = Number(key)
+      if (!Number.isInteger(projectId)) continue
+      const list = parseCommandList(raw)
+      if (list.length > 0) projectCommands[projectId] = list
+    }
+  }
+
   return {
     workspaces,
     layout: normalizeLayout(value.layout),
     activeProjectId,
+    globalCommands: parseCommandList(value.globalCommands),
+    projectCommands,
   }
+}
+
+export function newCommandId(): string {
+  return newTerminalId()
+}
+
+// Insert a command into its scope, replacing any command with the same id so
+// the same helper serves both create and update.
+export function withSavedCommand(
+  state: SyncedState,
+  scope: CommandScope,
+  command: CommandDefinition,
+  projectId: number | null,
+): SyncedState {
+  if (scope === 'global') {
+    return { ...state, globalCommands: upsertCommand(state.globalCommands, command) }
+  }
+  if (projectId == null) return state
+  const current = state.projectCommands[projectId] ?? []
+  return {
+    ...state,
+    projectCommands: { ...state.projectCommands, [projectId]: upsertCommand(current, command) },
+  }
+}
+
+export function withDeletedCommand(
+  state: SyncedState,
+  scope: CommandScope,
+  commandId: string,
+  projectId: number | null,
+): SyncedState {
+  if (scope === 'global') {
+    return {
+      ...state,
+      globalCommands: state.globalCommands.filter((item) => item.id !== commandId),
+    }
+  }
+  if (projectId == null) return state
+  const current = state.projectCommands[projectId] ?? []
+  return {
+    ...state,
+    projectCommands: {
+      ...state.projectCommands,
+      [projectId]: current.filter((item) => item.id !== commandId),
+    },
+  }
+}
+
+function upsertCommand(
+  commands: CommandDefinition[],
+  command: CommandDefinition,
+): CommandDefinition[] {
+  if (!commands.some((item) => item.id === command.id)) return [...commands, command]
+  return commands.map((item) => (item.id === command.id ? command : item))
 }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AgentDefinition } from '../../lib/agents'
-import type { WorkspaceTab } from '../../lib/workspaceStore'
-import { CloseIcon, CommandIcon, PinIcon } from './icons'
+import type { CommandDefinition, WorkspaceTab } from '../../lib/workspaceStore'
+import { CloseIcon, PinIcon } from './icons'
+import { CommandsMenu } from './CommandsMenu'
 import { NewTabMenu } from './NewTabMenu'
 import { TabContextMenu } from './TabContextMenu'
 import { TAB_DOT_COLORS, tabColorValue } from './tabDisplay'
@@ -27,6 +28,9 @@ interface TopTabsProps {
   onNew: (agent?: AgentDefinition) => void
   onNewChat: () => void
   onNewBrowser: () => void
+  commands: CommandDefinition[]
+  onRunCommand: (command: CommandDefinition) => void
+  onManageCommands: () => void
 }
 
 export function TopTabs({
@@ -44,6 +48,9 @@ export function TopTabs({
   onNew,
   onNewChat,
   onNewBrowser,
+  commands,
+  onRunCommand,
+  onManageCommands,
 }: TopTabsProps) {
   const { t } = useTranslation()
   const [menu, setMenu] = useState<{ tabId: string; x: number; y: number } | null>(null)
@@ -216,13 +223,11 @@ export function TopTabs({
       </div>
 
       <div className="flex shrink-0 items-center gap-2 px-3">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-md bg-[var(--hover)] px-2.5 py-1 text-[12px] text-[var(--fg-2)] transition hover:bg-[var(--hover-strong)]"
-        >
-          <CommandIcon width={13} height={13} />
-          {t('ide.command')}
-        </button>
+        <CommandsMenu
+          commands={commands}
+          onRun={onRunCommand}
+          onManage={onManageCommands}
+        />
       </div>
 
       {menuTab && menu && (

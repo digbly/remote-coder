@@ -875,6 +875,7 @@ export interface TerminalUrlOptions {
   worktree?: string
   agentId?: string
   agentSessionId?: string
+  command?: string
 }
 
 export type AgentSessionSource = 'chat' | 'cli'
@@ -1106,6 +1107,7 @@ export function projectTerminalUrl(
   if (options.worktree) params.set('worktree', options.worktree)
   if (options.agentId) params.set('agent_id', options.agentId)
   if (options.agentSessionId) params.set('session', options.agentSessionId)
+  if (options.command) params.set('command', options.command)
   const search = params.toString()
   const query = search ? `?${search}` : ''
   return `${protocol}//${window.location.host}${API_PREFIX}/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}${query}`

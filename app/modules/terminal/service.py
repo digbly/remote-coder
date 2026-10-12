@@ -25,6 +25,12 @@ _TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 DEFAULT_COLS = 80
 DEFAULT_ROWS = 24
 
+# A user-defined command script is typed verbatim into the shell, one line at a
+# time. Keep a generous cap and reject control characters that could not have
+# come from a real "one command per line" list.
+SCRIPT_MAX = 8192
+_SCRIPT_FORBIDDEN = "\r\x00"
+
 TerminalKey = tuple[int, int, str]
 
 
@@ -40,6 +46,17 @@ def _set_winsize(fd: int, cols: int, rows: int) -> None:
 def valid_terminal_id(terminal_id: str) -> bool:
     """Terminal ids come from the client and are used as session keys."""
     return _TERMINAL_ID_RE.fullmatch(terminal_id) is not None
+
+
+def valid_command_script(script: str) -> bool:
+    """A command script is non-empty, bounded, and free of control characters.
+
+    Newlines are allowed because each line is a separate command typed into the
+    shell; carriage returns and NUL would corrupt the input line.
+    """
+    if not script.strip() or len(script) > SCRIPT_MAX:
+        return False
+    return not any(char in script for char in _SCRIPT_FORBIDDEN)
 
 
 def get_project(db: Session, user: User, project_id: int) -> Project | None:

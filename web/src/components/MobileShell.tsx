@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AgentSession, Project, User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
-import type { WorkspaceTab } from '../lib/workspaceStore'
+import type { CommandDefinition, WorkspaceTab } from '../lib/workspaceStore'
 import { useViewportHeight } from '../lib/useViewportHeight'
 import { MenuIcon, PanelRightIcon } from './ide/icons'
+import { CommandsMenu } from './ide/CommandsMenu'
 import { NewTabMenu } from './ide/NewTabMenu'
 import { RightPanel } from './ide/RightPanel'
 import { Sidebar } from './ide/Sidebar'
@@ -59,6 +60,9 @@ interface MobileShellProps {
   onOpenDiff: (path: string, staged: boolean, origPath?: string | null) => void
   onResumeChat: (conversationId: string, title: string) => void
   onResumeSession: (session: AgentSession) => void
+  commands: CommandDefinition[]
+  onRunCommand: (command: CommandDefinition) => void
+  onManageCommands: () => void
   children: ReactNode
 }
 
@@ -86,6 +90,9 @@ export function MobileShell({
   onOpenDiff,
   onResumeChat,
   onResumeSession,
+  commands,
+  onRunCommand,
+  onManageCommands,
   children,
 }: MobileShellProps) {
   const { t } = useTranslation()
@@ -139,6 +146,13 @@ export function MobileShell({
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--fg-strong)]">
             {projectName ?? t('common.appName')}
           </span>
+          {projectId != null && (
+            <CommandsMenu
+              commands={commands}
+              onRun={onRunCommand}
+              onManage={onManageCommands}
+            />
+          )}
           {projectId != null && (
             <ShellIconButton label={t('ide.showPanel')} onClick={() => setPanelOpen(true)}>
               <PanelRightIcon width={18} height={18} />

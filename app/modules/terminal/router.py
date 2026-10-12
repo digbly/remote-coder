@@ -35,6 +35,7 @@ async def project_terminal(
     worktree: str | None = None,
     agent_id: str | None = None,
     session: str | None = None,
+    command: str | None = None,
 ) -> None:
     if not same_origin(websocket):
         await reject(websocket, WS_FORBIDDEN)
@@ -105,10 +106,13 @@ async def project_terminal(
     queue, replay = session.subscribe(asyncio.get_running_loop())
 
     # A new session that requested an agent starts by typing its launch command
-    # (executable plus optional args) into the shell. Re-attaching clients reuse
-    # the already-running agent.
-    if created and launch is not None and agents_service.valid_launch(launch):
-        session.write(f"{launch}\n".encode())
+    # (executable plus optional args) into the shell; a saved command script is
+    # typed the same way, one line per command. Re-attaching clients reuse the
+    # already-running session and never re-run it.
+    if created:
+        initial = _initial_input(launch, command)
+        if initial is not None:
+            session.write(initial)
 
     sender = asyncio.create_task(_pump_output(queue, websocket))
     receiver = asyncio.create_task(_pump_input(session, websocket))
@@ -150,6 +154,19 @@ def list_running_terminals(current_user: CurrentUser) -> RunningTerminalsRead:
     return RunningTerminalsRead(
         projects=service.manager.running_worktrees_by_project(current_user.id)
     )
+
+
+def _initial_input(launch: str | None, command: str | None) -> bytes | None:
+    """The bytes to type into a freshly created shell, if any.
+
+    An agent launch takes precedence; otherwise a saved command script is typed
+    verbatim, one line per command. Returns ``None`` when neither is usable.
+    """
+    if launch is not None and agents_service.valid_launch(launch):
+        return f"{launch}\n".encode()
+    if command is not None and service.valid_command_script(command):
+        return f"{command}\n".encode()
+    return None
 
 
 async def _pump_output(queue: asyncio.Queue[bytes | None], websocket: WebSocket) -> None:

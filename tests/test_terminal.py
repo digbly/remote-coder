@@ -3,6 +3,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import pytest
@@ -117,6 +118,35 @@ def test_terminal_runs_agent_command_with_args(client: TestClient, projects_root
         output = _read_until(websocket, "AGENT_ARGS=1")
 
     assert "AGENT_ARGS=1" in output
+
+
+def test_terminal_runs_command_script_on_new_session(
+    client: TestClient, projects_root: Path
+) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+    query = urlencode({"command": "echo CMD_MARKER=1"})
+
+    with client.websocket_connect(f"{_terminal_url(project_id, uuid4().hex)}?{query}") as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        output = _read_until(websocket, "CMD_MARKER=1")
+
+    assert "CMD_MARKER=1" in output
+
+
+def test_terminal_runs_multi_line_command_script(
+    client: TestClient, projects_root: Path
+) -> None:
+    _login(client)
+    project_id = _register_project(client, projects_root)
+    query = urlencode({"command": "echo FIRST=1\necho SECOND=2"})
+
+    with client.websocket_connect(f"{_terminal_url(project_id, uuid4().hex)}?{query}") as websocket:
+        websocket.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))
+        output = _read_until(websocket, "SECOND=2")
+
+    assert "FIRST=1" in output
+    assert "SECOND=2" in output
 
 
 def test_terminal_ignores_unknown_agent(client: TestClient, projects_root: Path) -> None:
