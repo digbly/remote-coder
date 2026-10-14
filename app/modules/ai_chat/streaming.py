@@ -47,7 +47,7 @@ from app.modules.ai_providers.base import (
 
 MAX_ASSISTANT_OUTPUT_CHARS = 48_000
 MAX_THINKING_OUTPUT_CHARS = 48_000
-MAX_TOTAL_TOOL_OUTPUT_CHARS = 64_000
+MAX_TOTAL_TOOL_OUTPUT_CHARS = 200_000
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = (
     "You are a code assistant for the selected project. Inspect files with the provided "

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import fcntl
 import os
 import re
@@ -13,14 +15,34 @@ import time
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
+from app.core.errors import ErrorCode, api_error
 from app.modules.auth.models import User
 from app.modules.projects.models import Project
+from app.modules.terminal.schemas import TerminalImageUpload
 
 _TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+# Media types the terminal accepts for a pasted image, mapped to a file suffix.
+_IMAGE_EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+}
+
+# Pasted images are written under this hidden folder in the project so a pasted
+# screenshot never becomes an untracked git file; the shell reads it by path.
+_IMAGE_DIR = Path(".remote-coder") / "images"
+_GITIGNORE_ENTRY = ".remote-coder/"
 
 DEFAULT_COLS = 80
 DEFAULT_ROWS = 24
@@ -61,6 +83,77 @@ def valid_command_script(script: str) -> bool:
 
 def get_project(db: Session, user: User, project_id: int) -> Project | None:
     return db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
+
+
+def save_image(project: Project, payload: TerminalImageUpload, settings: Settings) -> Path:
+    """Validate and persist a pasted image under the project, returning its path.
+
+    The image is written to the project's hidden ``.remote-coder/images`` folder
+    (which is added to the project's ``.gitignore``) so the terminal shell can
+    read it by the returned absolute path without polluting the git status.
+    """
+    extension = _IMAGE_EXTENSIONS.get(payload.media_type)
+    if extension is None:
+        raise api_error(ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    # ``data`` is base64, so its decoded size is roughly 3/4 of the string.
+    if len(payload.data) > settings.terminal_image_max_bytes // 3 * 4 + 16:
+        raise api_error(
+            ErrorCode.TERMINAL_IMAGE_TOO_LARGE,
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+
+    try:
+        data = base64.b64decode(payload.data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise api_error(
+            ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST
+        ) from exc
+
+    if not data:
+        raise api_error(ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    if len(data) > settings.terminal_image_max_bytes:
+        raise api_error(
+            ErrorCode.TERMINAL_IMAGE_TOO_LARGE,
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+
+    root = Path(project.path)
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+
+    directory = root / _IMAGE_DIR
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / f"image-{uuid4().hex}.{extension}"
+        target.write_bytes(data)
+    except OSError as exc:
+        raise api_error(
+            ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
+        ) from exc
+
+    _ensure_gitignored(root)
+    return target
+
+
+def _ensure_gitignored(root: Path) -> None:
+    """Add the image folder to the project's ``.gitignore`` once."""
+    gitignore = root / ".gitignore"
+    try:
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    except OSError:
+        return
+    if any(
+        line.strip().rstrip("/") == _GITIGNORE_ENTRY.rstrip("/") for line in existing.splitlines()
+    ):
+        return
+    try:
+        with gitignore.open("a", encoding="utf-8") as handle:
+            if existing and not existing.endswith("\n"):
+                handle.write("\n")
+            handle.write(f"{_GITIGNORE_ENTRY}\n")
+    except OSError:
+        return
 
 
 def _acquire_controlling_tty() -> None:

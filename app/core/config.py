@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     terminal_replay_bytes: int = 262144
     terminal_subscriber_queue_chunks: int = 256
     terminal_session_ttl_seconds: int = 21600
+    terminal_image_max_bytes: int = 10 * 1024 * 1024
 
     agent_models_cache_ttl_seconds: int = 300
     agent_commit_message_timeout_seconds: int = 120

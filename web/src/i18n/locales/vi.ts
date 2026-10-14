@@ -82,6 +82,8 @@ const vi = {
     browserForbidden: 'Từ chối yêu cầu cross-site',
     browserNavigationFailed: 'Không thể điều hướng trình duyệt',
     browserCommandFailed: 'Không thể điều khiển trình duyệt',
+    terminalImageInvalid: 'Không thể đọc ảnh đã dán',
+    terminalImageTooLarge: 'Ảnh quá lớn để đính kèm',
   },
   settings: {
     title: 'Cài đặt',

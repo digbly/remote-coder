@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { projectTerminalUrl, refreshSession } from '../../lib/api'
+import { projectTerminalUrl, refreshSession, uploadTerminalImage } from '../../lib/api'
 import { useTheme, type ResolvedTheme } from '../../lib/themeContext'
 import { useIsMobile } from '../../lib/useMediaQuery'
 
@@ -39,6 +39,55 @@ interface TerminalMessage {
   data?: string
   cols?: number
   rows?: number
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : '')
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read image'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
+ * Paste from the browser clipboard into the terminal. An image is uploaded to
+ * the server and its path is typed in instead (so the agent can read the file
+ * by path); plain text is pasted verbatim.
+ */
+async function pasteClipboard(terminal: Terminal, projectId: number): Promise<void> {
+  const clipboard = navigator.clipboard
+  if (clipboard?.read) {
+    let items: ClipboardItem[] = []
+    try {
+      items = await clipboard.read()
+    } catch {
+      /* rich clipboard reads can be denied or unsupported; try plain text */
+    }
+    for (const item of items) {
+      const type = item.types.find((value) => value.startsWith('image/'))
+      if (!type) continue
+      try {
+        const blob = await item.getType(type)
+        const data = await blobToBase64(blob)
+        const path = await uploadTerminalImage(projectId, type, data)
+        terminal.paste(path)
+      } catch (error) {
+        console.error('Failed to attach the pasted image', error)
+      }
+      return
+    }
+  }
+  try {
+    const text = await clipboard?.readText?.()
+    if (text) terminal.paste(text)
+  } catch {
+    /* clipboard access can be denied */
+  }
 }
 
 export const ProjectTerminal = memo(function ProjectTerminal({
@@ -113,13 +162,13 @@ export const ProjectTerminal = memo(function ProjectTerminal({
         void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => {})
         return false
       }
-      if (key === 'v' && navigator.clipboard?.readText) {
-        void navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) terminal.paste(text)
-          })
-          .catch(() => {})
+      const clipboard = navigator.clipboard
+      const canReadClipboard =
+        typeof clipboard?.read === 'function' || typeof clipboard?.readText === 'function'
+      if (key === 'v' && canReadClipboard) {
+        // An image on the clipboard is uploaded and its path typed in; text is
+        // pasted verbatim. Without clipboard read support the native paste runs.
+        void pasteClipboard(terminal, projectId)
         return false
       }
       return true

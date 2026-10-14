@@ -70,6 +70,8 @@ const ERROR_CODE_KEYS = {
   BROWSER_FORBIDDEN: 'apiErrors.browserForbidden',
   BROWSER_NAVIGATION_FAILED: 'apiErrors.browserNavigationFailed',
   BROWSER_COMMAND_FAILED: 'apiErrors.browserCommandFailed',
+  TERMINAL_IMAGE_INVALID: 'apiErrors.terminalImageInvalid',
+  TERMINAL_IMAGE_TOO_LARGE: 'apiErrors.terminalImageTooLarge',
 } as const
 
 export interface User {
@@ -1222,6 +1224,18 @@ export async function killTerminal(projectId: number, terminalId: string): Promi
   await request(`/projects/${projectId}/terminal/${encodeURIComponent(terminalId)}`, {
     method: 'DELETE',
   })
+}
+
+export async function uploadTerminalImage(
+  projectId: number,
+  mediaType: string,
+  data: string,
+): Promise<string> {
+  const result = await postJson<{ path: string }>(`/projects/${projectId}/terminal/image`, {
+    media_type: mediaType,
+    data,
+  })
+  return result.path
 }
 
 export async function fetchRunningTerminals(): Promise<Record<number, string[]>> {

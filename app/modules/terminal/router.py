@@ -14,7 +14,11 @@ from app.modules.auth.websocket import reject, same_origin, websocket_user
 from app.modules.git import service as git_service
 from app.modules.projects import service as projects_service
 from app.modules.terminal import service
-from app.modules.terminal.schemas import RunningTerminalsRead
+from app.modules.terminal.schemas import (
+    RunningTerminalsRead,
+    TerminalImageRead,
+    TerminalImageUpload,
+)
 
 router = APIRouter(prefix="/projects", tags=["terminal"])
 global_router = APIRouter(prefix="/terminals", tags=["terminal"])
@@ -143,6 +147,26 @@ def kill_project_terminal(
     projects_service.get_project(db, current_user, project_id)
     if service.valid_terminal_id(terminal_id):
         service.manager.kill((current_user.id, project_id, terminal_id))
+
+
+@router.post(
+    "/{project_id}/terminal/image",
+    response_model=TerminalImageRead,
+    status_code=status.HTTP_201_CREATED,
+    responses=error_responses(400, 401, 403, 404, 413, 422),
+)
+def upload_terminal_image(
+    project_id: int,
+    payload: TerminalImageUpload,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> TerminalImageRead:
+    """Store a pasted image and return a path the terminal shell can read."""
+    project = projects_service.get_project(db, current_user, project_id)
+    path = service.save_image(project, payload, settings)
+    return TerminalImageRead(path=str(path))
 
 
 @global_router.get(
