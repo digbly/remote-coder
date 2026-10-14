@@ -210,6 +210,10 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     function scheduleReconnect() {
       if (disposed || reconnectTimer !== null) return
+      // While the page is hidden the browser freezes or throttles timers, so a
+      // retry scheduled here would not run until the app is foregrounded again
+      // and would only burn the attempt budget. Wait for `wake` on resume.
+      if (document.visibilityState === 'hidden') return
       const delay = Math.min(RECONNECT_BASE_MS * 2 ** (attempts - 1), RECONNECT_MAX_MS)
       writeStatus('reconnecting…')
       reconnectTimer = window.setTimeout(() => {
@@ -250,7 +254,11 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       }
 
       next.onclose = (event) => {
-        if (disposed) return
+        // Ignore the close of a socket that has already been superseded by a
+        // newer connection (for example `wake` reconnecting while this one was
+        // still tearing down): acting on it would clear the live `socket` and
+        // schedule a redundant reconnect.
+        if (disposed || socket !== next) return
         socket = null
         // A connection that stayed open long enough is considered healthy, so
         // the backoff resets (for example after a dev-server reload).
@@ -292,6 +300,29 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     connect()
 
+    // Mobile browsers suspend a page when it is backgrounded: pending timers
+    // are frozen and the socket usually drops. Without this, the backoff counter
+    // keeps climbing until it hits the attempt limit and the terminal gives up
+    // for good ("disconnected"). Whenever the page comes back to the foreground
+    // (or the network returns) reset the backoff and reconnect immediately if
+    // there is no live connection.
+    function wake() {
+      if (disposed || document.visibilityState === 'hidden') return
+      // Wait for any in-flight socket (open, connecting, or still closing) to
+      // settle; a closing socket's own onclose schedules the reconnect.
+      if (socket !== null && socket.readyState !== WebSocket.CLOSED) return
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      attempts = 0
+      connect()
+    }
+
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    window.addEventListener('focus', wake)
+
     const dataDisposable = terminal.onData((data) => send({ type: 'input', data }))
 
     // Programs (agents, shells) announce their own title via an OSC sequence;
@@ -305,6 +336,9 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
     return () => {
       disposed = true
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('focus', wake)
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       resizeObserver.disconnect()
       dataDisposable.dispose()
