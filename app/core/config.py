@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     git_push_timeout_seconds: int = 120
     github_pr_timeout_seconds: int = 60
 
+    # In-process caches for the git reads the UI polls. Writes invalidate the
+    # affected repository immediately, so each TTL only bounds how long a change
+    # made outside the API (a terminal command, an agent edit) stays hidden.
+    git_status_cache_ttl_seconds: float = 2.0
+    git_worktrees_cache_ttl_seconds: float = 5.0
+    git_branches_cache_ttl_seconds: float = 2.0
+    git_pull_request_cache_ttl_seconds: float = 10.0
+    # Stable per-repository facts (is this a work tree, and its default branch)
+    # change so rarely that a long TTL avoids a git call on every poll.
+    git_repo_cache_ttl_seconds: float = 300.0
+
     terminal_shell: str = "/bin/bash"
     terminal_read_chunk_bytes: int = 65536
     terminal_replay_bytes: int = 262144

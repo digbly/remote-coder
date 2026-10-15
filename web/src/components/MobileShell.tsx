@@ -276,6 +276,7 @@ export function MobileShell({
           />
           <div className="relative z-10 flex h-[75vh] flex-col overflow-hidden rounded-t-2xl border-t border-[var(--border)] bg-[var(--surface)] pb-[var(--safe-bottom)] [&>aside]:h-full">
             <RightPanel
+              key={projectId}
               projectId={projectId}
               worktree={activeWorktrees[projectId]}
               width={window.innerWidth}

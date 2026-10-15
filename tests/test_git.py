@@ -131,6 +131,30 @@ def test_git_status_caches_base_branch(
     assert len(base_calls) == first
 
 
+def test_git_status_cache_is_cleared_by_a_write(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "myrepo"
+    _init_repo(repo)
+    project_id = _register_local(client, repo)["id"]
+    url = f"{PROJECTS_URL}/{project_id}/git/status"
+
+    assert client.get(url).json()["unstaged"] == []
+
+    # An on-disk change is hidden by the cache until the repository is invalidated.
+    (repo / "tracked.txt").write_text("hello\nworld\n")
+    assert client.get(url).json()["unstaged"] == []
+
+    staged = client.post(
+        f"{PROJECTS_URL}/{project_id}/git/stage",
+        json={"paths": ["tracked.txt"]},
+        headers=_csrf(client),
+    )
+    assert staged.status_code == 200
+
+    body = client.get(url).json()
+    assert [change["path"] for change in body["staged"]] == ["tracked.txt"]
+
+
 def test_git_status_not_a_repository(client: TestClient, projects_root) -> None:
     _login(client)
     folder = projects_root / "plain"

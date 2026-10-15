@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTLCache
 from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.auth.models import User
@@ -72,6 +73,14 @@ _DEFAULT_IGNORED_DIRECTORIES = {
 
 _FILE_WRITE_LOCK = threading.Lock()
 
+# Directory listings are cheap but the explorer and the agent re-request the
+# same folders, so successful reads are memoized briefly. Any write through
+# this module drops the project's entries, so the API never serves a listing
+# it just changed; the short TTL only bounds staleness from outside edits.
+_TREE_CACHE_TTL_SECONDS = 2.0
+_BROWSE_CACHE_TTL_SECONDS = 3.0
+_project_cache: TTLCache = TTLCache()
+
 _GITHUB_URL_RE = re.compile(
     r"^(?:https?://|git@)?(?:www\.)?github\.com[/:]"
     r"(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?/?$"
@@ -102,6 +111,14 @@ def browse_directories(path: str | None) -> DirectoryListing:
     if not target.is_dir():
         raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
+    return _project_cache.get_or_set(
+        f"{target}\x00browse",
+        _BROWSE_CACHE_TTL_SECONDS,
+        lambda: _read_directories(root, target),
+    )
+
+
+def _read_directories(root: Path, target: Path) -> DirectoryListing:
     try:
         directories = [
             DirectoryEntry(name=child.name, path=str(child))
@@ -142,6 +159,14 @@ def list_files(
     if not directory.is_dir():
         raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
 
+    return _project_cache.get_or_set(
+        f"{root}\x00list_files\x00{directory}",
+        _TREE_CACHE_TTL_SECONDS,
+        lambda: _read_directory(root, directory),
+    )
+
+
+def _read_directory(root: Path, directory: Path) -> FileTreeRead:
     try:
         with os.scandir(directory) as iterator:
             children = sorted(
@@ -186,6 +211,14 @@ def list_tree(
     if not base.is_dir():
         raise api_error(ErrorCode.FILE_NOT_FOUND, status_code=status.HTTP_404_NOT_FOUND)
 
+    return _project_cache.get_or_set(
+        f"{root}\x00list_tree\x00{base}\x00{limit}",
+        _TREE_CACHE_TTL_SECONDS,
+        lambda: _walk_tree(root, base, limit),
+    )
+
+
+def _walk_tree(root: Path, base: Path, limit: int) -> FileTreeRead:
     entries: list[FileNode] = []
     truncated = False
     stack = [base]
@@ -341,6 +374,7 @@ def create_directory_if_absent(db: Session, owner: User, project_id: int, path: 
             raise api_error(
                 ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
             ) from exc
+        _invalidate_project_cache(root)
         return True
 
 
@@ -364,6 +398,7 @@ def delete_file_if_hash_matches(
             raise api_error(
                 ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
             ) from exc
+        _invalidate_project_cache(root)
         return True
 
 
@@ -380,6 +415,7 @@ def delete_directory_if_exists(db: Session, owner: User, project_id: int, path: 
             raise api_error(
                 ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
             ) from exc
+        _invalidate_project_cache(root)
         return True
 
 
@@ -419,6 +455,7 @@ def move_entry_if_source_matches(
             raise api_error(
                 ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
             ) from exc
+        _invalidate_project_cache(root)
         return True
 
 
@@ -444,6 +481,11 @@ def _reject_project_root(root: Path, target: Path) -> None:
         raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
 
+def _invalidate_project_cache(root: Path) -> None:
+    """Drop cached listings for a project after a write through this module."""
+    _project_cache.invalidate_prefix(f"{root}\x00")
+
+
 def _write_resolved_file(root: Path, target: Path, content: str) -> FileContentRead:
     if not target.parent.is_dir():
         raise api_error(ErrorCode.FILE_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
@@ -465,6 +507,7 @@ def _write_resolved_file(root: Path, target: Path, content: str) -> FileContentR
             ErrorCode.FILE_WRITE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
         ) from exc
 
+    _invalidate_project_cache(root)
     return FileContentRead(
         path=target.relative_to(root).as_posix(), content=content, size=len(data)
     )

@@ -35,6 +35,12 @@ import {
 } from './icons'
 import { BranchMenu } from './BranchMenu'
 import { gitStatusColor, GIT_STATUS_REFRESH_INTERVAL_MS } from './gitStatus'
+import {
+  loadCollapsedSections,
+  saveCollapsedSections,
+  type GitSection,
+  type GitSectionCollapsed,
+} from '../../lib/gitSectionStore'
 import { useConfirm } from '../../lib/confirmContext'
 
 function PathRow({
@@ -98,30 +104,52 @@ function discardTargets(file: GitChange): string[] {
 }
 
 function Section({
+  section,
   title,
   count,
   action,
+  collapsed,
+  onToggle,
   children,
 }: {
+  section: GitSection
   title: string
   count: number
   action?: ReactNode
+  collapsed: boolean
+  onToggle: (section: GitSection) => void
   children: ReactNode
 }) {
+  const bodyId = `git-section-${section}`
   return (
     <div className="mt-3">
       <div className="group flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-        <ChevronDownIcon width={12} height={12} />
-        <span>
-          {title} {count}
-        </span>
+        <button
+          type="button"
+          onClick={() => onToggle(section)}
+          aria-expanded={!collapsed}
+          aria-controls={bodyId}
+          title={title}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-0.5 py-0.5 text-left font-semibold uppercase tracking-wider text-[var(--muted)] transition hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]"
+        >
+          <ChevronDownIcon
+            width={12}
+            height={12}
+            className={`shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}
+          />
+          <span className="truncate">
+            {title} {count}
+          </span>
+        </button>
         {action && (
-          <span className="ml-auto flex items-center gap-0.5 opacity-100 transition md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+          <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-100 transition md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
             {action}
           </span>
         )}
       </div>
-      <div className="space-y-0.5">{children}</div>
+      <div id={bodyId} hidden={collapsed} className="space-y-0.5">
+        {children}
+      </div>
     </div>
   )
 }
@@ -193,8 +221,21 @@ export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceCo
   const [pullRequestUrl, setPullRequestUrl] = useState<string | null>(null)
   const [branchList, setBranchList] = useState<GitBranches | null>(null)
   const [branchMenuOpen, setBranchMenuOpen] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<GitSectionCollapsed>(() =>
+    loadCollapsedSections(projectId, worktree),
+  )
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), [])
+
+  // Collapsed sections are stored per project/worktree; the panel is remounted
+  // (via key) whenever the scope changes, so the stored value is read on mount.
+  function handleToggleSection(section: GitSection) {
+    const next: GitSectionCollapsed = { ...collapsedSections }
+    if (next[section]) delete next[section]
+    else next[section] = true
+    setCollapsedSections(next)
+    saveCollapsedSections(projectId, worktree, next)
+  }
 
   useEffect(() => {
     let active = true
@@ -561,7 +602,13 @@ export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceCo
         {!loading && !error && status && !clean && (
           <>
             {status.conflicted.length > 0 && (
-              <Section title={t('ide.conflicts')} count={status.conflicted.length}>
+              <Section
+                section="conflicted"
+                title={t('ide.conflicts')}
+                count={status.conflicted.length}
+                collapsed={Boolean(collapsedSections.conflicted)}
+                onToggle={handleToggleSection}
+              >
                 {status.conflicted.map((path) => (
                   <PathRow
                     key={path}
@@ -574,8 +621,11 @@ export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceCo
             )}
             {status.staged.length > 0 && (
               <Section
+                section="staged"
                 title={t('ide.stagedChanges')}
                 count={status.staged.length}
+                collapsed={Boolean(collapsedSections.staged)}
+                onToggle={handleToggleSection}
                 action={
                   <RowAction
                     label={t('ide.unstageAll')}
@@ -615,8 +665,11 @@ export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceCo
             )}
             {status.unstaged.length > 0 && (
               <Section
+                section="unstaged"
                 title={t('ide.changes')}
                 count={status.unstaged.length}
+                collapsed={Boolean(collapsedSections.unstaged)}
+                onToggle={handleToggleSection}
                 action={
                   <>
                     <RowAction
@@ -665,8 +718,11 @@ export function SourceControlPanel({ projectId, worktree, onOpenDiff }: SourceCo
             )}
             {status.untracked.length > 0 && (
               <Section
+                section="untracked"
                 title={t('ide.untracked')}
                 count={status.untracked.length}
+                collapsed={Boolean(collapsedSections.untracked)}
+                onToggle={handleToggleSection}
                 action={
                   <>
                     <RowAction

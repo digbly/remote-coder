@@ -499,6 +499,32 @@ def test_project_files_lists_subdirectory(client: TestClient, projects_root) -> 
     assert "children" not in body["entries"][0]
 
 
+def test_project_files_cache_is_cleared_by_a_write(client: TestClient, projects_root) -> None:
+    _login(client)
+    repo = projects_root / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x")
+    project_id = _register_local(client, repo)["id"]
+    url = f"{PROJECTS_URL}/{project_id}/files"
+
+    assert [entry["name"] for entry in client.get(url).json()["entries"]] == ["main.py"]
+
+    # A file created outside the API is hidden until the cache expires...
+    (repo / "new.py").write_text("x")
+    assert [entry["name"] for entry in client.get(url).json()["entries"]] == ["main.py"]
+
+    # ...but a write through the API drops the project's cached listings.
+    created = client.put(
+        f"{PROJECTS_URL}/{project_id}/file",
+        json={"path": "other.py", "content": "x"},
+        headers=_csrf(client),
+    )
+    assert created.status_code == 200
+
+    names = [entry["name"] for entry in client.get(url).json()["entries"]]
+    assert names == ["main.py", "new.py", "other.py"]
+
+
 def test_project_files_rejects_path_escape(client: TestClient, projects_root) -> None:
     _login(client)
     repo = projects_root / "repo"

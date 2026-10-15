@@ -2,12 +2,12 @@ import json
 import os
 import re
 import subprocess
-import time
 from pathlib import Path, PurePosixPath
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import TTLCache
 from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.agents import service as agent_service
@@ -44,11 +44,12 @@ _WORKTREE_NAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,255}$")
 _DEFAULT_BRANCHES = ("main", "master")
 _WORKTREE_BRANCH_PREFIX = "refs/heads/"
 
-# The default (base) branch rarely changes, but the status endpoint is polled
-# frequently, so the resolved value is cached briefly to avoid a git call on
-# every read.
-_BASE_BRANCH_TTL_SECONDS = 60.0
-_base_branch_cache: dict[str, tuple[float, str]] = {}
+# The status endpoint is polled frequently and each read spawns several git
+# subprocesses, so successful reads are memoized for a short TTL. Every write
+# path drops the affected repository's entries immediately, so a mutation made
+# through the API is never served stale. A key is ``<repo path>\0<name>`` so a
+# repository can be invalidated as one prefix.
+_git_cache: TTLCache = TTLCache()
 
 _COMMIT_MESSAGE_PROMPT = (
     "You are an expert software engineer writing a git commit message.\n"
@@ -70,7 +71,11 @@ def get_git_status(
     db: Session, owner: User, project_id: int, settings: Settings, worktree: str | None = None
 ) -> GitStatusRead:
     path = _resolve_repository(db, owner, project_id, settings, worktree)
-    return _read_status(path, settings)
+    return _git_cache.get_or_set(
+        _cache_key(path, "status"),
+        settings.git_status_cache_ttl_seconds,
+        lambda: _read_status(path, settings),
+    )
 
 
 def _read_status(path: Path, settings: Settings) -> GitStatusRead:
@@ -184,6 +189,7 @@ def stage_paths(
 
     result = _run_git(path, ["add", "--", *paths], timeout=settings.git_commit_timeout_seconds)
     _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -195,6 +201,7 @@ def stage_all(
 
     result = _run_git(path, ["add", "-A"], timeout=settings.git_commit_timeout_seconds)
     _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -211,6 +218,7 @@ def unstage_paths(
     _validate_paths(paths)
 
     _unstage(path, paths, settings)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -222,6 +230,7 @@ def unstage_all(
     current = _read_status(path, settings)
 
     _unstage(path, [change.path for change in current.staged], settings)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -257,6 +266,7 @@ def discard_paths(
             _run_discard(path, ["rm", "--cached", "-r", "--", *staged], settings)
         _run_discard(path, ["clean", "-f", "-d", "--", *remove], settings)
 
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -277,6 +287,7 @@ def pull_branch(
     )
     if result.returncode != 0:
         raise api_error(ErrorCode.GIT_PULL_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -302,6 +313,7 @@ def push_branch(
     )
     if result.returncode != 0:
         raise api_error(ErrorCode.GIT_PUSH_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -310,6 +322,14 @@ def list_branches(
 ) -> GitBranchesRead:
     """Return the current branch together with every local branch."""
     path = _resolve_repository(db, owner, project_id, settings, worktree)
+    return _git_cache.get_or_set(
+        _cache_key(path, "branches"),
+        settings.git_branches_cache_ttl_seconds,
+        lambda: _read_branches(path, settings),
+    )
+
+
+def _read_branches(path: Path, settings: Settings) -> GitBranchesRead:
     result = _run_git(
         path,
         ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
@@ -324,17 +344,32 @@ def list_worktrees(
 ) -> list[GitWorktreeRead]:
     """Return every git worktree registered for the project, primary first."""
     path = _project_repository(db, owner, project_id, settings)
+    worktrees = _cached_worktrees(path, settings)
+    if worktrees is None:
+        raise api_error(
+            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    return worktrees
+
+
+def _read_worktrees(path: Path, settings: Settings) -> list[GitWorktreeRead] | None:
+    """Return the parsed worktree registry, or ``None`` when git reports failure."""
     result = _run_git(
         path,
         ["worktree", "list", "--porcelain"],
         timeout=settings.git_status_timeout_seconds,
     )
     if result.returncode != 0:
-        _raise_status_error(result)
-        raise api_error(
-            ErrorCode.GIT_COMMAND_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return None
     return parse_worktrees(result.stdout, primary=path)
+
+
+def _cached_worktrees(path: Path, settings: Settings) -> list[GitWorktreeRead] | None:
+    return _git_cache.get_or_set(
+        _cache_key(path, "worktrees"),
+        settings.git_worktrees_cache_ttl_seconds,
+        lambda: _read_worktrees(path, settings),
+    )
 
 
 def find_worktree(path: Path, name: str, settings: Settings) -> Path | None:
@@ -352,21 +387,10 @@ def find_worktree(path: Path, name: str, settings: Settings) -> Path | None:
 
 def _worktree_entry(path: Path, name: str, settings: Settings) -> GitWorktreeRead | None:
     """Return the registered worktree named ``name``, or ``None`` if absent."""
-    result = _run_git(
-        path,
-        ["worktree", "list", "--porcelain"],
-        timeout=settings.git_status_timeout_seconds,
-    )
-    if result.returncode != 0:
+    worktrees = _cached_worktrees(path, settings)
+    if worktrees is None:
         return None
-    return next(
-        (
-            worktree
-            for worktree in parse_worktrees(result.stdout, primary=path)
-            if worktree.name == name
-        ),
-        None,
-    )
+    return next((worktree for worktree in worktrees if worktree.name == name), None)
 
 
 def parse_worktrees(output: str, primary: Path) -> list[GitWorktreeRead]:
@@ -450,6 +474,7 @@ def create_worktree(
     if result.returncode != 0:
         raise api_error(ErrorCode.GIT_WORKTREE_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
 
+    _invalidate_repo(path)
     return GitWorktreeRead(name=target.name, path=str(target), branch=branch, is_primary=False)
 
 
@@ -479,6 +504,7 @@ def delete_worktree(
         raise api_error(
             ErrorCode.GIT_WORKTREE_DELETE_FAILED, status_code=status.HTTP_400_BAD_REQUEST
         )
+    _invalidate_repo(path)
 
 
 def create_branch(
@@ -492,6 +518,7 @@ def create_branch(
     """Create and check out a new branch."""
     path = _resolve_repository(db, owner, project_id, settings, worktree)
     _checkout(path, name.strip(), create=True, settings=settings)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -506,6 +533,7 @@ def checkout_branch(
     """Switch to an existing local branch."""
     path = _resolve_repository(db, owner, project_id, settings, worktree)
     _checkout(path, name.strip(), create=False, settings=settings)
+    _invalidate_repo(path)
     return _read_status(path, settings)
 
 
@@ -597,6 +625,7 @@ def commit_staged(
 
     result = _run_git(path, ["commit", "-m", cleaned], timeout=settings.git_commit_timeout_seconds)
     _ensure_success(result, ErrorCode.GIT_COMMAND_FAILED)
+    _invalidate_repo(path)
 
     revision = _run_git(
         path, ["rev-parse", "--short", "HEAD"], timeout=settings.git_commit_timeout_seconds
@@ -721,6 +750,7 @@ def create_pull_request(
         raise api_error(
             ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+    _invalidate_repo(path)
     return GitPullRequestRead(url=url, branch=branch, base=base)
 
 
@@ -739,7 +769,14 @@ def get_current_pull_request(
     """
     primary = _project_repository(db, owner, project_id, settings)
     path = _path_for_worktree(primary, worktree, settings)
+    return _git_cache.get_or_set(
+        _cache_key(path, "pull-request"),
+        settings.git_pull_request_cache_ttl_seconds,
+        lambda: _read_pull_request(path, primary, settings),
+    )
 
+
+def _read_pull_request(path: Path, primary: Path, settings: Settings) -> GitPullRequestStatusRead:
     branch = _current_branch(path, settings)
     base = _cached_default_branch(path, settings)
     status_read = GitPullRequestStatusRead(
@@ -814,6 +851,7 @@ def merge_pull_request(
     if merged.returncode != 0:
         raise api_error(ErrorCode.GIT_PULL_REQUEST_FAILED, status_code=status.HTTP_400_BAD_REQUEST)
 
+    _invalidate_repo(path)
     return get_current_pull_request(db, owner, project_id, settings, worktree)
 
 
@@ -885,12 +923,21 @@ def _project_repository(db: Session, owner: User, project_id: int, settings: Set
     if not path.is_dir():
         raise api_error(ErrorCode.GIT_NOT_A_REPOSITORY, status_code=status.HTTP_400_BAD_REQUEST)
 
-    inside = _run_git(
-        path, ["rev-parse", "--is-inside-work-tree"], timeout=settings.git_status_timeout_seconds
+    inside = _git_cache.get_or_set(
+        _cache_key(path, "repo"),
+        settings.git_repo_cache_ttl_seconds,
+        lambda: _is_repository(path, settings),
     )
-    if inside.returncode != 0:
+    if not inside:
         raise api_error(ErrorCode.GIT_NOT_A_REPOSITORY, status_code=status.HTTP_400_BAD_REQUEST)
     return path
+
+
+def _is_repository(path: Path, settings: Settings) -> bool:
+    result = _run_git(
+        path, ["rev-parse", "--is-inside-work-tree"], timeout=settings.git_status_timeout_seconds
+    )
+    return result.returncode == 0
 
 
 def _resolve_repository(
@@ -983,14 +1030,20 @@ def _cached_default_branch(path: Path, settings: Settings) -> str:
     Callers on the polling path (git status) use this; the one-shot PR creation
     path resolves directly via ``_default_branch``.
     """
-    key = str(path.resolve())
-    now = time.monotonic()
-    cached = _base_branch_cache.get(key)
-    if cached is not None and now - cached[0] < _BASE_BRANCH_TTL_SECONDS:
-        return cached[1]
-    base = _default_branch(path, settings)
-    _base_branch_cache[key] = (now, base)
-    return base
+    return _git_cache.get_or_set(
+        _cache_key(path, "base"),
+        settings.git_repo_cache_ttl_seconds,
+        lambda: _default_branch(path, settings),
+    )
+
+
+def _cache_key(path: Path, name: str) -> str:
+    return f"{path.resolve()}\x00{name}"
+
+
+def _invalidate_repo(path: Path) -> None:
+    """Drop every cached git read for one repository/worktree after a mutation."""
+    _git_cache.invalidate_prefix(f"{path.resolve()}\x00")
 
 
 def _current_branch(path: Path, settings: Settings) -> str:
