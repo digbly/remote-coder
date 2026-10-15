@@ -8,6 +8,8 @@ export {
   fetchAIProviders,
   fetchAISkills,
   openAIChatStream,
+  resumeAIChatStream,
+  cancelAIChatMessage,
   updateAIProposal,
   updateAICommandPermission,
 } from './api'

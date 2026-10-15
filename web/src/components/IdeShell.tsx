@@ -458,6 +458,7 @@ export function IdeShell({
           tabs={activeTabs}
           activeId={activeTabId}
           onSelectTab={onSelectTab}
+          onCloseTab={closeTab}
           onNewTerminal={(agent) => activeProject && openTerminal(activeProject, agent)}
           onNewChat={openChat}
           onOpenSearch={() => setSearchOpen(true)}

@@ -11,6 +11,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.core.config import Settings, get_settings
 from app.core.db import Base, get_db
 from app.main import app
+from app.modules.ai_chat.turns import manager as chat_turn_manager
 from app.modules.auth.models import User
 from app.modules.auth.pow import pow_store
 from app.modules.auth.rate_limit import limiter
@@ -46,7 +47,7 @@ def projects_root(tmp_path):
 
 
 @pytest.fixture
-def client(projects_root) -> TestClient:
+def db_session_factory():
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -59,6 +60,13 @@ def client(projects_root) -> TestClient:
         db.add(User(username=USERNAME, hashed_password=hash_password(PASSWORD)))
         db.add(User(username=OTHER_USERNAME, hashed_password=hash_password(PASSWORD)))
         db.commit()
+
+    return testing_session
+
+
+@pytest.fixture
+def client(projects_root, db_session_factory) -> TestClient:
+    testing_session = db_session_factory
 
     def override_get_db():
         db = testing_session()
@@ -80,6 +88,7 @@ def client(projects_root) -> TestClient:
     try:
         yield TestClient(app)
     finally:
+        chat_turn_manager.reset()
         terminal_service.manager.kill_all()
         vscode_service.manager.kill_all()
         browser_service.manager.kill_all()

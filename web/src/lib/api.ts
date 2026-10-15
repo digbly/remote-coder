@@ -1086,6 +1086,37 @@ export async function openAIChatStream(
   return response
 }
 
+export async function resumeAIChatStream(
+  projectId: number,
+  messageId: number,
+  offset: number,
+  signal: AbortSignal,
+): Promise<Response | null> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/messages/${messageId}/stream?offset=${offset}`,
+    { signal },
+  )
+  // 404 means the turn is gone (finished and evicted, or the server restarted);
+  // the caller reconciles from the persisted conversation instead.
+  if (response.status === 404) return null
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+  return response
+}
+
+export async function cancelAIChatMessage(projectId: number, messageId: number): Promise<void> {
+  const response = await request(
+    `/projects/${projectId}/ai-chat/messages/${messageId}/cancel`,
+    { method: 'POST' },
+  )
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(extractError(data) ?? i18n.t('apiErrors.unknown'))
+  }
+}
+
 export async function setDefaultAgent(agentId: string | null): Promise<AgentSettingsInfo> {
   const response = await request('/agents/default', {
     method: 'PUT',

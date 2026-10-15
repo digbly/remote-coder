@@ -10,6 +10,7 @@ import {
 } from './icons'
 import { MarkdownMessage } from './MarkdownMessage'
 import {
+  cancelAIChatMessage,
   decideAIApproval,
   consumeChatStream,
   fetchAICommandPermission,
@@ -20,6 +21,7 @@ import {
   fetchAIProviders,
   fetchAISkills,
   openAIChatStream,
+  resumeAIChatStream,
   updateAIProposal,
   updateAICommandPermission,
   type AIChatMessage,
@@ -29,6 +31,7 @@ import {
   type AIProvider,
   type AIProviderModel,
   type AISkill,
+  type ChatStreamEvent,
 } from '../../lib/chat'
 
 const BRAND_GRADIENT = 'linear-gradient(90deg, #C75A45 0%, #D98A5B 100%)'
@@ -39,6 +42,42 @@ const MIN_TEXTAREA_HEIGHT = 24
 const MIN_EDIT_HEIGHT = 72
 const MAX_MESSAGE_CHARS = 16000
 const SKILL_QUERY_PATTERN = /^\/([A-Za-z0-9._-]*)$/
+
+// Reconnect backoff for a chat turn whose stream dropped (backgrounded app,
+// reload, flaky network). The turn keeps running on the server, so the client
+// re-attaches at the offset it already consumed.
+const RESUME_BASE_MS = 800
+const RESUME_MAX_MS = 10000
+const MAX_RESUME_ATTEMPTS = 8
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+interface ChatTurnRequest {
+  conversation_id: string | null
+  provider_id: number
+  model_id: string
+  message: string
+  skill?: string | null
+  edit_user_message_id?: number | null
+}
+
+// One in-flight chat turn on this client. The server owns the generation; this
+// tracks how much of its event stream we have consumed so we can re-attach.
+interface ActiveTurn {
+  request: ChatTurnRequest
+  conversationId: string | null
+  assistantId: number
+  resumable: boolean
+  offset: number
+  completed: boolean
+  attempts: number
+  settled: boolean
+  running: boolean
+  controller: AbortController
+  apply: (event: ChatStreamEvent) => void
+}
 
 const pageBg = 'bg-[#F9F9F9] dark:bg-[#0F0F0F]'
 const cardBg = 'bg-white dark:bg-[#1F1F1F]'
@@ -197,6 +236,14 @@ export function ChatPanel({
   const editTextareaRef = useRef<HTMLTextAreaElement>(null)
   const optimisticIdRef = useRef(0)
   const onStreamingChangeRef = useRef(onStreamingChange)
+  const activeTurnRef = useRef<ActiveTurn | null>(null)
+  const floatTurnRef = useRef<(turn: ActiveTurn, resume: boolean) => Promise<void>>(
+    async () => {},
+  )
+  const attachTurnRef = useRef<(messageId: number, conversationId: string) => void>(() => {})
+  // Message id of the last reload-recovery attempt, so a conversation that never
+  // settles does not re-attach in a loop.
+  const autoResumeRef = useRef<number | null>(null)
 
   useEffect(() => {
     onStreamingChangeRef.current = onStreamingChange
@@ -208,6 +255,25 @@ export function ChatPanel({
 
   useEffect(() => {
     return () => onStreamingChangeRef.current?.(false)
+  }, [])
+
+  // A backgrounded mobile app drops the turn's stream. The turn keeps running on
+  // the server, so re-attach as soon as the page is visible, online, or focused.
+  useEffect(() => {
+    function wake() {
+      const turn = activeTurnRef.current
+      if (turn && !turn.completed && !turn.settled && !turn.controller.signal.aborted) {
+        void floatTurnRef.current(turn, true)
+      }
+    }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+    window.addEventListener('focus', wake)
+    return () => {
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('focus', wake)
+    }
   }, [])
 
   useEffect(() => {
@@ -288,6 +354,15 @@ export function ChatPanel({
         setModelId(detail.conversation.model_id)
         setProposals(savedProposals)
         setError('')
+        // A turn left streaming means this client reloaded mid-turn; re-attach
+        // instead of showing a spinner that never resolves.
+        const running = detail.messages.find(
+          (message) => message.role === 'assistant' && message.status === 'streaming',
+        )
+        if (running && autoResumeRef.current !== running.id) {
+          autoResumeRef.current = running.id
+          attachTurnRef.current(running.id, conversationId)
+        }
       })
       .catch((reason: unknown) => {
         if (alive) setLoadError(reason instanceof Error ? reason.message : t('chat.loadFailed'))
@@ -404,6 +479,264 @@ export function ChatPanel({
     void startTurn(content, undefined, skill)
   }
 
+  function describeTool(name: string, path?: string): string {
+    const labelKey = TOOL_LABEL_KEYS[name]
+    const base = labelKey ? t(labelKey) : name
+    return path ? `${base} · ${path}` : base
+  }
+
+  function applyStreamEvent(
+    turn: ActiveTurn,
+    event: ChatStreamEvent,
+    optimistic: { userId: number; assistantId: number } | null,
+  ) {
+    turn.offset += 1
+    if (event.type === 'message_start') {
+      turn.assistantId = event.assistant_message_id
+      turn.resumable = true
+      turn.conversationId = event.conversation.id
+      setSelectedConversation(event.conversation.id)
+      onConversationChange(event.conversation.id, event.conversation.title)
+      if (optimistic) {
+        setMessages((current) =>
+          current.map((message) => {
+            if (message.id === optimistic.userId) {
+              return { ...message, id: event.user_message_id }
+            }
+            if (message.id === optimistic.assistantId) {
+              return { ...message, id: event.assistant_message_id }
+            }
+            return message
+          }),
+        )
+      }
+    } else if (event.type === 'text_delta') {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === turn.assistantId
+            ? { ...message, content: message.content + event.text }
+            : message,
+        ),
+      )
+    } else if (event.type === 'thinking_delta') {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === turn.assistantId
+            ? { ...message, thinking: message.thinking + event.text }
+            : message,
+        ),
+      )
+    } else if (event.type === 'command_approval') {
+      setPendingApproval({
+        approvalId: event.approval_id,
+        kind: 'command',
+        detail: event.command,
+      })
+    } else if (event.type === 'command_approval_expired') {
+      setPendingApproval(null)
+      setError(t('chat.commandApprovalExpired'))
+    } else if (event.type === 'read_approval') {
+      setPendingApproval({ approvalId: event.approval_id, kind: 'read', detail: event.path })
+    } else if (event.type === 'read_approval_expired') {
+      setPendingApproval(null)
+      setError(t('chat.readApprovalExpired'))
+    } else if (event.type === 'proposal') {
+      const proposal: AIChangeProposal = {
+        id: event.id,
+        conversation_id: turn.conversationId ?? '',
+        path: event.path,
+        target_path: event.target_path,
+        change_type: event.change_type as AIChangeProposal['change_type'],
+        diff: event.diff,
+        status: event.status,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      setProposals((current) => [
+        ...current.filter((item) => item.id !== proposal.id),
+        proposal,
+      ])
+    } else if (event.type === 'complete') {
+      turn.completed = true
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === event.assistant_message_id
+            ? { ...message, status: 'completed' }
+            : message,
+        ),
+      )
+    } else if (event.type === 'notice') {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === turn.assistantId ? { ...message, notice: event.message } : message,
+        ),
+      )
+    } else if (event.type === 'tool_call') {
+      const label = describeTool(event.name, event.path)
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === turn.assistantId
+            ? { ...message, steps: [...(message.steps ?? []), label] }
+            : message,
+        ),
+      )
+    } else if (event.type === 'error') {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === event.assistant_message_id
+            ? { ...message, status: 'failed', error: event.message }
+            : message,
+        ),
+      )
+    }
+  }
+
+  function markInterrupted(turn: ActiveTurn) {
+    if (turn.completed) return
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === turn.assistantId ? { ...message, status: 'interrupted' } : message,
+      ),
+    )
+  }
+
+  // The turn is done server-side (or evicted): replace the local messages with
+  // the persisted conversation so the final/interrupted state is shown.
+  async function reconcileTurn(turn: ActiveTurn) {
+    if (!turn.conversationId) return
+    try {
+      const detail = await fetchAIConversation(projectId, turn.conversationId)
+      setMessages(detail.messages)
+      setProposals(await fetchAIProposals(projectId, turn.conversationId))
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : t('chat.loadFailed'))
+    }
+  }
+
+  async function afterComplete(turn: ActiveTurn) {
+    try {
+      const list = await refreshConversations()
+      const active = list.find((item) => item.id === turn.conversationId) ?? list[0]
+      if (active) onConversationChange(active.id, active.title)
+      if (active) setProposals(await fetchAIProposals(projectId, active.id))
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : t('chat.loadFailed'))
+    }
+  }
+
+  // Drive one turn: open the stream, and when it drops (backgrounded app,
+  // reload, network) re-attach at the offset already consumed. The server keeps
+  // generating throughout, so this only ever loses the connection, not the work.
+  async function floatTurn(turn: ActiveTurn, resume: boolean) {
+    if (turn.running || turn.settled || turn.controller.signal.aborted) return
+    turn.running = true
+    try {
+      while (!turn.completed && !turn.controller.signal.aborted) {
+        try {
+          const response =
+            resume && turn.resumable
+              ? await resumeAIChatStream(
+                  projectId,
+                  turn.assistantId,
+                  turn.offset,
+                  turn.controller.signal,
+                )
+              : await openAIChatStream(projectId, turn.request, turn.controller.signal)
+          if (response === null) {
+            // The turn is gone server-side; reconcile from storage.
+            await reconcileTurn(turn)
+            turn.settled = true
+            return
+          }
+          if (!response.body) throw new Error(t('chat.streamUnavailable'))
+          resume = true
+          await consumeChatStream(response.body, turn.apply)
+          if (turn.completed) {
+            await afterComplete(turn)
+            turn.settled = true
+            return
+          }
+          if (!turn.resumable) throw new Error(t('chat.sendFailed'))
+          await reconcileTurn(turn)
+          turn.settled = true
+          return
+        } catch (reason) {
+          if (turn.controller.signal.aborted) {
+            markInterrupted(turn)
+            turn.settled = true
+            return
+          }
+          // Before the server assigned a message id there is nothing to resume.
+          if (!turn.resumable) throw reason
+          turn.attempts += 1
+          if (turn.attempts > MAX_RESUME_ATTEMPTS) throw reason
+          // While hidden the browser throttles timers; wait for the wake event.
+          if (document.visibilityState === 'hidden') return
+          await sleep(Math.min(RESUME_BASE_MS * 2 ** (turn.attempts - 1), RESUME_MAX_MS))
+        }
+      }
+      turn.settled = true
+    } catch (reason) {
+      turn.settled = true
+      if (!turn.controller.signal.aborted) {
+        setError(reason instanceof Error ? reason.message : t('chat.sendFailed'))
+      }
+      markInterrupted(turn)
+    } finally {
+      turn.running = false
+      if (turn.settled) {
+        if (activeTurnRef.current === turn) activeTurnRef.current = null
+        if (abortRef.current === turn.controller) abortRef.current = null
+        setPendingApproval(null)
+        setStreaming(false)
+      }
+    }
+  }
+
+  // A reload lost this client's turn state; re-attach to a message the server
+  // still reports as streaming.
+  function attachToRunningTurn(messageId: number, conversationId: string) {
+    if (activeTurnRef.current) return
+    setStreaming(true)
+    const controller = new AbortController()
+    abortRef.current = controller
+    const turn: ActiveTurn = {
+      request: {
+        conversation_id: conversationId,
+        provider_id: providerId ?? 0,
+        model_id: modelId,
+        message: '',
+      },
+      conversationId,
+      assistantId: messageId,
+      resumable: true,
+      offset: 0,
+      completed: false,
+      attempts: 0,
+      settled: false,
+      running: false,
+      controller,
+      apply: (event) => applyStreamEvent(turn, event, null),
+    }
+    activeTurnRef.current = turn
+    void floatTurn(turn, true)
+  }
+
+  useEffect(() => {
+    floatTurnRef.current = floatTurn
+    attachTurnRef.current = attachToRunningTurn
+  })
+
+  // Stop generation: the turn runs detached on the server, so aborting the local
+  // stream only detaches. Cancel it by id first (best-effort), then abort.
+  function stopTurn() {
+    const turn = activeTurnRef.current
+    if (turn?.resumable) {
+      void cancelAIChatMessage(projectId, turn.assistantId).catch(() => {})
+    }
+    abortRef.current?.abort()
+  }
+
   async function startTurn(
     content: string,
     editUserMessageId?: number,
@@ -419,9 +752,6 @@ export function ChatPanel({
     const optimisticUserId = optimisticIdRef.current - 1
     const optimisticAssistantId = optimisticUserId - 1
     optimisticIdRef.current = optimisticAssistantId
-    let assistantId: number | null = optimisticAssistantId
-    let activeConversationId = selectedConversation
-    let streamCompleted = false
     setMessages((current) => [
       ...(editUserMessageId === undefined
         ? current
@@ -443,153 +773,32 @@ export function ChatPanel({
         created_at: new Date().toISOString(),
       },
     ])
-    try {
-      const response = await openAIChatStream(
-        projectId,
-        {
-          conversation_id: selectedConversation || null,
-          provider_id: providerId,
-          model_id: modelId,
-          message: userContent,
-          skill: skill?.slug ?? null,
-          edit_user_message_id: editUserMessageId ?? null,
-        },
-        controller.signal,
-      )
-      if (!response.body) throw new Error(t('chat.streamUnavailable'))
-      await consumeChatStream(response.body, (streamEvent) => {
-        if (streamEvent.type === 'message_start') {
-          assistantId = streamEvent.assistant_message_id
-          activeConversationId = streamEvent.conversation.id
-          setSelectedConversation(streamEvent.conversation.id)
-          onConversationChange(streamEvent.conversation.id, streamEvent.conversation.title)
-          setMessages((current) =>
-            current.map((message) => {
-              if (message.id === optimisticUserId) {
-                return { ...message, id: streamEvent.user_message_id }
-              }
-              if (message.id === optimisticAssistantId) {
-                return { ...message, id: streamEvent.assistant_message_id }
-              }
-              return message
-            }),
-          )
-        } else if (streamEvent.type === 'text_delta') {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId
-                ? { ...message, content: message.content + streamEvent.text }
-                : message,
-            ),
-          )
-        } else if (streamEvent.type === 'thinking_delta') {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId
-                ? { ...message, thinking: message.thinking + streamEvent.text }
-                : message,
-            ),
-          )
-        } else if (streamEvent.type === 'command_approval') {
-          setPendingApproval({
-            approvalId: streamEvent.approval_id,
-            kind: 'command',
-            detail: streamEvent.command,
-          })
-        } else if (streamEvent.type === 'command_approval_expired') {
-          setPendingApproval(null)
-          setError(t('chat.commandApprovalExpired'))
-        } else if (streamEvent.type === 'read_approval') {
-          setPendingApproval({
-            approvalId: streamEvent.approval_id,
-            kind: 'read',
-            detail: streamEvent.path,
-          })
-        } else if (streamEvent.type === 'read_approval_expired') {
-          setPendingApproval(null)
-          setError(t('chat.readApprovalExpired'))
-        } else if (streamEvent.type === 'proposal') {
-          const proposal: AIChangeProposal = {
-            id: streamEvent.id,
-            conversation_id: activeConversationId,
-            path: streamEvent.path,
-            target_path: streamEvent.target_path,
-            change_type: streamEvent.change_type as AIChangeProposal['change_type'],
-            diff: streamEvent.diff,
-            status: streamEvent.status,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-          setProposals((current) => [
-            ...current.filter((item) => item.id !== proposal.id),
-            proposal,
-          ])
-        } else if (streamEvent.type === 'complete') {
-          streamCompleted = true
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === streamEvent.assistant_message_id
-                ? { ...message, status: 'completed' }
-                : message,
-            ),
-          )
-        } else if (streamEvent.type === 'notice') {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId ? { ...message, notice: streamEvent.message } : message,
-            ),
-          )
-        } else if (streamEvent.type === 'tool_call') {
-          const label = describeTool(streamEvent.name, streamEvent.path)
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId
-                ? { ...message, steps: [...(message.steps ?? []), label] }
-                : message,
-            ),
-          )
-        } else if (streamEvent.type === 'error') {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === streamEvent.assistant_message_id
-                ? { ...message, status: 'failed', error: streamEvent.message }
-                : message,
-            ),
-          )
-        }
-      })
-      try {
-        const list = await refreshConversations()
-        const activeConversation = list.find((item) => item.id === activeConversationId) ?? list[0]
-        if (activeConversation) onConversationChange(activeConversation.id, activeConversation.title)
-        if (activeConversation) {
-          setProposals(await fetchAIProposals(projectId, activeConversation.id))
-        }
-      } catch (reason) {
-        setLoadError(reason instanceof Error ? reason.message : t('chat.loadFailed'))
-      }
-    } catch (reason) {
-      if (!controller.signal.aborted) {
-        setError(reason instanceof Error ? reason.message : t('chat.sendFailed'))
-        if (assistantId !== null && !streamCompleted) {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId ? { ...message, status: 'interrupted' } : message,
-            ),
-          )
-        }
-      } else if (assistantId !== null && !streamCompleted) {
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === assistantId ? { ...message, status: 'interrupted' } : message,
-          ),
-        )
-      }
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null
-      setPendingApproval(null)
-      setStreaming(false)
+    const turn: ActiveTurn = {
+      request: {
+        conversation_id: selectedConversation || null,
+        provider_id: providerId,
+        model_id: modelId,
+        message: userContent,
+        skill: skill?.slug ?? null,
+        edit_user_message_id: editUserMessageId ?? null,
+      },
+      conversationId: selectedConversation || null,
+      assistantId: optimisticAssistantId,
+      resumable: false,
+      offset: 0,
+      completed: false,
+      attempts: 0,
+      settled: false,
+      running: false,
+      controller,
+      apply: (event) =>
+        applyStreamEvent(turn, event, {
+          userId: optimisticUserId,
+          assistantId: optimisticAssistantId,
+        }),
     }
+    activeTurnRef.current = turn
+    await floatTurn(turn, false)
   }
 
   const provider = providers.find((item) => item.id === providerId)
@@ -609,12 +818,6 @@ export function ChatPanel({
     messages
       .findLast((message) => message.role === 'user' && message.content.trim() !== '')
       ?.content.trim() ?? ''
-
-  function describeTool(name: string, path?: string): string {
-    const labelKey = TOOL_LABEL_KEYS[name]
-    const base = labelKey ? t(labelKey) : name
-    return path ? `${base} · ${path}` : base
-  }
 
   async function actOnProposal(proposal: AIChangeProposal, action: 'apply' | 'reject') {
     if (!selectedConversation) return
@@ -1052,7 +1255,7 @@ export function ChatPanel({
               {streaming ? (
                 <button
                   type="button"
-                  onClick={() => abortRef.current?.abort()}
+                  onClick={stopTurn}
                   className={`inline-flex h-8 shrink-0 items-center justify-center rounded-full border ${cardBorder} ${subtleBg} px-3 text-xs ${primaryText} transition hover:brightness-95`}
                 >
                   {t('chat.stop')}

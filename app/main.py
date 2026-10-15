@@ -14,6 +14,7 @@ from app.modules.agent_sessions.router import router as agent_sessions_router
 from app.modules.agents.router import router as agents_router
 from app.modules.ai_chat.approvals import cancel_all as cancel_pending_approvals
 from app.modules.ai_chat.router import router as ai_chat_router
+from app.modules.ai_chat.turns import manager as chat_turn_manager
 from app.modules.ai_providers.router import router as ai_providers_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.service import ensure_admin_user
@@ -86,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            chat_turn_manager.reset()
             cancel_pending_approvals()
             reaper.cancel()
             with suppress(asyncio.CancelledError):

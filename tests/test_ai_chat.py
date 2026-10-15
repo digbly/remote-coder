@@ -6,12 +6,18 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from app.core.db import Base
 from app.core.errors import ErrorCode
 from app.modules.ai_chat import skills
+from app.modules.ai_chat import turns as chat_turns
 from app.modules.ai_chat.context import ProjectContext
 from app.modules.ai_chat.models import ChatMessage as StoredMessage
-from app.modules.ai_chat.models import MessageStatus
+from app.modules.ai_chat.models import Conversation, MessageRole, MessageStatus
+from app.modules.ai_chat.schemas import CommandPermission
 from app.modules.ai_chat.streaming import ChatTurnLimitError, stream_chat_turn
 from app.modules.ai_chat.tools import MAX_TOOL_ROUNDS_PER_TURN, execute_project_tool
 from app.modules.ai_providers.base import (
@@ -24,7 +30,7 @@ from app.modules.ai_providers.base import (
 )
 from app.modules.ai_providers.openai import OpenAIAdapter
 from app.modules.auth.models import User
-from tests.conftest import LOCAL_URL, OTHER_USERNAME, _csrf, _login
+from tests.conftest import LOCAL_URL, OTHER_USERNAME, USERNAME, _csrf, _login
 
 PROVIDERS_URL = "/api/v1/ai-providers"
 
@@ -889,14 +895,264 @@ def test_chat_rejects_unknown_or_unsafe_skill(
             },
             headers=_csrf(client),
         )
-        assert response.status_code == 422
-        assert response.json()["detail"]["code"] == ErrorCode.AI_CHAT_SKILL_UNAVAILABLE.value
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == ErrorCode.AI_CHAT_SKILL_UNAVAILABLE.value
     assert (
         client.get(f"/api/v1/projects/{project_id}/ai-chat/conversations").json()[
             "conversations"
         ]
         == []
     )
+
+
+@pytest.mark.asyncio
+async def test_detached_turn_survives_disconnect_and_resumes_by_offset() -> None:
+    """A client can drop mid-turn; the turn finishes and replays from an offset."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    with session_factory() as db:
+        user = User(username="alice", hashed_password="x")
+        db.add(user)
+        db.flush()
+        conversation = Conversation(
+            owner_id=user.id, project_id=1, model_id="test", title="t"
+        )
+        db.add(conversation)
+        db.flush()
+        assistant = StoredMessage(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content="",
+            status=MessageStatus.STREAMING,
+        )
+        db.add(assistant)
+        db.commit()
+        user_id, conversation_id, assistant_id = user.id, conversation.id, assistant.id
+
+    gate = asyncio.Event()
+
+    class BlockingAdapter:
+        kind = "openai"
+
+        async def stream(self, *_args, **_kwargs):
+            yield TextDelta("first")
+            await gate.wait()
+            yield TextDelta(" second")
+            yield TurnComplete("completed")
+
+    request = chat_turns.TurnRequest(
+        assistant_message_id=assistant_id,
+        user_id=user_id,
+        project_id=1,
+        project_path=None,
+        conversation_id=conversation_id,
+        conversation_title="t",
+        user_message_id=0,
+        user_content="Question",
+        model_id="test",
+        api_key="private",
+        adapter=BlockingAdapter(),
+        history=[],
+        permission=CommandPermission.MANUAL,
+        skill_body=None,
+    )
+    turn = chat_turns.manager.start(session_factory, request)
+
+    queue = turn.attach(0)
+    first = await queue.get()
+    assert json.loads(first.decode())["type"] == "message_start"
+    # The client disconnects before the answer is complete.
+    turn.unsubscribe(queue)
+    gate.set()
+
+    for _ in range(200):
+        if turn.finished:
+            break
+        await asyncio.sleep(0.01)
+    assert turn.finished
+
+    # A reconnecting client replays only the events after its offset.
+    resumed = turn.attach(1)
+    remaining: list[dict[str, object]] = []
+    while True:
+        chunk = await resumed.get()
+        if chunk is None:
+            break
+        remaining.append(json.loads(chunk.decode()))
+    assert remaining == [
+        {"type": "text_delta", "text": "first"},
+        {"type": "text_delta", "text": " second"},
+        {
+            "type": "complete",
+            "conversation_id": conversation_id,
+            "assistant_message_id": assistant_id,
+            "status": "completed",
+        },
+    ]
+
+    with session_factory() as db:
+        assert db.get(StoredMessage, assistant_id).status is MessageStatus.COMPLETED
+
+    chat_turns.manager.reset()
+
+
+@pytest.mark.asyncio
+async def test_cancel_stops_turn_and_marks_interrupted() -> None:
+    """Cancelling a live turn persists the partial answer as interrupted."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    with session_factory() as db:
+        user = User(username="alice", hashed_password="x")
+        db.add(user)
+        db.flush()
+        conversation = Conversation(owner_id=user.id, project_id=1, model_id="test", title="t")
+        db.add(conversation)
+        db.flush()
+        assistant = StoredMessage(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content="",
+            status=MessageStatus.STREAMING,
+        )
+        db.add(assistant)
+        db.commit()
+        user_id, conversation_id, assistant_id = user.id, conversation.id, assistant.id
+
+    gate = asyncio.Event()
+
+    class BlockingAdapter:
+        kind = "openai"
+
+        async def stream(self, *_args, **_kwargs):
+            yield TextDelta("partial")
+            await gate.wait()
+            yield TurnComplete("completed")
+
+    request = chat_turns.TurnRequest(
+        assistant_message_id=assistant_id,
+        user_id=user_id,
+        project_id=1,
+        project_path=None,
+        conversation_id=conversation_id,
+        conversation_title="t",
+        user_message_id=0,
+        user_content="Question",
+        model_id="test",
+        api_key="private",
+        adapter=BlockingAdapter(),
+        history=[],
+        permission=CommandPermission.MANUAL,
+        skill_body=None,
+    )
+    turn = chat_turns.manager.start(session_factory, request)
+    await asyncio.sleep(0.05)
+
+    assert chat_turns.manager.cancel(assistant_id) is True
+    for _ in range(200):
+        if turn.finished:
+            break
+        await asyncio.sleep(0.01)
+    assert turn.finished
+    assert chat_turns.manager.cancel(999999) is False
+
+    with session_factory() as db:
+        assert db.get(StoredMessage, assistant_id).status is MessageStatus.INTERRUPTED
+
+    chat_turns.manager.reset()
+
+
+def test_cancel_message_unknown_id_returns_404(client: TestClient, projects_root) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+    response = client.post(
+        f"/api/v1/projects/{project_id}/ai-chat/messages/999999/cancel",
+        headers=_csrf(client),
+    )
+    assert response.status_code == 404
+
+
+def test_resume_message_stream_replays_from_offset(
+    client: TestClient, projects_root, monkeypatch
+) -> None:
+    _login(client)
+    monkeypatch.setenv("HOME", str(projects_root / "home"))
+    project_id = _create_project(client, projects_root / "project")
+    provider_id = _create_provider(client)
+
+    async def list_models(self, _client: AsyncClient, _api_key: str) -> list[ProviderModel]:
+        return [ProviderModel("gpt-test", "GPT Test")]
+
+    async def stream(self, *_args, **_kwargs):
+        yield TextDelta("hello")
+        yield TurnComplete("completed")
+
+    monkeypatch.setattr(OpenAIAdapter, "list_models", list_models)
+    monkeypatch.setattr(OpenAIAdapter, "stream", stream)
+
+    events = _events(
+        client.post(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/stream",
+            json={"provider_id": provider_id, "model_id": "gpt-test", "message": "Hi"},
+            headers=_csrf(client),
+        )
+    )
+    assistant_id = events[0]["assistant_message_id"]
+
+    resumed = _events(
+        client.get(
+            f"/api/v1/projects/{project_id}/ai-chat/messages/{assistant_id}/stream?offset=1"
+        )
+    )
+    assert resumed == events[1:]
+
+    full = _events(
+        client.get(f"/api/v1/projects/{project_id}/ai-chat/messages/{assistant_id}/stream")
+    )
+    assert full == events
+
+
+def test_resume_unknown_streaming_message_is_marked_interrupted(
+    client: TestClient, db_session_factory, projects_root
+) -> None:
+    _login(client)
+    project_id = _create_project(client, projects_root / "project")
+
+    with db_session_factory() as db:
+        user = db.scalar(select(User).where(User.username == USERNAME))
+        conversation = Conversation(
+            owner_id=user.id, project_id=project_id, model_id="gpt-test", title="t"
+        )
+        db.add(conversation)
+        db.flush()
+        assistant = StoredMessage(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content="partial",
+            status=MessageStatus.STREAMING,
+        )
+        db.add(assistant)
+        db.commit()
+        assistant_id = assistant.id
+
+    response = client.get(
+        f"/api/v1/projects/{project_id}/ai-chat/messages/{assistant_id}/stream?offset=0"
+    )
+
+    assert response.status_code == 404
+    with db_session_factory() as db:
+        assert db.get(StoredMessage, assistant_id).status is MessageStatus.INTERRUPTED
 
 
 def test_skills_endpoint_merges_project_and_user_skills(

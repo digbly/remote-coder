@@ -4,7 +4,7 @@ import type { AgentSession, Project, User } from '../lib/api'
 import type { AgentDefinition } from '../lib/agents'
 import type { CommandDefinition, WorkspaceTab } from '../lib/workspaceStore'
 import { useViewportHeight } from '../lib/useViewportHeight'
-import { MenuIcon, PanelRightIcon } from './ide/icons'
+import { CloseIcon, MenuIcon, PanelRightIcon } from './ide/icons'
 import { CommandsMenu } from './ide/CommandsMenu'
 import { NewTabMenu } from './ide/NewTabMenu'
 import { RightPanel } from './ide/RightPanel'
@@ -45,6 +45,7 @@ interface MobileShellProps {
   tabs: WorkspaceTab[]
   activeId: string | null
   onSelectTab: (tab: WorkspaceTab) => void
+  onCloseTab: (id: string) => void
   onNewTerminal: (agent?: AgentDefinition) => void
   onNewChat: () => void
   onOpenSearch: () => void
@@ -75,6 +76,7 @@ export function MobileShell({
   tabs,
   activeId,
   onSelectTab,
+  onCloseTab,
   onNewTerminal,
   onNewChat,
   onOpenSearch,
@@ -186,21 +188,33 @@ export function MobileShell({
           {tabs.map((tab) => {
             const active = tab.id === activeId
             return (
-              <button
+              <div
                 key={tab.id}
-                type="button"
-                onClick={() => onSelectTab(tab)}
-                title={tab.title}
-                aria-current={active ? 'page' : undefined}
-                className={`flex min-h-11 max-w-[10rem] shrink-0 items-center gap-2 rounded-full px-3 text-[12px] transition ${
+                className={`flex min-h-11 shrink-0 items-center rounded-full pl-3 pr-1 text-[12px] transition ${
                   active
                     ? 'bg-[var(--hover-strong)] text-[var(--fg-strong)] ring-1 ring-inset ring-[var(--border-strong-alt)]'
                     : 'text-[var(--text-2)] hover:bg-[var(--menu-hover)]'
                 }`}
               >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${TAB_DOT_COLORS[tab.kind]}`} />
-                <span className="truncate">{tab.title}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectTab(tab)}
+                  title={tab.title}
+                  aria-current={active ? 'page' : undefined}
+                  className="flex min-w-0 max-w-[8rem] items-center gap-2 self-stretch text-left"
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${TAB_DOT_COLORS[tab.kind]}`} />
+                  <span className="truncate">{tab.title}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('ide.closeTab', { title: tab.title })}
+                  onClick={() => onCloseTab(tab.id)}
+                  className="ml-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--muted-3)] transition hover:bg-[var(--hover-strong)] hover:text-[var(--fg-strong)] active:bg-[var(--hover-strong)]"
+                >
+                  <CloseIcon width={14} height={14} />
+                </button>
+              </div>
             )
           })}
         </div>

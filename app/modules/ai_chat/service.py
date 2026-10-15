@@ -57,6 +57,16 @@ def require_conversation(db: Session, user_id: int, project_id: int, conversatio
     _get_conversation(db, user_id, project_id, conversation_id)
 
 
+def require_message(db: Session, user: User, project_id: int, message_id: int) -> ChatMessage:
+    """Return a message the user owns, or raise 404 if it is not theirs."""
+    project_service.get_project(db, user, project_id)
+    message = db.get(ChatMessage, message_id)
+    if message is None:
+        raise api_error(ErrorCode.AI_CHAT_MESSAGE_NOT_FOUND, status_code=404)
+    _get_conversation(db, user.id, project_id, message.conversation_id)
+    return message
+
+
 def get_conversation_detail(
     db: Session, user: User, project_id: int, conversation_id: str
 ) -> ConversationDetail:

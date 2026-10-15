@@ -1,13 +1,15 @@
+from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import sessionmaker
 
 from app.core.deps import DbDep, SettingsDep
 from app.core.errors import ErrorCode, api_error, error_responses
 from app.modules.ai_changes.router import router as ai_changes_router
-from app.modules.ai_chat import approvals, service, skills
-from app.modules.ai_chat.context import ProjectContext
+from app.modules.ai_chat import approvals, service, skills, turns
+from app.modules.ai_chat.models import MessageStatus
 from app.modules.ai_chat.schemas import (
     ChatTurnRequest,
     CommandApprovalDecision,
@@ -17,7 +19,6 @@ from app.modules.ai_chat.schemas import (
     SkillListResponse,
     SkillRead,
 )
-from app.modules.ai_chat.streaming import stream_chat_turn
 from app.modules.ai_providers import service as provider_service
 from app.modules.auth.deps import CsrfDep, CurrentUser
 from app.modules.projects import service as project_service
@@ -158,24 +159,91 @@ async def stream_message(
         user_content,
         payload.edit_user_message_id,
     )
-    return StreamingResponse(
-        stream_chat_turn(
-            db=db,
-            adapter=adapter,
-            api_key=api_key,
-            model_id=payload.model_id,
-            context=ProjectContext(
-                db, current_user, project.id, conversation.id, Path(project.path), permission
-            ),
-            permission=permission,
+    # The turn runs as a detached task that owns its own session, so it survives
+    # this request ending (a backgrounded app, a reload, a dropped socket). The
+    # response only tails the turn's events.
+    turn = turns.manager.start(
+        sessionmaker(bind=db.get_bind()),
+        turns.TurnRequest(
+            assistant_message_id=assistant_message.id,
+            user_id=current_user.id,
+            project_id=project.id,
+            project_path=Path(project.path),
             conversation_id=conversation.id,
             conversation_title=conversation.title,
             user_message_id=user_message.id,
             user_content=user_content,
-            assistant_message=assistant_message,
+            model_id=payload.model_id,
+            api_key=api_key,
+            adapter=adapter,
             history=history,
+            permission=permission,
             skill_body=skill_body,
         ),
+    )
+    db.close()
+    return _stream_response(turn, 0)
+
+
+@router.get(
+    "/messages/{message_id}/stream",
+    status_code=status.HTTP_200_OK,
+    responses=_CHAT_ERRORS,
+)
+def resume_message_stream(
+    project_id: int,
+    message_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    offset: int = Query(default=0, ge=0),
+) -> StreamingResponse:
+    """Re-attach to an in-flight turn, replaying events after ``offset``."""
+    message = service.require_message(db, current_user, project_id, message_id)
+    turn = turns.manager.get(message_id)
+    if turn is None:
+        # The turn is gone (finished and evicted, or the worker restarted). A
+        # message still marked streaming would otherwise spin forever, so settle
+        # it and tell the client to refetch the conversation.
+        if message.status is MessageStatus.STREAMING:
+            service.finish_assistant(db, message, message.content, MessageStatus.INTERRUPTED)
+        db.close()
+        raise api_error(ErrorCode.AI_CHAT_MESSAGE_NOT_FOUND, status_code=404)
+    db.close()
+    return _stream_response(turn, offset)
+
+
+@router.post(
+    "/messages/{message_id}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(401, 403, 404),
+)
+async def cancel_message(
+    project_id: int,
+    message_id: int,
+    current_user: CurrentUser,
+    db: DbDep,
+    _csrf: CsrfDep,
+) -> None:
+    """Cancel an in-flight turn. A finished or evicted turn is a no-op."""
+    service.require_message(db, current_user, project_id, message_id)
+    turns.manager.cancel(message_id)
+
+
+async def _stream_turn(turn: turns.Turn, offset: int) -> AsyncIterator[bytes]:
+    queue = turn.attach(offset)
+    try:
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                return
+            yield chunk
+    finally:
+        turn.unsubscribe(queue)
+
+
+def _stream_response(turn: turns.Turn, offset: int) -> StreamingResponse:
+    return StreamingResponse(
+        _stream_turn(turn, offset),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
