@@ -51,6 +51,7 @@ interface MobileShellProps {
   onOpenSearch: () => void
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onSelectWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onWorktreeDeleted: (projectId: number, worktree: string) => void
   onProjectDeleted: (projectId: number) => void
@@ -82,6 +83,7 @@ export function MobileShell({
   onOpenSearch,
   onOpenProject,
   onOpenWorktree,
+  onSelectWorktree,
   onOpenVSCode,
   onWorktreeDeleted,
   onProjectDeleted,
@@ -128,6 +130,11 @@ export function MobileShell({
   function openWorktree(project: Project, worktree: string) {
     setDrawerOpen(false)
     onOpenWorktree(project, worktree)
+  }
+
+  function selectWorktree(project: Project, worktree: string) {
+    setDrawerOpen(false)
+    onSelectWorktree(project, worktree)
   }
 
   function openVSCode(project: Project, worktree: string) {
@@ -243,6 +250,7 @@ export function MobileShell({
               onLogout={onLogout}
               onOpenProject={openProject}
               onOpenWorktree={openWorktree}
+              onSelectWorktree={selectWorktree}
               onOpenVSCode={openVSCode}
               onWorktreeDeleted={onWorktreeDeleted}
               onProjectDeleted={onProjectDeleted}

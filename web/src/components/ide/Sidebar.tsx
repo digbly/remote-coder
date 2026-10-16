@@ -193,7 +193,7 @@ function ProjectItem({
   worktrees,
   busyWorktrees,
   onOpenProject,
-  onOpenWorktree,
+  onSelectWorktree,
   onOpenVSCode,
   onOpenWorktreeDialog,
   onWorktreeContextMenu,
@@ -206,7 +206,7 @@ function ProjectItem({
   worktrees: Worktree[] | undefined
   busyWorktrees: Set<string>
   onOpenProject: (project: Project) => void
-  onOpenWorktree: (project: Project, worktree: string) => void
+  onSelectWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onOpenWorktreeDialog: (project: Project) => void
   onWorktreeContextMenu: (worktree: Worktree, x: number, y: number) => void
@@ -264,7 +264,7 @@ function ProjectItem({
               worktree={worktree}
               active={worktree.name === activeWorktree}
               busy={busyWorktrees.has(worktree.name)}
-              onOpen={() => onOpenWorktree(project, worktree.name)}
+              onOpen={() => onSelectWorktree(project, worktree.name)}
               onOpenVSCode={() => onOpenVSCode(project, worktree.name)}
               onContextMenu={(x, y) => onWorktreeContextMenu(worktree, x, y)}
             />
@@ -292,6 +292,7 @@ interface SidebarProps {
   onLogout: () => void
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onSelectWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onWorktreeDeleted: (projectId: number, worktree: string) => void
   onProjectDeleted: (projectId: number) => void
@@ -310,6 +311,7 @@ export function Sidebar({
   onLogout,
   onOpenProject,
   onOpenWorktree,
+  onSelectWorktree,
   onOpenVSCode,
   onWorktreeDeleted,
   onProjectDeleted,
@@ -534,7 +536,7 @@ export function Sidebar({
               ])
             }
             onOpenProject={onOpenProject}
-            onOpenWorktree={onOpenWorktree}
+            onSelectWorktree={onSelectWorktree}
             onOpenVSCode={onOpenVSCode}
             onOpenWorktreeDialog={setWorktreeTarget}
             onWorktreeContextMenu={(worktree, x, y) => openMenu(project, x, y, worktree)}

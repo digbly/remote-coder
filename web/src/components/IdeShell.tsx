@@ -84,6 +84,7 @@ interface IdeShellProps {
   update: (updater: (prev: SyncedState) => SyncedState) => void
   onOpenProject: (project: Project) => void
   onOpenWorktree: (project: Project, worktree: string) => void
+  onSelectWorktree: (project: Project, worktree: string) => void
   onOpenVSCode: (project: Project, worktree: string) => void
   onSelectTab: (tab: WorkspaceTab) => void
   onProjectDeleted: (projectId: number) => void
@@ -98,6 +99,7 @@ export function IdeShell({
   update,
   onOpenProject,
   onOpenWorktree,
+  onSelectWorktree,
   onOpenVSCode,
   onSelectTab,
   onProjectDeleted,
@@ -464,6 +466,7 @@ export function IdeShell({
           onOpenSearch={() => setSearchOpen(true)}
           onOpenProject={onOpenProject}
           onOpenWorktree={onOpenWorktree}
+          onSelectWorktree={onSelectWorktree}
           onOpenVSCode={onOpenVSCode}
           onWorktreeDeleted={closeWorktreeTabs}
           onProjectDeleted={handleProjectDeleted}
@@ -489,6 +492,7 @@ export function IdeShell({
                 onLogout={onLogout}
                 onOpenProject={onOpenProject}
                 onOpenWorktree={onOpenWorktree}
+                onSelectWorktree={onSelectWorktree}
                 onOpenVSCode={onOpenVSCode}
                 onWorktreeDeleted={closeWorktreeTabs}
                 onProjectDeleted={handleProjectDeleted}

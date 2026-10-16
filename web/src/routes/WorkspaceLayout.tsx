@@ -8,6 +8,7 @@ import {
   activeWorktreePatch,
   ensureWorkspace,
   withVSCodeTab,
+  withWorktreeFocus,
   withWorktreeTerminal,
   type ActiveProjectRef,
   type WorkspaceTab,
@@ -93,6 +94,14 @@ export function WorkspaceLayout() {
     update((prev) => ({ ...prev, workspaces: withWorktreeTerminal(prev.workspaces, ref, worktree) }))
   }
 
+  // Selecting a worktree only swaps to a tab it already owns; it never spawns a
+  // terminal. Use the "Open terminal" action to create one explicitly.
+  function selectWorktree(project: Project, worktree: string) {
+    if (!state.workspaces[project.id]?.tabs.some((tab) => tab.worktree === worktree)) return
+    const ref = activate(project)
+    update((prev) => ({ ...prev, workspaces: withWorktreeFocus(prev.workspaces, ref, worktree) }))
+  }
+
   function openVSCode(project: Project, worktree: string) {
     const ref = activate(project)
     update((prev) => ({ ...prev, workspaces: withVSCodeTab(prev.workspaces, ref, worktree) }))
@@ -137,6 +146,7 @@ export function WorkspaceLayout() {
       update={update}
       onOpenProject={openProject}
       onOpenWorktree={openWorktree}
+      onSelectWorktree={selectWorktree}
       onOpenVSCode={openVSCode}
       onSelectTab={selectTab}
       onProjectDeleted={projectDeleted}

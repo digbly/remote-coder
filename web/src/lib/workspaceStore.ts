@@ -574,20 +574,32 @@ export function withOpenDiff(
   }
 }
 
+// Switch to a worktree without spawning a terminal: focus an existing tab that
+// already belongs to it, or leave the workspace untouched when there is none.
+// Returns the same reference when there is nothing to focus, so callers can use
+// it as a "does this worktree already have a tab?" probe.
+export function withWorktreeFocus(
+  workspaces: Record<number, ProjectWorkspace>,
+  project: ActiveProjectRef,
+  worktree: string,
+): Record<number, ProjectWorkspace> {
+  const workspace = workspaces[project.id]
+  if (!workspace) return workspaces
+  const existing = workspace.tabs.find((tab) => tab.worktree === worktree)
+  if (!existing) return workspaces
+  return {
+    ...workspaces,
+    [project.id]: { ...workspace, activeId: existing.id, activeWorktree: worktree },
+  }
+}
+
 export function withWorktreeTerminal(
   workspaces: Record<number, ProjectWorkspace>,
   project: ActiveProjectRef,
   worktree: string,
 ): Record<number, ProjectWorkspace> {
-  const tabs = workspaces[project.id]?.tabs ?? []
-  const existing = tabs.find((tab) => tab.worktree === worktree)
-  if (existing) {
-    return {
-      ...workspaces,
-      [project.id]: { tabs, activeId: existing.id, activeWorktree: worktree },
-    }
-  }
-
+  const focused = withWorktreeFocus(workspaces, project, worktree)
+  if (focused !== workspaces) return focused
   return withNewTerminal(workspaces, project, { worktree })
 }
 
