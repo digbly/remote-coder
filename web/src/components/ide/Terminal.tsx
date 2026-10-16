@@ -1,8 +1,14 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, type DragEvent } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { projectTerminalUrl, refreshSession, uploadTerminalImage } from '../../lib/api'
+import {
+  projectTerminalUrl,
+  refreshSession,
+  uploadTerminalFile,
+  uploadTerminalImage,
+} from '../../lib/api'
+import { PROJECT_PATH_MIME } from '../../lib/dragPaths'
 import { useTheme, type ResolvedTheme } from '../../lib/themeContext'
 import { useIsMobile } from '../../lib/useMediaQuery'
 
@@ -90,6 +96,26 @@ async function pasteClipboard(terminal: Terminal, projectId: number): Promise<vo
   }
 }
 
+/**
+ * Upload files dropped from the OS and type their server-side paths into the
+ * terminal (space-separated), so an agent can read each file by path. Mirrors
+ * the image paste flow but accepts any file type.
+ */
+async function dropFiles(terminal: Terminal, projectId: number, files: File[]): Promise<void> {
+  const uploaded = await Promise.all(
+    files.map(async (file) => {
+      try {
+        return await uploadTerminalFile(projectId, file.name, await blobToBase64(file))
+      } catch (error) {
+        console.error('Failed to attach the dropped file', error)
+        return null
+      }
+    }),
+  )
+  const paths = uploaded.filter((path): path is string => path !== null)
+  if (paths.length > 0) terminal.paste(paths.join(' '))
+}
+
 export const ProjectTerminal = memo(function ProjectTerminal({
   projectId,
   terminalId,
@@ -120,6 +146,31 @@ export const ProjectTerminal = memo(function ProjectTerminal({
 
   function sendKey(data: string) {
     terminalRef.current?.input(data)
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    const types = event.dataTransfer.types
+    if (types.includes('Files') || types.includes(PROJECT_PATH_MIME)) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    const projectPath = event.dataTransfer.getData(PROJECT_PATH_MIME)
+    const files = Array.from(event.dataTransfer.files)
+    if (!projectPath && files.length === 0) return
+    event.preventDefault()
+    const terminal = terminalRef.current
+    if (!terminal) return
+    // A path dragged from the explorer is already on the server: type it as-is.
+    // A file dragged in from the OS must be uploaded first, then its path typed.
+    if (projectPath) {
+      terminal.paste(projectPath)
+    } else {
+      void dropFiles(terminal, projectId, files)
+    }
+    terminal.focus()
   }
 
   useEffect(() => {
@@ -401,7 +452,12 @@ export const ProjectTerminal = memo(function ProjectTerminal({
           ))}
         </div>
       )}
-      <div ref={containerRef} className="min-h-0 w-full flex-1 px-2 py-1" />
+      <div
+        ref={containerRef}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className="min-h-0 w-full flex-1 px-2 py-1"
+      />
     </div>
   )
 })

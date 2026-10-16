@@ -72,6 +72,8 @@ const ERROR_CODE_KEYS = {
   BROWSER_COMMAND_FAILED: 'apiErrors.browserCommandFailed',
   TERMINAL_IMAGE_INVALID: 'apiErrors.terminalImageInvalid',
   TERMINAL_IMAGE_TOO_LARGE: 'apiErrors.terminalImageTooLarge',
+  TERMINAL_FILE_INVALID: 'apiErrors.terminalFileInvalid',
+  TERMINAL_FILE_TOO_LARGE: 'apiErrors.terminalFileTooLarge',
 } as const
 
 export interface User {
@@ -1264,6 +1266,18 @@ export async function uploadTerminalImage(
 ): Promise<string> {
   const result = await postJson<{ path: string }>(`/projects/${projectId}/terminal/image`, {
     media_type: mediaType,
+    data,
+  })
+  return result.path
+}
+
+export async function uploadTerminalFile(
+  projectId: number,
+  name: string,
+  data: string,
+): Promise<string> {
+  const result = await postJson<{ path: string }>(`/projects/${projectId}/terminal/file`, {
+    name,
     data,
   })
   return result.path

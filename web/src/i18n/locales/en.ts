@@ -84,6 +84,8 @@ const en = {
     browserCommandFailed: 'Could not control the browser',
     terminalImageInvalid: 'The pasted image could not be read',
     terminalImageTooLarge: 'The image is too large to attach',
+    terminalFileInvalid: 'The dropped file could not be read',
+    terminalFileTooLarge: 'The file is too large to attach',
   },
   settings: {
     title: 'Settings',

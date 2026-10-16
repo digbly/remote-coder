@@ -84,6 +84,8 @@ const vi = {
     browserCommandFailed: 'Không thể điều khiển trình duyệt',
     terminalImageInvalid: 'Không thể đọc ảnh đã dán',
     terminalImageTooLarge: 'Ảnh quá lớn để đính kèm',
+    terminalFileInvalid: 'Không thể đọc tệp đã kéo thả',
+    terminalFileTooLarge: 'Tệp quá lớn để đính kèm',
   },
   settings: {
     title: 'Cài đặt',

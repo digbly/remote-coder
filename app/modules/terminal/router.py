@@ -16,6 +16,8 @@ from app.modules.projects import service as projects_service
 from app.modules.terminal import service
 from app.modules.terminal.schemas import (
     RunningTerminalsRead,
+    TerminalFileRead,
+    TerminalFileUpload,
     TerminalImageRead,
     TerminalImageUpload,
 )
@@ -167,6 +169,26 @@ def upload_terminal_image(
     project = projects_service.get_project(db, current_user, project_id)
     path = service.save_image(project, payload, settings)
     return TerminalImageRead(path=str(path))
+
+
+@router.post(
+    "/{project_id}/terminal/file",
+    response_model=TerminalFileRead,
+    status_code=status.HTTP_201_CREATED,
+    responses=error_responses(400, 401, 403, 404, 413, 422),
+)
+def upload_terminal_file(
+    project_id: int,
+    payload: TerminalFileUpload,
+    current_user: CurrentUser,
+    db: DbDep,
+    settings: SettingsDep,
+    _csrf: CsrfDep,
+) -> TerminalFileRead:
+    """Store a file dropped onto the terminal and return a path the shell can read."""
+    project = projects_service.get_project(db, current_user, project_id)
+    path = service.save_file(project, payload, settings)
+    return TerminalFileRead(path=str(path))
 
 
 @global_router.get(

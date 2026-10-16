@@ -11,6 +11,7 @@ import {
   type GitStatus,
 } from '../../lib/api'
 import { useAsyncData } from '../../lib/useAsyncData'
+import { PROJECT_PATH_MIME } from '../../lib/dragPaths'
 import { SearchResultTree } from './SearchResultTree'
 import {
   buildGitChangeMaps,
@@ -75,6 +76,11 @@ function TreeItem({
           onClick={toggle}
           aria-expanded={open}
           style={indentation}
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData(PROJECT_PATH_MIME, node.path)
+            event.dataTransfer.effectAllowed = 'copy'
+          }}
           className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12.5px] text-[var(--fg-2)] transition hover:bg-[var(--hover-subtle)]"
         >
           <ChevronRightIcon
@@ -133,6 +139,11 @@ function TreeItem({
       onClick={() => onOpenFile(node.path)}
       style={indentation}
       title={node.path}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData(PROJECT_PATH_MIME, node.path)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
       className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12.5px] text-[var(--fg-3-alt)] transition hover:bg-[var(--hover-subtle)] hover:text-[var(--fg-strong)]"
     >
       <span className="w-3 shrink-0" aria-hidden="true" />

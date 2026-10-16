@@ -25,7 +25,7 @@ from app.core.config import Settings
 from app.core.errors import ErrorCode, api_error
 from app.modules.auth.models import User
 from app.modules.projects.models import Project
-from app.modules.terminal.schemas import TerminalImageUpload
+from app.modules.terminal.schemas import TerminalFileUpload, TerminalImageUpload
 
 _TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
@@ -42,7 +42,13 @@ _IMAGE_EXTENSIONS = {
 # Pasted images are written under this hidden folder in the project so a pasted
 # screenshot never becomes an untracked git file; the shell reads it by path.
 _IMAGE_DIR = Path(".remote-coder") / "images"
+# Dropped files are written under a sibling folder so they too stay out of git.
+_UPLOAD_DIR = Path(".remote-coder") / "uploads"
 _GITIGNORE_ENTRY = ".remote-coder/"
+
+# Everything outside this set is replaced when sanitizing a dropped file's name,
+# so the result is always a single, shell-safe path segment.
+_UNSAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 DEFAULT_COLS = 80
 DEFAULT_ROWS = 24
@@ -85,6 +91,38 @@ def get_project(db: Session, user: User, project_id: int) -> Project | None:
     return db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
 
 
+def _decode_upload(
+    data: str, settings: Settings, *, invalid: ErrorCode, too_large: ErrorCode
+) -> bytes:
+    """Decode a base64 upload, enforcing the configured size cap.
+
+    ``data`` is base64, so its decoded size is roughly 3/4 of the string length;
+    the string is length-checked first so an oversized payload is rejected before
+    allocating the decoded bytes.
+    """
+    max_bytes = settings.terminal_image_max_bytes
+    if len(data) > max_bytes // 3 * 4 + 16:
+        raise api_error(too_large, status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise api_error(invalid, status_code=status.HTTP_400_BAD_REQUEST) from exc
+
+    if not raw:
+        raise api_error(invalid, status_code=status.HTTP_400_BAD_REQUEST)
+    if len(raw) > max_bytes:
+        raise api_error(too_large, status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+    return raw
+
+
+def _project_root(project: Project) -> Path:
+    root = Path(project.path)
+    if not root.is_dir():
+        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
+    return root
+
+
 def save_image(project: Project, payload: TerminalImageUpload, settings: Settings) -> Path:
     """Validate and persist a pasted image under the project, returning its path.
 
@@ -96,36 +134,50 @@ def save_image(project: Project, payload: TerminalImageUpload, settings: Setting
     if extension is None:
         raise api_error(ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
-    # ``data`` is base64, so its decoded size is roughly 3/4 of the string.
-    if len(payload.data) > settings.terminal_image_max_bytes // 3 * 4 + 16:
-        raise api_error(
-            ErrorCode.TERMINAL_IMAGE_TOO_LARGE,
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        )
+    data = _decode_upload(
+        payload.data,
+        settings,
+        invalid=ErrorCode.TERMINAL_IMAGE_INVALID,
+        too_large=ErrorCode.TERMINAL_IMAGE_TOO_LARGE,
+    )
+    return _write_upload(
+        _project_root(project), _IMAGE_DIR, f"image-{uuid4().hex}.{extension}", data
+    )
 
-    try:
-        data = base64.b64decode(payload.data, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise api_error(
-            ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST
-        ) from exc
 
-    if not data:
-        raise api_error(ErrorCode.TERMINAL_IMAGE_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
-    if len(data) > settings.terminal_image_max_bytes:
-        raise api_error(
-            ErrorCode.TERMINAL_IMAGE_TOO_LARGE,
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        )
+def _sanitize_filename(name: str) -> str:
+    """Reduce a client-supplied name to a single, shell-safe path segment."""
+    base = Path(name.replace("\\", "/")).name.strip()
+    base = _UNSAFE_FILENAME_RE.sub("_", base).lstrip(".")
+    if not base:
+        return "file"
+    return base[:200]
 
-    root = Path(project.path)
-    if not root.is_dir():
-        raise api_error(ErrorCode.PROJECT_PATH_INVALID, status_code=status.HTTP_400_BAD_REQUEST)
 
-    directory = root / _IMAGE_DIR
+def save_file(project: Project, payload: TerminalFileUpload, settings: Settings) -> Path:
+    """Validate and persist a dropped file under the project, returning its path.
+
+    The file is written to the project's hidden ``.remote-coder/uploads`` folder
+    (which is added to the project's ``.gitignore``) so the terminal shell can
+    read it by the returned absolute path without polluting the git status. The
+    saved name keeps the dropped file's name for readability, prefixed with a
+    random id to avoid collisions.
+    """
+    data = _decode_upload(
+        payload.data,
+        settings,
+        invalid=ErrorCode.TERMINAL_FILE_INVALID,
+        too_large=ErrorCode.TERMINAL_FILE_TOO_LARGE,
+    )
+    name = f"{uuid4().hex}-{_sanitize_filename(payload.name)}"
+    return _write_upload(_project_root(project), _UPLOAD_DIR, name, data)
+
+
+def _write_upload(root: Path, directory_name: Path, name: str, data: bytes) -> Path:
+    directory = root / directory_name
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / f"image-{uuid4().hex}.{extension}"
+        target = directory / name
         target.write_bytes(data)
     except OSError as exc:
         raise api_error(

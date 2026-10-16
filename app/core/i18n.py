@@ -86,6 +86,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "BROWSER_COMMAND_FAILED": "Could not control the browser",
         "TERMINAL_IMAGE_INVALID": "The pasted image could not be read",
         "TERMINAL_IMAGE_TOO_LARGE": "The image is too large to attach",
+        "TERMINAL_FILE_INVALID": "The dropped file could not be read",
+        "TERMINAL_FILE_TOO_LARGE": "The file is too large to attach",
     },
     "vi": {
         "INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không đúng",
@@ -167,6 +169,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "BROWSER_COMMAND_FAILED": "Không thể điều khiển trình duyệt",
         "TERMINAL_IMAGE_INVALID": "Không thể đọc ảnh đã dán",
         "TERMINAL_IMAGE_TOO_LARGE": "Ảnh quá lớn để đính kèm",
+        "TERMINAL_FILE_INVALID": "Không thể đọc tệp đã kéo thả",
+        "TERMINAL_FILE_TOO_LARGE": "Tệp quá lớn để đính kèm",
     },
 }
 
