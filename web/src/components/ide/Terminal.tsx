@@ -174,6 +174,24 @@ export const ProjectTerminal = memo(function ProjectTerminal({
       return true
     })
 
+    // Full-screen TUI apps (opencode, vim, less…) run in the alternate screen
+    // buffer, which has no scrollback, so xterm's own wheel scrolling does
+    // nothing there. When such an app has not enabled mouse tracking, translate
+    // the wheel into arrow keys so the app scrolls its own view instead.
+    terminal.attachCustomWheelEventHandler((event) => {
+      if (terminal.buffer.active.type !== 'alternate') return true
+      if (terminal.modes.mouseTrackingMode !== 'none') return true
+      // Horizontal-only wheel motion has no vertical component to translate.
+      if (event.deltaY === 0) return false
+      const steps = Math.min(3, Math.max(1, Math.round(Math.abs(event.deltaY) / 100)))
+      // Respect DECCKM: full-screen apps commonly enable application cursor keys,
+      // in which case arrows are SS3 (ESC O A/B) rather than CSI (ESC [ A/B).
+      const up = terminal.modes.applicationCursorKeysMode ? '\x1bOA' : '\x1b[A'
+      const down = terminal.modes.applicationCursorKeysMode ? '\x1bOB' : '\x1b[B'
+      terminal.input((event.deltaY < 0 ? up : down).repeat(steps))
+      return false
+    })
+
     let disposed = false
     let socket: WebSocket | null = null
     let reconnectTimer: number | null = null
