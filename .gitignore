@@ -11,4 +11,3 @@ build/
 *.db
 *.sqlite
 .orca/
-.remote-coder/
