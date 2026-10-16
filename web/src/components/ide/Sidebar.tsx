@@ -527,7 +527,9 @@ export function Sidebar({
             project={project}
             accent={projectAccent(index)}
             active={project.id === activeProjectId}
-            activeWorktree={activeWorktrees[project.id]}
+            activeWorktree={
+              project.id === activeProjectId ? activeWorktrees[project.id] : undefined
+            }
             worktrees={worktrees[project.id]}
             busyWorktrees={
               new Set([
